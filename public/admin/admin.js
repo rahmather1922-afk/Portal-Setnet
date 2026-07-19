@@ -2098,6 +2098,7 @@ function DashboardAdmin({ session, onLogout }) {
             {online ? "Server tersambung" : "Server terputus"}
             {lastSync && <span className="font-mono text-white/40 ml-1">· {lastSync.toLocaleTimeString("id-ID")}</span>}
           </div>
+          <span className="text-[11px] font-semibold px-3 py-1.5 rounded-lg border border-white/15 bg-white/5">{roleInfo(session.role).label} · {session.nama}</span>
           {canAccess(session.role, "kasbon") && (
             <div className="relative">
               <button onClick={() => setNotifOpen(o => !o)} className="relative p-2 rounded-lg hover:bg-white/10 transition text-white/80 hover:text-white" title="Notifikasi pengajuan">
@@ -2148,7 +2149,6 @@ function DashboardAdmin({ session, onLogout }) {
               )}
             </div>
           )}
-          <span className="text-[11px] font-semibold px-3 py-1.5 rounded-lg border border-white/15 bg-white/5">{roleInfo(session.role).label} · {session.nama}</span>
           <button onClick={onLogout} className="text-white/70 hover:text-white flex items-center gap-1.5 text-xs font-semibold"><IconLogout className="w-4 h-4" /><span className="hidden sm:inline">Keluar</span></button>
         </div>
       </header>
