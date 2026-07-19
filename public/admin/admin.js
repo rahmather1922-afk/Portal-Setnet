@@ -432,7 +432,7 @@ const InvoicePrintView = ({ invoice }) => {
 };
 
 /* ---------------------------------- LOGIN SCREEN ---------------------------------- */
-const AUTH_API = "http://localhost:5000/api/absen/login";
+const AUTH_API = "/api/absen/login";
 
 const LoginScreen = ({ onLoginSuccess }) => {
   const [karyawanId, setKaryawanId] = useState("");
