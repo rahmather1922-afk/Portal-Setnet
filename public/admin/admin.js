@@ -507,10 +507,10 @@ const LoginScreen = ({ onLoginSuccess }) => {
 };
 
 /* ---------------------------------- MAIN APP ---------------------------------- */
-const API = "http://localhost:5000/api/admin";
-const FIN_API = "http://localhost:5000/api/finance";
-const TRACK_API = "http://localhost:5000/api";
-const MATERIAL_API = "http://localhost:5000/api"; // routes/material.js dimount langsung di /api
+const API = "/api/admin";
+const FIN_API = "/api/finance";
+const TRACK_API = "/api";
+const MATERIAL_API = "/api"; 
 
 function DashboardAdmin({ session, onLogout }) {
   // Header identitas role dikirim ke backend agar endpoint bisa memfilter akses per role.
