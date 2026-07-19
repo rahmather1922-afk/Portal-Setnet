@@ -261,7 +261,7 @@ const SortHeader = ({ label, field, sortKey, sortDir, onSort, className = "" }) 
 );
 
 const ToastStack = ({ toasts, dismiss }) => (
-  <div className="fixed top-5 right-5 z-[100] space-y-2 w-80">
+  <div className="fixed top-5 left-5 right-5 sm:left-auto sm:right-5 z-[100] space-y-2 w-auto sm:w-80">
     {toasts.map(t => (
       <div key={t.id} className={`toast-in flex items-start gap-2.5 p-3.5 rounded-xl shadow-lg border bg-white`} style={{ borderColor: t.type === "error" ? "#FCA5A5" : "var(--border)" }}>
         <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5"
@@ -432,7 +432,7 @@ const InvoicePrintView = ({ invoice }) => {
 };
 
 /* ---------------------------------- LOGIN SCREEN ---------------------------------- */
-const AUTH_API = "/api/absen/login";
+const AUTH_API = "http://localhost:5000/api/absen/login";
 
 const LoginScreen = ({ onLoginSuccess }) => {
   const [karyawanId, setKaryawanId] = useState("");
@@ -507,10 +507,10 @@ const LoginScreen = ({ onLoginSuccess }) => {
 };
 
 /* ---------------------------------- MAIN APP ---------------------------------- */
-const API = "/api/admin";
-const FIN_API = "/api/finance";
-const TRACK_API = "/api";
-const MATERIAL_API = "/api"; 
+const API = "http://localhost:5000/api/admin";
+const FIN_API = "http://localhost:5000/api/finance";
+const TRACK_API = "http://localhost:5000/api";
+const MATERIAL_API = "http://localhost:5000/api"; // routes/material.js dimount langsung di /api
 
 function DashboardAdmin({ session, onLogout }) {
   // Header identitas role dikirim ke backend agar endpoint bisa memfilter akses per role.
