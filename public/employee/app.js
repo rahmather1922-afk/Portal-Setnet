@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = '/api';
 
 function formatRupiah(angka) {
     return 'Rp' + Number(angka || 0).toLocaleString('id-ID');
