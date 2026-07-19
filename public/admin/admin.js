@@ -2111,7 +2111,7 @@ function DashboardAdmin({ session, onLogout }) {
               {notifOpen && (
                 <>
                   <div className="fixed inset-0 z-[95]" onClick={() => setNotifOpen(false)} />
-                  <div className="modal-in absolute right-0 top-full mt-2 w-80 max-w-[90vw] bg-white rounded-2xl border shadow-xl z-[96] overflow-hidden text-left" style={{ borderColor: "var(--border)" }}>
+                  <div className="modal-in fixed top-16 left-3 right-3 sm:absolute sm:top-full sm:left-auto sm:right-0 sm:mt-2 sm:w-80 bg-white rounded-2xl border shadow-xl z-[96] overflow-hidden text-left" style={{ borderColor: "var(--border)" }}>
                     <div className="p-3.5 border-b flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
                       <p className="text-xs font-bold" style={{ color: "var(--ink)" }}>Pengajuan Menunggu Persetujuan</p>
                       {notifPendingTotal > 0 && <span className="text-[10px] font-black px-2 py-0.5 rounded-full" style={{ background: "var(--amber-soft)", color: "var(--amber)" }}>{notifPendingTotal}</span>}
