@@ -8,7 +8,12 @@ const absensiSchema = new mongoose.Schema({
   status: { type: String, required: true },       // "Masuk" atau "Pulang"
   shift: { type: String, required: true },        // "Shift 1", "Shift 2", atau "Non-Shift"
   keterangan: { type: String, default: "Normal" }, // "Normal" atau "Terlambat (X Jam Y Menit)"
-  foto: { type: String, required: true }          // Menyimpan string Base64 gambar wajah hasil capture HP
+  foto: { type: String, required: true },         // Menyimpan string Base64 gambar wajah hasil capture HP
+  lokasi: {
+    latitude: { type: Number, required: true },
+    longitude: { type: Number, required: true },
+    alamat: { type: String, default: "" }          // Alamat hasil reverse-geocode (boleh kosong jika gagal diambil)
+  }
 });
 
 module.exports = mongoose.model('Absensi', absensiSchema);

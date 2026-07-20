@@ -488,7 +488,9 @@ function PengajuanPanel({ userSession, onBack }) {
 }
 
 // ==================== TAB: ABSENSI (KAMERA) ====================
-function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelectedShift, loading, handleAbsen, modalData, setModalData, onSelesai }) {
+function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelectedShift, loading, handleAbsen, modalData, setModalData, onSelesai, lokasi, cariLokasi }) {
+    const gpsSiap = lokasi.status === 'siap';
+    const tombolTerkunci = loading || !gpsSiap;
     return (
         <div class="bg-white p-5 rounded-2xl shadow-xl border border-gray-100 text-center w-full relative">
             <SubHeader title="Absensi" onBack={onBack} />
@@ -497,6 +499,21 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
             <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden mb-4 shadow-inner border border-gray-200">
                 <video ref={videoRef} autoPlay playsInline muted class="w-full h-full object-cover transform -scale-x-100"></video>
                 <div class="absolute bottom-2 left-2 bg-black/60 text-[10px] text-white px-2 py-0.5 rounded font-mono font-bold">📷 LIVE CAMERA ACTIVE</div>
+            </div>
+
+            {/* STATUS GPS: wajib aktif sebelum bisa absen, sama seperti kamera */}
+            <div class={`mb-4 text-left rounded-xl p-3 border flex items-center justify-between gap-2 ${gpsSiap ? 'bg-green-50 border-green-150' : lokasi.status === 'gagal' ? 'bg-red-50 border-red-150' : 'bg-amber-50 border-amber-150'}`}>
+                <div class="min-w-0">
+                    <p class={`text-[11px] font-black uppercase ${gpsSiap ? 'text-green-700' : lokasi.status === 'gagal' ? 'text-red-700' : 'text-amber-700'}`}>
+                        {gpsSiap ? '📍 Lokasi Aktif' : lokasi.status === 'mencari' ? '📍 Mencari lokasi...' : lokasi.status === 'gagal' ? '📍 Lokasi Gagal / Ditolak' : '📍 Menunggu Lokasi'}
+                    </p>
+                    <p class="text-[10px] text-gray-500 truncate">
+                        {gpsSiap ? (lokasi.alamat || `${lokasi.latitude.toFixed(5)}, ${lokasi.longitude.toFixed(5)}`) : 'Aktifkan izin lokasi GPS untuk bisa absen.'}
+                    </p>
+                </div>
+                {!gpsSiap && (
+                    <button type="button" onClick={cariLokasi} class="shrink-0 text-[10px] font-bold text-blue-600 underline">Coba Lagi</button>
+                )}
             </div>
 
             <div class="mb-5 text-left bg-gray-50 p-3 rounded-xl border border-gray-150">
@@ -515,10 +532,10 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
             </div>
 
             <div class="grid grid-cols-2 gap-3">
-                <button onClick={() => handleAbsen('Masuk')} disabled={loading} class="bg-green-600 hover:bg-green-700 text-white font-extrabold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-300 text-sm">
+                <button onClick={() => handleAbsen('Masuk')} disabled={tombolTerkunci} class="bg-green-600 hover:bg-green-700 text-white font-extrabold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-300 text-sm">
                     {loading ? 'Memproses...' : 'ABSEN MASUK'}
                 </button>
-                <button onClick={() => handleAbsen('Pulang')} disabled={loading} class="bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-300 text-sm">
+                <button onClick={() => handleAbsen('Pulang')} disabled={tombolTerkunci} class="bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-300 text-sm">
                     {loading ? 'Memproses...' : 'ABSEN PULANG'}
                 </button>
             </div>
@@ -565,6 +582,35 @@ function AppAbsensi() {
 
     // State baru untuk Modal Notification Kustom
     const [modalData, setModalData] = React.useState(null);
+
+    // State lokasi GPS: wajib aktif sama seperti kamera sebelum bisa absen.
+    // status: 'idle' | 'mencari' | 'siap' | 'gagal'
+    const [lokasi, setLokasi] = React.useState({ status: 'idle', latitude: null, longitude: null, alamat: '' });
+
+    const cariLokasi = React.useCallback(() => {
+        if (!navigator.geolocation) {
+            setLokasi({ status: 'gagal', latitude: null, longitude: null, alamat: '' });
+            return;
+        }
+        setLokasi(prev => ({ ...prev, status: 'mencari' }));
+        navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+                const { latitude, longitude } = pos.coords;
+                let alamat = '';
+                try {
+                    // Reverse geocode alamat (best-effort, boleh gagal tanpa menghentikan absen)
+                    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=0`);
+                    const data = await res.json();
+                    alamat = data && data.display_name ? data.display_name : '';
+                } catch (err) { /* diam-diam gagal, kirim tanpa alamat */ }
+                setLokasi({ status: 'siap', latitude, longitude, alamat });
+            },
+            () => {
+                setLokasi({ status: 'gagal', latitude: null, longitude: null, alamat: '' });
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+    }, []);
 
     // Pulihkan sesi login dari penyimpanan lokal saat halaman di-refresh,
     // supaya karyawan tidak perlu login ulang tiap kali me-refresh halaman.
@@ -618,10 +664,11 @@ function AppAbsensi() {
         try { localStorage.removeItem(SESSION_KEY); } catch (err) { /* abaikan jika penyimpanan lokal tidak tersedia */ }
     };
 
-    // Kamera hanya aktif ketika berada di halaman Absensi
+    // Kamera & GPS hanya aktif ketika berada di halaman Absensi
     React.useEffect(() => {
         if (isLoggedIn && tabAktif === 'Absensi') {
             bukaKamera();
+            cariLokasi();
         } else {
             matikanKamera();
         }
@@ -654,6 +701,9 @@ function AppAbsensi() {
         if (!streamRef.current) {
             return alert("Kamera belum aktif!");
         }
+        if (lokasi.status !== 'siap') {
+            return alert("⚠️ Lokasi GPS belum aktif/ditemukan. Mohon izinkan akses lokasi lalu coba lagi!");
+        }
         setLoading(true);
 
         try {
@@ -673,7 +723,10 @@ function AppAbsensi() {
                     nama: userSession.nama,
                     status: statusAbsen,
                     shift: selectedShift,
-                    foto: dataFotoBase64
+                    foto: dataFotoBase64,
+                    latitude: lokasi.latitude,
+                    longitude: lokasi.longitude,
+                    alamat: lokasi.alamat
                 })
             });
 
@@ -732,6 +785,8 @@ function AppAbsensi() {
                 modalData={modalData}
                 setModalData={setModalData}
                 onSelesai={() => { setModalData(null); setTabAktif('Menu'); }}
+                lokasi={lokasi}
+                cariLokasi={cariLokasi}
             />
         );
     } else if (tabAktif === 'Form') {

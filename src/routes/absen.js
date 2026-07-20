@@ -8,6 +8,35 @@ const router = express.Router();
 // Helper: apakah string terlihat seperti hash bcrypt ($2a$/$2b$/$2y$...)
 const isBcryptHash = (str) => typeof str === 'string' && /^\$2[aby]\$\d{2}\$/.test(str);
 
+// Helper: ambil jam & menit versi WIB (Asia/Jakarta) SECARA EKSPLISIT.
+// PENTING: jangan pakai new Date().getHours() langsung, karena itu mengikuti
+// timezone SERVER (kalau server di-hosting dengan TZ=UTC, jam 06:37 WIB akan
+// terbaca sebagai 23:37 dan bikin perhitungan telat jadi kebalik / ngaco).
+// Asia/Jakarta tidak pakai DST jadi offsetnya selalu tetap (UTC+7).
+const getJamMenitWIB = (date = new Date()) => {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jakarta',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23' // pastikan range 00-23, hindari bug "24:xx" saat tengah malam
+  });
+  const parts = formatter.formatToParts(date);
+  const jam = Number(parts.find(p => p.type === 'hour').value);
+  const menit = Number(parts.find(p => p.type === 'minute').value);
+  return { jam, menit };
+};
+
+// Helper: hitung jarak antar 2 koordinat GPS pakai formula Haversine, hasil dalam meter.
+const hitungJarakMeter = (lat1, lon1, lat2, lon2) => {
+  const R = 6371000; // radius bumi dalam meter
+  const toRad = (v) => (v * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
+};
+
 // --- API LOGIN / AUTENTIKASI KARYAWAN ---
 router.post('/absen/login', async (req, res) => {
   try {
@@ -47,22 +76,32 @@ router.post('/absen/login', async (req, res) => {
   }
 });
 
-// --- API UTAMA KIRIM DATA ABSENSI (LOGIKA SHIFT + FOTO + KETERANGAN) ---
+// --- API UTAMA KIRIM DATA ABSENSI (LOGIKA SHIFT + FOTO + GPS + KETERANGAN) ---
 router.post('/absen', async (req, res) => {
   try {
-    const { karyawan_id, nama, status, shift, foto } = req.body;
+    const { karyawan_id, nama, status, shift, foto, latitude, longitude, alamat } = req.body;
     if (!karyawan_id || !nama || !status || !shift || !foto) {
       return res.status(400).json({ message: 'Data absensi tidak lengkap!' });
+    }
+
+    // GPS wajib diisi, sama seperti foto wajib. Ditolak kalau tidak ada koordinat.
+    if (latitude === undefined || latitude === null || longitude === undefined || longitude === null) {
+      return res.status(400).json({ message: 'Lokasi GPS wajib aktif untuk melakukan absensi!' });
+    }
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    if (Number.isNaN(lat) || Number.isNaN(lng)) {
+      return res.status(400).json({ message: 'Data lokasi GPS tidak valid!' });
     }
 
     let keterangan = "Normal";
     // Pengecekan status terlambat hanya dihitung saat karyawan melakukan "Absen Masuk"
     if (status === "Masuk") {
-      const sekarang = new Date();
-      const jam = sekarang.getHours();
-      const menit = sekarang.getMinutes();
+      // PENTING: pakai jam WIB eksplisit (bukan jam lokal server) supaya perhitungan
+      // telat tidak kebalik/ngaco kalau server hosting berjalan di timezone UTC.
+      const { jam, menit } = getJamMenitWIB();
 
-      // Mengonversi waktu saat ini menjadi akumulasi total hitungan menit dari jam 00:00 dini hari
+      // Mengonversi waktu saat ini menjadi akumulasi total hitungan menit dari jam 00:00 dini hari (WIB)
       const totalMenitSekarang = (jam * 60) + menit;
       let batasMenitMasuk = 0;
       // Aturan Waktu Shift Masuk Kerja
@@ -88,7 +127,10 @@ router.post('/absen', async (req, res) => {
     }
 
     // Pembuatan dokumen log baru ke MongoDB Atlas
-    const absenBaru = new Absensi({ karyawan_id, nama, status, shift, keterangan, foto });
+    const absenBaru = new Absensi({
+      karyawan_id, nama, status, shift, keterangan, foto,
+      lokasi: { latitude: lat, longitude: lng, alamat: alamat || '' }
+    });
     await absenBaru.save();
 
     // Mengembalikan objek data absensi yang utuh ke frontend agar parameter waktunya tidak bernilai 'undefined' atau 'Invalid Date'
@@ -98,6 +140,17 @@ router.post('/absen', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Gagal memproses data absensi', error: error.message });
+  }
+});
+
+// --- API RIWAYAT ABSENSI MILIK SATU KARYAWAN (dipakai halaman "Kehadiran Bulan Ini" & "Riwayat Absensi" di app mobile) ---
+router.get('/absen/mine/:karyawan_id', async (req, res) => {
+  try {
+    const { karyawan_id } = req.params;
+    const riwayat = await Absensi.find({ karyawan_id }).sort({ waktu_absen: -1 });
+    res.status(200).json(riwayat);
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal mengambil riwayat absensi', error: error.message });
   }
 });
 
