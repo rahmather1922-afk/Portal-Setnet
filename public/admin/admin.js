@@ -80,7 +80,7 @@ const Avatar = ({ name, size = 36 }) => {
 };
 
 /* ---------------------------------- ROLE & ACCESS CONFIG ---------------------------------- */
-// Struktur hak akses SATNET (update pembagian tugas terbaru):
+// Struktur hak akses SETNET (update pembagian tugas terbaru):
 //  teknisi -> TIDAK bisa masuk Portal Admin (hanya aplikasi absensi HP)
 //  admin   -> HANYA menu Dashboard Utama (tanpa card Tracking BAST & Finance) + Pemakaian Material
 //  gudang  -> sama seperti admin: Dashboard Utama (tanpa card Tracking BAST & Finance) + Pemakaian Material
@@ -472,7 +472,7 @@ const LoginScreen = ({ onLoginSuccess }) => {
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "var(--canvas)" }}>
       <div className="bg-white p-7 rounded-2xl shadow-xl border w-full max-w-sm" style={{ borderColor: "var(--border)" }}>
         <div className="text-center mb-6">
-          <span className="text-2xl font-bold font-display tracking-tight" style={{ color: "var(--brand)" }}>SATNET</span>
+          <span className="text-2xl font-bold font-display tracking-tight" style={{ color: "var(--brand)" }}>SETNET</span>
           <p className="text-xs font-semibold uppercase tracking-wide mt-1" style={{ color: "var(--ink-soft)" }}>Portal Admin</p>
         </div>
         {error && (
@@ -511,6 +511,12 @@ const API = "/api/admin";
 const FIN_API = "/api/finance";
 const TRACK_API = "/api";
 const MATERIAL_API = "/api"; 
+// Preset pilihan dropdown Master Material & Pemakaian Teknisi — bisa ditambah/kurangi sesuai kebutuhan.
+const KABEL_METER_PRESETS = [50, 80, 100, 150, 200, 250];
+const ONT_MEREK_PRESETS = ["ZTE", "Huawei", "Nokia", "Pejas"];
+const PROJECT_PRESETS = ["AMT", "FS", "LinkNet"];
+const REGION_PRESETS = ["Jakbar", "Jakut", "Jakpus", "Jaksel", "Jaktim", "Bekasi", "Bogor", "Depok", "Bekasi Timur", "Tangerang", "Tangkot"];
+const VENDOR_PRESETS = ["Quantum", "Satu Visi", "BBB"];
 
 function DashboardAdmin({ session, onLogout }) {
   // Header identitas role dikirim ke backend agar endpoint bisa memfilter akses per role.
@@ -525,6 +531,8 @@ function DashboardAdmin({ session, onLogout }) {
   // Submenu sidebar yang sedang dibuka (mis. "crud" -> menampilkan sub-item "Salary" di bawahnya)
   const [expandedNav, setExpandedNav] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Konfirmasi sebelum benar-benar logout, supaya tidak ke-klik tidak sengaja.
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   // Mode rail (icon-only) untuk sidebar desktop — beda dari sidebarOpen (drawer mobile).
   // Preferensi disimpan di browser supaya nggak reset tiap refresh.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -625,10 +633,10 @@ function DashboardAdmin({ session, onLogout }) {
   // form: master material
   const [matEditId, setMatEditId] = useState(null);
   const [matKategori, setMatKategori] = useState("Kabel");
-  const [matNama, setMatNama] = useState("");
+  const [matNama, setMatNama] = useState("50 M");
+  const [matNamaPilihan, setMatNamaPilihan] = useState("50"); // dropdown preset (angka kabel / merek ONT / "Lainnya")
   const [matSatuan, setMatSatuan] = useState("Roll");
-  const [matStockAwal, setMatStockAwal] = useState("");
-  const [matKeterangan, setMatKeterangan] = useState("");
+  const [matSnOnt, setMatSnOnt] = useState(""); // opsional, khusus kategori ONT saat pertama didaftarkan
   const [matFormErrors, setMatFormErrors] = useState({});
   const [matSubmitting, setMatSubmitting] = useState(false);
   const [matDeleteTarget, setMatDeleteTarget] = useState(null);
@@ -641,11 +649,18 @@ function DashboardAdmin({ session, onLogout }) {
   const [pmkTanggal, setPmkTanggal] = useState(() => new Date().toISOString().slice(0, 10));
   const [pmkTeknisiId, setPmkTeknisiId] = useState("");
   const [pmkNamaTeam, setPmkNamaTeam] = useState("");
-  const [pmkMerekModem, setPmkMerekModem] = useState("");
-  const [pmkSnOnt, setPmkSnOnt] = useState("");
-  const [pmkKabelId, setPmkKabelId] = useState("");
+  const [pmkMerekModem, setPmkMerekModem] = useState("ZTE");
+  const [pmkMerekPilihan, setPmkMerekPilihan] = useState("ZTE"); // dropdown preset merek modem, "Lainnya" -> custom
+  const [pmkSnOnt, setPmkSnOnt] = useState(""); // dipakai saat mode EDIT (1 baris)
+  const [pmkKabelId, setPmkKabelId] = useState(""); // dipakai saat mode EDIT (1 baris)
+  const [pmkJumlahOnt, setPmkJumlahOnt] = useState(1); // dipakai saat mode TAMBAH (batch)
+  const [pmkSnOntList, setPmkSnOntList] = useState([""]); // dipakai saat mode TAMBAH (batch)
+  const [pmkKabelRows, setPmkKabelRows] = useState([{ kabel_id: "", jumlah: 1 }]); // dipakai saat mode TAMBAH (batch)
   const [pmkStatus, setPmkStatus] = useState("Idle");
   const [pmkReturnCatatan, setPmkReturnCatatan] = useState("");
+  const [pmkProject, setPmkProject] = useState("");
+  const [pmkRegion, setPmkRegion] = useState("");
+  const [pmkVendor, setPmkVendor] = useState("");
   const [pmkFormErrors, setPmkFormErrors] = useState({});
   const [pmkSubmitting, setPmkSubmitting] = useState(false);
   const [pmkDeleteTarget, setPmkDeleteTarget] = useState(null);
@@ -661,6 +676,7 @@ function DashboardAdmin({ session, onLogout }) {
   const [stkTeknisiId, setStkTeknisiId] = useState("");
   const [stkTeknisiNama, setStkTeknisiNama] = useState("");
   const [stkKeterangan, setStkKeterangan] = useState("");
+  const [stkSnOntList, setStkSnOntList] = useState([]); // muncul otomatis kalau material terpilih kategori ONT & tipe Penambahan
   const [stkFormErrors, setStkFormErrors] = useState({});
   const [stkSubmitting, setStkSubmitting] = useState(false);
   const [pageStok, setPageStok] = useState(1);
@@ -1406,6 +1422,8 @@ function DashboardAdmin({ session, onLogout }) {
   const [trkRemark, setTrkRemark] = useState("");
   const [trkActionPlan, setTrkActionPlan] = useState("");
   const [trkNote, setTrkNote] = useState("");
+  const [trkProject, setTrkProject] = useState("");
+  const [trkVendor, setTrkVendor] = useState("");
   const [trkErrors, setTrkErrors] = useState({});
   const [trkSubmitting, setTrkSubmitting] = useState(false);
   const [trkDeleteTarget, setTrkDeleteTarget] = useState(null);
@@ -1421,7 +1439,8 @@ function DashboardAdmin({ session, onLogout }) {
     setTrkEditId(null); setTrkRegion(TRACKING_REGIONS[0]); setTrkTahun(new Date().getFullYear());
     setTrkWoType(TRACKING_WO_TYPES[0]); setTrkBulan(""); setTrkBatch(""); setTrkJumlahWO("");
     setTrkAmount(""); setTrkNilaiAsianet(""); setTrkStatus("Waiting Submit"); setTrkTanggal("");
-    setTrkPic(""); setTrkRemark(""); setTrkActionPlan(""); setTrkNote(""); setTrkErrors({});
+    setTrkPic(""); setTrkRemark(""); setTrkActionPlan(""); setTrkNote("");
+    setTrkProject(""); setTrkVendor(""); setTrkErrors({});
   };
 
   const validateTracking = () => {
@@ -1430,6 +1449,8 @@ function DashboardAdmin({ session, onLogout }) {
     if (!trkTahun) errs.tahun = "Tahun wajib diisi";
     if (!trkWoType) errs.woType = "Jenis WO wajib dipilih";
     if (!trkStatus) errs.status = "Status wajib dipilih";
+    if (!trkProject) errs.project = "Project wajib dipilih";
+    if (!trkVendor) errs.vendor = "Vendor wajib dipilih";
     setTrkErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -1445,6 +1466,7 @@ function DashboardAdmin({ session, onLogout }) {
       batch: trkBatch === "" ? null : Number(trkBatch), jumlahWO: Number(trkJumlahWO) || 0,
       amount: Number(trkAmount) || 0, nilaiAsianet: Number(trkNilaiAsianet) || 0, status: trkStatus,
       tanggal: trkTanggal || null, pic: trkPic, remark: trkRemark, actionPlan: trkActionPlan, note: trkNote,
+      project: trkProject, vendor: trkVendor,
     };
     try {
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
@@ -1469,6 +1491,7 @@ function DashboardAdmin({ session, onLogout }) {
     setTrkAmount(t.amount ?? ""); setTrkNilaiAsianet(t.nilaiAsianet ?? ""); setTrkStatus(t.status);
     setTrkTanggal(t.tanggal ? new Date(t.tanggal).toISOString().slice(0, 10) : "");
     setTrkPic(t.pic || ""); setTrkRemark(t.remark || ""); setTrkActionPlan(t.actionPlan || ""); setTrkNote(t.note || "");
+    setTrkProject(t.project || ""); setTrkVendor(t.vendor || "");
     setTrkErrors({});
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1747,14 +1770,34 @@ function DashboardAdmin({ session, onLogout }) {
   };
 
   // ==================== MODUL MATERIAL: handlers ====================
+  // Peta cepat material_id -> dokumen material, untuk lookup nama/stok saat render tabel/form
+  const materialMap = useMemo(() => {
+    const map = {};
+    materialList.forEach(m => { map[m._id] = m; });
+    return map;
+  }, [materialList]);
   const resetFormMaterial = () => {
-    setMatEditId(null); setMatKategori("Kabel"); setMatNama(""); setMatSatuan("Roll");
-    setMatStockAwal(""); setMatKeterangan(""); setMatFormErrors({});
+    setMatEditId(null); setMatKategori("Kabel"); setMatNamaPilihan("50"); setMatNama("50 M"); setMatSatuan("Roll");
+    setMatSnOnt(""); setMatFormErrors({});
+  };
+  // Ganti kategori -> reset preset & satuan default yang relevan buat kategori itu
+  const handleMatKategoriChange = (val) => {
+    setMatKategori(val);
+    setMatSnOnt("");
+    if (val === "Kabel") { setMatNamaPilihan("50"); setMatNama("50 M"); setMatSatuan("Roll"); }
+    else if (val === "ONT") { setMatNamaPilihan("ZTE"); setMatNama("ZTE"); setMatSatuan("Unit"); }
+    else { setMatNamaPilihan(""); setMatNama(""); setMatSatuan("Roll"); }
+  };
+  // Ganti pilihan dropdown Jenis Kabel / Merek ONT -> otomatis isi Nama, kecuali pilih "Lainnya"
+  const handleMatNamaPilihanChange = (val) => {
+    setMatNamaPilihan(val);
+    if (val === "Lainnya") { setMatNama(""); return; }
+    if (matKategori === "Kabel") setMatNama(`${val} M`);
+    else if (matKategori === "ONT") setMatNama(val);
   };
   const validateMaterial = () => {
     const errs = {};
-    if (!matNama.trim()) errs.nama = "Nama/jenis material wajib diisi";
-    if (matStockAwal !== "" && Number(matStockAwal) < 0) errs.stock_awal = "Stok awal tidak boleh minus";
+    if (!matNama.trim()) errs.nama = matKategori === "Kabel" ? "Jenis kabel wajib dipilih/diisi" : matKategori === "ONT" ? "Merek/jenis ONT wajib dipilih/diisi" : "Nama/jenis material wajib diisi";
     setMatFormErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -1764,7 +1807,8 @@ function DashboardAdmin({ session, onLogout }) {
     setMatSubmitting(true);
     const url = matEditId ? `${MATERIAL_API}/material/${matEditId}` : `${MATERIAL_API}/material`;
     const method = matEditId ? "PUT" : "POST";
-    const bodyData = { kategori: matKategori, nama: matNama, satuan: matSatuan, stock_awal: matStockAwal, keterangan: matKeterangan };
+    const bodyData = { kategori: matKategori, nama: matNama, satuan: matSatuan };
+    if (!matEditId && matKategori === "ONT" && matSnOnt.trim()) bodyData.sn_ont = matSnOnt.trim();
     try {
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
       const resData = await res.json().catch(() => ({}));
@@ -1776,8 +1820,16 @@ function DashboardAdmin({ session, onLogout }) {
     finally { setMatSubmitting(false); }
   };
   const pemicuEditMaterial = (m) => {
-    setMatEditId(m._id); setMatKategori(m.kategori); setMatNama(m.nama); setMatSatuan(m.satuan);
-    setMatStockAwal(String(m.stock_awal)); setMatKeterangan(m.keterangan || ""); setMatFormErrors({});
+    setMatEditId(m._id); setMatKategori(m.kategori); setMatNama(m.nama); setMatSatuan(m.satuan); setMatSnOnt("");
+    if (m.kategori === "Kabel") {
+      const angka = String(m.nama || "").replace(/\s*M$/i, "").trim();
+      setMatNamaPilihan(KABEL_METER_PRESETS.map(String).includes(angka) ? angka : "Lainnya");
+    } else if (m.kategori === "ONT") {
+      setMatNamaPilihan(ONT_MEREK_PRESETS.includes(m.nama) ? m.nama : "Lainnya");
+    } else {
+      setMatNamaPilihan("");
+    }
+    setMatFormErrors({});
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const hapusMaterial = async () => {
@@ -1793,39 +1845,110 @@ function DashboardAdmin({ session, onLogout }) {
 
   const resetFormPemakaian = () => {
     setPmkEditId(null); setPmkTanggal(new Date().toISOString().slice(0, 10)); setPmkTeknisiId(""); setPmkNamaTeam("");
-    setPmkMerekModem(""); setPmkSnOnt(""); setPmkKabelId(""); setPmkStatus("Idle"); setPmkReturnCatatan(""); setPmkFormErrors({});
+    setPmkMerekPilihan("ZTE"); setPmkMerekModem("ZTE"); setPmkSnOnt(""); setPmkKabelId("");
+    setPmkJumlahOnt(1); setPmkSnOntList([""]); setPmkKabelRows([{ kabel_id: "", jumlah: 1 }]);
+    setPmkStatus("Idle"); setPmkReturnCatatan("");
+    setPmkProject(""); setPmkRegion(""); setPmkVendor("");
+    setPmkFormErrors({});
   };
+  const handlePmkMerekChange = (val) => {
+    setPmkMerekPilihan(val);
+    if (val !== "Lainnya") setPmkMerekModem(val); else setPmkMerekModem("");
+  };
+  const handlePmkJumlahOntChange = (val) => {
+    const n = Math.max(0, Math.min(50, Number(val) || 0));
+    setPmkJumlahOnt(n);
+    setPmkSnOntList(prev => {
+      const arr = prev.slice(0, n);
+      while (arr.length < n) arr.push("");
+      return arr;
+    });
+  };
+  const updatePmkSnOntAt = (idx, val) => {
+    setPmkSnOntList(prev => prev.map((v, i) => i === idx ? val : v));
+  };
+  const addPmkKabelRow = () => setPmkKabelRows(prev => [...prev, { kabel_id: "", jumlah: 1 }]);
+  const removePmkKabelRow = (idx) => setPmkKabelRows(prev => prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx));
+  const updatePmkKabelRow = (idx, field, val) => {
+    setPmkKabelRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+  };
+  // Daftar SN ONT yang sudah terdaftar di Master Material (kategori ONT), dipakai sebagai
+  // saran/autocomplete di field SN ONT — tetap boleh diisi manual/bebas.
+  const snOntSuggestions = useMemo(() => {
+    const set = new Set();
+    materialList.forEach(m => { if (m.kategori === "ONT" && Array.isArray(m.sn_list)) m.sn_list.forEach(sn => sn && set.add(sn)); });
+    return [...set];
+  }, [materialList]);
+  const kabelMaterialOptions = useMemo(() => materialList.filter(m => m.kategori === "Kabel"), [materialList]);
+
   const validatePemakaian = () => {
     const errs = {};
     if (!pmkNamaTeam.trim()) errs.nama_team = "Nama team wajib diisi";
     if (!pmkKabelId) errs.kabel_id = "Jenis kabel wajib dipilih";
+    if (!pmkProject) errs.project = "Project wajib dipilih";
+    if (!pmkRegion) errs.region = "Region wajib dipilih";
+    if (!pmkVendor) errs.vendor = "Vendor wajib dipilih";
+    setPmkFormErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+  const validatePemakaianBatch = () => {
+    const errs = {};
+    if (!pmkNamaTeam.trim()) errs.nama_team = "Nama team wajib diisi";
+    if (!pmkProject) errs.project = "Project wajib dipilih";
+    if (!pmkRegion) errs.region = "Region wajib dipilih";
+    if (!pmkVendor) errs.vendor = "Vendor wajib dipilih";
+    const kabelValid = pmkKabelRows.filter(r => r.kabel_id);
+    if (kabelValid.length === 0) {
+      errs.kabel = "Minimal 1 jenis kabel wajib dipilih";
+    } else {
+      const totalKabelUnit = kabelValid.reduce((a, r) => a + Math.max(1, Number(r.jumlah) || 1), 0);
+      if (pmkJumlahOnt > 0 && totalKabelUnit !== pmkJumlahOnt) {
+        errs.kabel = `Total unit kabel (${totalKabelUnit}) harus sama dengan jumlah ONT (${pmkJumlahOnt})`;
+      }
+    }
     setPmkFormErrors(errs);
     return Object.keys(errs).length === 0;
   };
   const handleSubmitPemakaian = async (e) => {
     e.preventDefault();
-    if (!validatePemakaian()) return;
     setPmkSubmitting(true);
-    const url = pmkEditId ? `${MATERIAL_API}/pemakaian-material/${pmkEditId}` : `${MATERIAL_API}/pemakaian-material`;
-    const method = pmkEditId ? "PUT" : "POST";
-    const bodyData = {
-      tanggal_pengambilan: pmkTanggal, teknisi_id: pmkTeknisiId, nama_team: pmkNamaTeam,
-      merek_modem: pmkMerekModem, sn_ont: pmkSnOnt, kabel_id: pmkKabelId, status: pmkStatus, return_catatan: pmkReturnCatatan,
-    };
     try {
-      const res = await fetch(url, { method, headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
-      const resData = await res.json().catch(() => ({}));
-      if (res.status === 200 || res.status === 201) {
-        notify(pmkEditId ? "Log pemakaian berhasil diperbarui" : "Log pemakaian berhasil disimpan");
-        resetFormPemakaian(); muatSemuaData(true);
-      } else notify(resData.message || "Gagal menyimpan log pemakaian", "error");
+      if (pmkEditId) {
+        // Mode EDIT: tetap 1 baris, pakai endpoint lama.
+        if (!validatePemakaian()) { setPmkSubmitting(false); return; }
+        const bodyData = {
+          tanggal_pengambilan: pmkTanggal, teknisi_id: pmkTeknisiId, nama_team: pmkNamaTeam,
+          merek_modem: pmkMerekModem, sn_ont: pmkSnOnt, kabel_id: pmkKabelId, status: pmkStatus, return_catatan: pmkReturnCatatan,
+          project: pmkProject, region: pmkRegion, vendor: pmkVendor,
+        };
+        const res = await fetch(`${MATERIAL_API}/pemakaian-material/${pmkEditId}`, { method: "PUT", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
+        const resData = await res.json().catch(() => ({}));
+        if (res.status === 200) { notify("Log pemakaian berhasil diperbarui"); resetFormPemakaian(); muatSemuaData(true); }
+        else notify(resData.message || "Gagal menyimpan log pemakaian", "error");
+      } else {
+        // Mode TAMBAH: bisa banyak unit ONT sekaligus banyak jenis kabel dalam 1x input.
+        if (!validatePemakaianBatch()) { setPmkSubmitting(false); return; }
+        const bodyData = {
+          tanggal_pengambilan: pmkTanggal, teknisi_id: pmkTeknisiId, nama_team: pmkNamaTeam,
+          merek_modem: pmkMerekModem, status: pmkStatus, return_catatan: pmkReturnCatatan,
+          project: pmkProject, region: pmkRegion, vendor: pmkVendor,
+          ont_list: pmkSnOntList,
+          kabel_list: pmkKabelRows.filter(r => r.kabel_id).map(r => ({ kabel_id: r.kabel_id, jumlah: Math.max(1, Number(r.jumlah) || 1) })),
+        };
+        const res = await fetch(`${MATERIAL_API}/pemakaian-material/batch`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
+        const resData = await res.json().catch(() => ({}));
+        if (res.status === 201) { notify(resData.message || "Log pemakaian berhasil disimpan"); resetFormPemakaian(); muatSemuaData(true); }
+        else notify(resData.message || "Gagal menyimpan log pemakaian", "error");
+      }
     } catch { notify("Gagal terhubung ke server", "error"); }
     finally { setPmkSubmitting(false); }
   };
   const pemicuEditPemakaian = (l) => {
     setPmkEditId(l._id); setPmkTanggal(l.tanggal_pengambilan ? l.tanggal_pengambilan.slice(0, 10) : "");
-    setPmkTeknisiId(l.teknisi_id || ""); setPmkNamaTeam(l.nama_team); setPmkMerekModem(l.merek_modem || "");
+    setPmkTeknisiId(l.teknisi_id || ""); setPmkNamaTeam(l.nama_team);
+    setPmkMerekModem(l.merek_modem || ""); setPmkMerekPilihan(ONT_MEREK_PRESETS.includes(l.merek_modem) ? l.merek_modem : (l.merek_modem ? "Lainnya" : "ZTE"));
     setPmkSnOnt(l.sn_ont || ""); setPmkKabelId(String(l.kabel_id)); setPmkStatus(l.status); setPmkReturnCatatan(l.return_catatan || "");
+    setPmkProject(l.project || ""); setPmkRegion(l.region || ""); setPmkVendor(l.vendor || "");
     setPmkFormErrors({});
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1841,7 +1964,8 @@ function DashboardAdmin({ session, onLogout }) {
   };
 
   const resetFormStok = () => {
-    setStkMaterialId(""); setStkTipe("Penambahan"); setStkJumlah(""); setStkTeknisiId(""); setStkTeknisiNama(""); setStkKeterangan(""); setStkFormErrors({});
+    setStkMaterialId(""); setStkTipe("Penambahan"); setStkJumlah(""); setStkTeknisiId(""); setStkTeknisiNama("");
+    setStkKeterangan(""); setStkSnOntList([]); setStkFormErrors({});
   };
   const validateStok = () => {
     const errs = {};
@@ -1851,11 +1975,25 @@ function DashboardAdmin({ session, onLogout }) {
     setStkFormErrors(errs);
     return Object.keys(errs).length === 0;
   };
+  const stkMaterialTerpilih = materialMap[stkMaterialId];
+  // Kalau material yang dipilih kategori ONT & tipe Penambahan, otomatis siapkan kolom SN ONT
+  // sejumlah "Jumlah" yang diisi, biar penulisan rapi & per-unit tercatat SN-nya (opsional).
+  const jumlahSnOntDibutuhkan = (stkTipe === "Penambahan" && stkMaterialTerpilih?.kategori === "ONT") ? Math.max(0, Math.min(50, Number(stkJumlah) || 0)) : 0;
+  useEffect(() => {
+    setStkSnOntList(prev => {
+      if (prev.length === jumlahSnOntDibutuhkan) return prev;
+      const arr = prev.slice(0, jumlahSnOntDibutuhkan);
+      while (arr.length < jumlahSnOntDibutuhkan) arr.push("");
+      return arr;
+    });
+  }, [jumlahSnOntDibutuhkan]);
+  const updateStkSnOntAt = (idx, val) => setStkSnOntList(prev => prev.map((v, i) => i === idx ? val : v));
   const handleSubmitStok = async (e) => {
     e.preventDefault();
     if (!validateStok()) return;
     setStkSubmitting(true);
     const bodyData = { material_id: stkMaterialId, tipe: stkTipe, jumlah: stkJumlah, teknisi_id: stkTeknisiId, teknisi_nama: stkTeknisiNama, keterangan: stkKeterangan };
+    if (jumlahSnOntDibutuhkan > 0) bodyData.sn_list = stkSnOntList;
     try {
       const res = await fetch(`${MATERIAL_API}/material/stok`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
       const resData = await res.json().catch(() => ({}));
@@ -1919,10 +2057,11 @@ function DashboardAdmin({ session, onLogout }) {
     // --- Sheet 2: Log Pemakaian (detail mentah, sesuai filter tanggal aktif di form Laporan) ---
     const wsLog = XLSX.utils.json_to_sheet(logTerfilter.map(p => ({
       Tanggal: new Date(p.tanggal_pengambilan).toLocaleDateString("id-ID"),
-      Team: p.nama_team, "Merek Modem": p.merek_modem || "-", "SN ONT": p.sn_ont || "-",
+      Team: p.nama_team, Project: p.project || "-", Region: p.region || "-", Vendor: p.vendor || "-",
+      "Merek Modem": p.merek_modem || "-", "SN ONT": p.sn_ont || "-",
       Kabel: p.kabel_nama, Status: p.status, Return: p.return_catatan || "-",
     })));
-    wsLog["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 9 }, { wch: 10 }, { wch: 20 }];
+    wsLog["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 16 }, { wch: 9 }, { wch: 10 }, { wch: 20 }];
     XLSX.utils.book_append_sheet(wb, wsLog, "Log Pemakaian");
 
     // --- Sheet 3: Pivot Team x Kabel (jumlah unit berstatus "Terpakai") ---
@@ -1956,13 +2095,6 @@ function DashboardAdmin({ session, onLogout }) {
   useEffect(() => {
     if (currentMenu === "material" && materialSubTab === "Laporan") muatReportMaterial();
   }, [currentMenu, materialSubTab]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Peta cepat material_id -> dokumen material, untuk lookup nama/stok saat render tabel/form
-  const materialMap = useMemo(() => {
-    const map = {};
-    materialList.forEach(m => { map[m._id] = m; });
-    return map;
-  }, [materialList]);
 
   const filteredMaterial = useMemo(() => {
     const q = searchMaterial.trim().toLowerCase();
@@ -2080,6 +2212,14 @@ function DashboardAdmin({ session, onLogout }) {
         onConfirm={hapusPemakaian}
         onCancel={() => setPmkDeleteTarget(null)}
       />
+      <ConfirmModal
+        open={logoutConfirmOpen}
+        title="Yakin ingin keluar?"
+        description="Kamu akan keluar dari Portal Admin dan perlu login kembali untuk mengakses halaman ini."
+        confirmLabel="Ya, Keluar"
+        onConfirm={() => { setLogoutConfirmOpen(false); onLogout(); }}
+        onCancel={() => setLogoutConfirmOpen(false)}
+      />
       <PhotoModal data={fotoPreview} onClose={() => setFotoPreview(null)} />
       <InvoicePrintView invoice={invPrintTarget} />
 
@@ -2088,7 +2228,7 @@ function DashboardAdmin({ session, onLogout }) {
         <div className="flex items-center gap-3">
           <button className="lg:hidden" onClick={() => setSidebarOpen(s => !s)}><IconMenu className="w-5 h-5" /></button>
           <div className="flex items-center gap-2">
-            <span className="text-xl font-bold font-display tracking-tight">SATNET</span>
+            <span className="text-xl font-bold font-display tracking-tight">SETNET</span>
             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md uppercase tracking-wide" style={{ background: "var(--brand-grad)" }}>Portal Admin</span>
           </div>
         </div>
@@ -2149,7 +2289,7 @@ function DashboardAdmin({ session, onLogout }) {
               )}
             </div>
           )}
-          <button onClick={onLogout} className="text-white/70 hover:text-white flex items-center gap-1.5 text-xs font-semibold"><IconLogout className="w-4 h-4" /><span className="hidden sm:inline">Keluar</span></button>
+          <button onClick={() => setLogoutConfirmOpen(true)} className="text-white/70 hover:text-white flex items-center gap-1.5 text-xs font-semibold"><IconLogout className="w-4 h-4" /><span className="hidden sm:inline">Keluar</span></button>
         </div>
       </header>
 
@@ -2205,7 +2345,7 @@ function DashboardAdmin({ session, onLogout }) {
               </div>
             );
           })}
-          <div className={`mt-auto pt-4 border-t border-white/10 text-center text-[10px] text-white/30 font-mono sidebar-label`}>SATNET Apps v2.1 &copy; 2026</div>
+          <div className={`mt-auto pt-4 border-t border-white/10 text-center text-[10px] text-white/30 font-mono sidebar-label`}>SETNET Apps v2.1 &copy; 2026</div>
         </aside>
 
         {/* CONTENT */}
@@ -3120,6 +3260,24 @@ function DashboardAdmin({ session, onLogout }) {
                         </div>
                         <div className="grid grid-cols-2 gap-2.5">
                           <div>
+                            <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Project</label>
+                            <select value={trkProject} onChange={e => setTrkProject(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: trkErrors.project ? "var(--red)" : "var(--border)" }}>
+                              <option value="">— Pilih —</option>
+                              {PROJECT_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                            {trkErrors.project && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{trkErrors.project}</p>}
+                          </div>
+                          <div>
+                            <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Vendor</label>
+                            <select value={trkVendor} onChange={e => setTrkVendor(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: trkErrors.vendor ? "var(--red)" : "var(--border)" }}>
+                              <option value="">— Pilih —</option>
+                              {VENDOR_PRESETS.map(v => <option key={v} value={v}>{v}</option>)}
+                            </select>
+                            {trkErrors.vendor && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{trkErrors.vendor}</p>}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <div>
                             <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Bulan</label>
                             <select value={trkBulan} onChange={e => setTrkBulan(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
                               <option value="">-</option>
@@ -3225,10 +3383,12 @@ function DashboardAdmin({ session, onLogout }) {
                         </div>
                       </div>
                       <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse text-xs min-w-[760px]">
+                        <table className="w-full text-left border-collapse text-xs min-w-[980px]">
                           <thead>
                             <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
                               <th className="p-4">Region / WO</th>
+                              <th className="p-4">Project</th>
+                              <th className="p-4">Vendor</th>
                               <th className="p-4">Bulan / Batch</th>
                               <th className="p-4 text-right">Nilai Asianet</th>
                               <th className="p-4 text-center">Status</th>
@@ -3238,7 +3398,7 @@ function DashboardAdmin({ session, onLogout }) {
                           </thead>
                           <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                             {pagedTrk.length === 0 ? (
-                              <tr><td colSpan="6"><EmptyState title={trkSearch || trkRegionFilter !== "semua" || trkStatusFilter !== "semua" || trkWoTypeFilter !== "semua" ? "Tidak ditemukan" : "Belum ada data tracking"} subtitle={trkSearch || trkRegionFilter !== "semua" ? "Coba ubah filter pencarian." : "Tambahkan data pertama lewat formulir di samping."} icon={<IconTracking className="w-5 h-5" />} /></td></tr>
+                              <tr><td colSpan="8"><EmptyState title={trkSearch || trkRegionFilter !== "semua" || trkStatusFilter !== "semua" || trkWoTypeFilter !== "semua" ? "Tidak ditemukan" : "Belum ada data tracking"} subtitle={trkSearch || trkRegionFilter !== "semua" ? "Coba ubah filter pencarian." : "Tambahkan data pertama lewat formulir di samping."} icon={<IconTracking className="w-5 h-5" />} /></td></tr>
                             ) : (
                               pagedTrk.map(t => {
                                 const tone = trackingStatusTone(t.status);
@@ -3248,6 +3408,8 @@ function DashboardAdmin({ session, onLogout }) {
                                       <p className="font-bold text-sm" style={{ color: "var(--ink)" }}>{t.region}</p>
                                       <p className="text-[10px]" style={{ color: "var(--ink-soft)" }}>{t.woType} · {t.tahun}</p>
                                     </td>
+                                    <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{t.project || "-"}</td>
+                                    <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{t.vendor || "-"}</td>
                                     <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{t.bulan || "-"} {t.batch != null ? `· Batch ${t.batch}` : ""}</td>
                                     <td className="p-3.5 text-right font-bold font-mono" style={{ color: "var(--ink)" }}>{fmtRupiah(t.nilaiAsianet)}</td>
                                     <td className="p-3.5 text-center">
@@ -3304,7 +3466,9 @@ function DashboardAdmin({ session, onLogout }) {
                             <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
                               <th className="p-3.5 text-left">Karyawan</th>
                               <th className="p-3.5 text-right">Jumlah</th>
+                              <th className="p-3.5 text-left">Region / Vendor</th>
                               <th className="p-3.5 text-left">Alasan</th>
+                              <th className="p-3.5 text-left">Pembayaran</th>
                               <th className="p-3.5 text-center">Tanggal</th>
                               <th className="p-3.5 text-center">Status</th>
                               <th className="p-3.5 text-center w-48">Aksi</th>
@@ -3312,7 +3476,7 @@ function DashboardAdmin({ session, onLogout }) {
                           </thead>
                           <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                             {kasbonList.length === 0 ? (
-                              <tr><td colSpan="6"><EmptyState title="Belum ada pengajuan kasbon" subtitle="Pengajuan dari karyawan akan muncul di sini." icon={<IconWallet className="w-5 h-5" />} /></td></tr>
+                              <tr><td colSpan="8"><EmptyState title="Belum ada pengajuan kasbon" subtitle="Pengajuan dari karyawan akan muncul di sini." icon={<IconWallet className="w-5 h-5" />} /></td></tr>
                             ) : kasbonList.map(k => {
                               const tone = keputusanStatusTone(k.status);
                               return (
@@ -3322,7 +3486,15 @@ function DashboardAdmin({ session, onLogout }) {
                                     <p className="text-[10px] font-mono" style={{ color: "var(--ink-soft)" }}>{k.karyawan_id}</p>
                                   </td>
                                   <td className="p-3.5 text-right font-bold font-mono" style={{ color: "var(--ink)" }}>{fmtRupiah(k.jumlah)}</td>
+                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>
+                                    <p>{k.region || "-"}</p>
+                                    <p className="text-[10px]" style={{ color: "var(--ink-soft)" }}>{k.vendor || "-"}</p>
+                                  </td>
                                   <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{k.alasan || "-"}</td>
+                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>
+                                    <p className="font-semibold">{k.metode_pembayaran || "-"}{k.penyedia_pembayaran ? ` - ${k.penyedia_pembayaran}` : ""}</p>
+                                    <p className="text-[10px] font-mono">{k.no_rekening || "-"}</p>
+                                  </td>
                                   <td className="p-3.5 text-center" style={{ color: "var(--ink-soft)" }}>{new Date(k.tanggal_pengajuan).toLocaleDateString("id-ID")}</td>
                                   <td className="p-3.5 text-center">
                                     <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide" style={{ background: tone.bg, color: tone.fg }}>{k.status}</span>
@@ -3431,6 +3603,11 @@ function DashboardAdmin({ session, onLogout }) {
                     ))}
                   </div>
 
+                  {/* Daftar saran SN ONT (dari Master Material + histori) — dipakai bareng oleh tab Pemakaian & Stok */}
+                  <datalist id="sn-ont-datalist">
+                    {snOntSuggestions.map(sn => <option key={sn} value={sn} />)}
+                  </datalist>
+
                   {/* ---------------- MASTER MATERIAL ---------------- */}
                   {materialSubTab === "Master" && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -3441,35 +3618,81 @@ function DashboardAdmin({ session, onLogout }) {
                           <form onSubmit={handleSubmitMaterial} className="space-y-3.5 text-xs">
                             <div>
                               <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Kategori</label>
-                              <select value={matKategori} onChange={e => setMatKategori(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
+                              <select value={matKategori} onChange={e => handleMatKategoriChange(e.target.value)} disabled={!!matEditId} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white disabled:opacity-60" style={{ borderColor: "var(--border)" }}>
                                 <option value="Kabel">Kabel</option>
                                 <option value="ONT">ONT</option>
                                 <option value="Lainnya">Lainnya</option>
                               </select>
                             </div>
-                            <div>
-                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Nama / Jenis</label>
-                              <input type="text" placeholder="Contoh: 100 M" value={matNama} onChange={e => setMatNama(e.target.value)}
-                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }} />
-                              {matFormErrors.nama && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{matFormErrors.nama}</p>}
-                            </div>
+
+                            {matKategori === "Kabel" && (
+                              <div>
+                                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Jenis Kabel</label>
+                                <select value={matNamaPilihan} onChange={e => handleMatNamaPilihanChange(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }}>
+                                  {KABEL_METER_PRESETS.map(n => <option key={n} value={String(n)}>{n} M</option>)}
+                                  <option value="Lainnya">Lainnya...</option>
+                                </select>
+                                {matNamaPilihan === "Lainnya" && (
+                                  <input type="text" placeholder="Contoh: 300 M" value={matNama} onChange={e => setMatNama(e.target.value)} autoFocus
+                                    className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium mt-2" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }} />
+                                )}
+                                {matFormErrors.nama && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{matFormErrors.nama}</p>}
+                              </div>
+                            )}
+
+                            {matKategori === "ONT" && (
+                              <>
+                                <div>
+                                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Jenis / Merek ONT</label>
+                                  <select value={matNamaPilihan} onChange={e => handleMatNamaPilihanChange(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }}>
+                                    {ONT_MEREK_PRESETS.map(m => <option key={m} value={m}>{m}</option>)}
+                                    <option value="Lainnya">Lainnya...</option>
+                                  </select>
+                                  {matNamaPilihan === "Lainnya" && (
+                                    <input type="text" placeholder="Contoh: Fiberhome" value={matNama} onChange={e => setMatNama(e.target.value)} autoFocus
+                                      className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium mt-2" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }} />
+                                  )}
+                                  {matFormErrors.nama && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{matFormErrors.nama}</p>}
+                                </div>
+                                {!matEditId && (
+                                  <div>
+                                    <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT (opsional)</label>
+                                    <input type="text" placeholder="Boleh dikosongkan" value={matSnOnt} onChange={e => setMatSnOnt(e.target.value)}
+                                      className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
+                                    <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>SN ini nanti muncul sebagai pilihan di form Pemakaian Teknisi.</p>
+                                  </div>
+                                )}
+                              </>
+                            )}
+
+                            {matKategori === "Lainnya" && (
+                              <div>
+                                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Nama / Jenis</label>
+                                <input type="text" placeholder="Nama material" value={matNama} onChange={e => setMatNama(e.target.value)}
+                                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }} />
+                                {matFormErrors.nama && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{matFormErrors.nama}</p>}
+                              </div>
+                            )}
+
                             <div>
                               <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Satuan</label>
-                              <input type="text" placeholder="Roll / Meter / Pcs / Box" value={matSatuan} onChange={e => setMatSatuan(e.target.value)}
-                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                              {matKategori === "Kabel" ? (
+                                <select value={matSatuan} onChange={e => setMatSatuan(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
+                                  <option value="Roll">Roll</option>
+                                  <option value="Meter">Meter</option>
+                                </select>
+                              ) : matKategori === "ONT" ? (
+                                <select value="Unit" disabled className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-gray-50 opacity-70" style={{ borderColor: "var(--border)" }}>
+                                  <option value="Unit">Unit</option>
+                                </select>
+                              ) : (
+                                <input type="text" placeholder="Roll / Meter / Pcs / Box" value={matSatuan} onChange={e => setMatSatuan(e.target.value)}
+                                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                              )}
                             </div>
-                            <div>
-                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Stok Awal</label>
-                              <input type="number" min="0" placeholder="0" value={matStockAwal} onChange={e => setMatStockAwal(e.target.value)}
-                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: matFormErrors.stock_awal ? "var(--red)" : "var(--border)" }} />
-                              {matFormErrors.stock_awal && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{matFormErrors.stock_awal}</p>}
-                              {matEditId && <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Mengubah stok awal TIDAK otomatis mengubah stok terkini.</p>}
-                            </div>
-                            <div>
-                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Keterangan</label>
-                              <textarea rows="2" placeholder="Catatan opsional" value={matKeterangan} onChange={e => setMatKeterangan(e.target.value)}
-                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium resize-none" style={{ borderColor: "var(--border)" }}></textarea>
-                            </div>
+
+                            <p className="text-[10px] italic" style={{ color: "var(--ink-soft)" }}>Stok diisi lewat tab "Stok Masuk/Kembali", bukan di sini.</p>
+
                             <div className="pt-1 flex gap-2">
                               <button type="submit" disabled={matSubmitting} className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60" style={{ background: "var(--brand)" }}>
                                 {matSubmitting ? "Memproses..." : matEditId ? "Update Material" : "Tambah Material"}
@@ -3537,7 +3760,7 @@ function DashboardAdmin({ session, onLogout }) {
                       {canManageMaterial(session.role) && (
                         <div className="bg-white p-5 rounded-2xl border h-fit lg:sticky lg:top-6" style={{ borderColor: "var(--border)" }}>
                           <h2 className="text-base font-bold font-display" style={{ color: "var(--ink)" }}>{pmkEditId ? "Edit Log Pemakaian" : "Tambah Log Pemakaian"}</h2>
-                          <p className="text-xs mt-0.5 mb-4" style={{ color: "var(--ink-soft)" }}>1 baris = 1 unit ONT + kabel yang dipakai teknisi</p>
+                          <p className="text-xs mt-0.5 mb-4" style={{ color: "var(--ink-soft)" }}>{pmkEditId ? "Edit 1 baris log terpilih" : "Bisa input beberapa unit ONT & beberapa jenis kabel sekaligus"}</p>
                           <form onSubmit={handleSubmitPemakaian} className="space-y-3.5 text-xs">
                             <div>
                               <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Tanggal Pengambilan</label>
@@ -3549,24 +3772,103 @@ function DashboardAdmin({ session, onLogout }) {
                                 className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: pmkFormErrors.nama_team ? "var(--red)" : "var(--border)" }} />
                               {pmkFormErrors.nama_team && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{pmkFormErrors.nama_team}</p>}
                             </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <div>
+                                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Project</label>
+                                <select value={pmkProject} onChange={e => setPmkProject(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: pmkFormErrors.project ? "var(--red)" : "var(--border)" }}>
+                                  <option value="">— Pilih —</option>
+                                  {PROJECT_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                                {pmkFormErrors.project && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{pmkFormErrors.project}</p>}
+                              </div>
+                              <div>
+                                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Region</label>
+                                <select value={pmkRegion} onChange={e => setPmkRegion(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: pmkFormErrors.region ? "var(--red)" : "var(--border)" }}>
+                                  <option value="">— Pilih —</option>
+                                  {REGION_PRESETS.map(r => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                                {pmkFormErrors.region && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{pmkFormErrors.region}</p>}
+                              </div>
+                              <div>
+                                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Vendor</label>
+                                <select value={pmkVendor} onChange={e => setPmkVendor(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: pmkFormErrors.vendor ? "var(--red)" : "var(--border)" }}>
+                                  <option value="">— Pilih —</option>
+                                  {VENDOR_PRESETS.map(v => <option key={v} value={v}>{v}</option>)}
+                                </select>
+                                {pmkFormErrors.vendor && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{pmkFormErrors.vendor}</p>}
+                              </div>
+                            </div>
                             <div>
                               <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Merek Modem</label>
-                              <input type="text" placeholder="Contoh: NOKIA, ZTE" value={pmkMerekModem} onChange={e => setPmkMerekModem(e.target.value)}
-                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
-                            </div>
-                            <div>
-                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT</label>
-                              <input type="text" placeholder="Serial number" value={pmkSnOnt} onChange={e => setPmkSnOnt(e.target.value)}
-                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
-                            </div>
-                            <div>
-                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Jenis Kabel</label>
-                              <select value={pmkKabelId} onChange={e => setPmkKabelId(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: pmkFormErrors.kabel_id ? "var(--red)" : "var(--border)" }}>
-                                <option value="">— Pilih material —</option>
-                                {materialList.map(m => <option key={m._id} value={m._id}>{m.kategori} · {m.nama} (stok: {m.stock})</option>)}
+                              <select value={pmkMerekPilihan} onChange={e => handlePmkMerekChange(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
+                                {ONT_MEREK_PRESETS.map(m => <option key={m} value={m}>{m}</option>)}
+                                <option value="Lainnya">Lainnya...</option>
                               </select>
-                              {pmkFormErrors.kabel_id && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{pmkFormErrors.kabel_id}</p>}
+                              {pmkMerekPilihan === "Lainnya" && (
+                                <input type="text" placeholder="Merek modem lain" value={pmkMerekModem} onChange={e => setPmkMerekModem(e.target.value)}
+                                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium mt-2" style={{ borderColor: "var(--border)" }} />
+                              )}
                             </div>
+
+                            {pmkEditId ? (
+                              <>
+                                <div>
+                                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT</label>
+                                  <input type="text" list="sn-ont-datalist" placeholder="Serial number (opsional)" value={pmkSnOnt} onChange={e => setPmkSnOnt(e.target.value)}
+                                    className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
+                                </div>
+                                <div>
+                                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Jenis Kabel</label>
+                                  <select value={pmkKabelId} onChange={e => setPmkKabelId(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: pmkFormErrors.kabel_id ? "var(--red)" : "var(--border)" }}>
+                                    <option value="">— Pilih jenis kabel —</option>
+                                    {kabelMaterialOptions.map(m => <option key={m._id} value={m._id}>{m.nama} (stok: {m.stock})</option>)}
+                                  </select>
+                                  {pmkFormErrors.kabel_id && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{pmkFormErrors.kabel_id}</p>}
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div>
+                                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Jumlah ONT</label>
+                                  <input type="number" min="0" max="50" value={pmkJumlahOnt} onChange={e => handlePmkJumlahOntChange(e.target.value)}
+                                    className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                                </div>
+                                {pmkSnOntList.length > 0 && (
+                                  <div className="space-y-2">
+                                    <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT ({pmkSnOntList.length} unit, opsional)</label>
+                                    {pmkSnOntList.map((sn, idx) => (
+                                      <input key={idx} type="text" list="sn-ont-datalist" placeholder={`SN ONT unit #${idx + 1}`} value={sn} onChange={e => updatePmkSnOntAt(idx, e.target.value)}
+                                        className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Kabel Digunakan</label>
+                                    <button type="button" onClick={addPmkKabelRow} className="text-[10px] font-bold flex items-center gap-1 px-2 py-1 rounded-lg border hover:bg-gray-50" style={{ borderColor: "var(--border)", color: "var(--brand-dark)" }}>
+                                      <IconPlus className="w-3 h-3" /> Tambah Kabel
+                                    </button>
+                                  </div>
+                                  {pmkKabelRows.map((row, idx) => (
+                                    <div key={idx} className="flex gap-2 items-start">
+                                      <select value={row.kabel_id} onChange={e => updatePmkKabelRow(idx, "kabel_id", e.target.value)} className="flex-1 p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
+                                        <option value="">— Pilih jenis kabel —</option>
+                                        {kabelMaterialOptions.map(m => <option key={m._id} value={m._id}>{m.nama} (stok: {m.stock})</option>)}
+                                      </select>
+                                      <input type="number" min="1" value={row.jumlah} onChange={e => updatePmkKabelRow(idx, "jumlah", e.target.value)}
+                                        className="w-16 p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                                      {pmkKabelRows.length > 1 && (
+                                        <button type="button" onClick={() => removePmkKabelRow(idx)} className="p-2.5 rounded-xl border hover:bg-red-50" style={{ borderColor: "var(--border)", color: "var(--red)" }}>
+                                          <IconX className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  ))}
+                                  {pmkFormErrors.kabel && <p className="text-[10px] font-semibold" style={{ color: "var(--red)" }}>{pmkFormErrors.kabel}</p>}
+                                </div>
+                              </>
+                            )}
+
                             <div>
                               <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Status</label>
                               <select value={pmkStatus} onChange={e => setPmkStatus(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
@@ -3608,11 +3910,14 @@ function DashboardAdmin({ session, onLogout }) {
                           </div>
                         </div>
                         <div className="overflow-x-auto">
-                          <table className="w-full text-left border-collapse text-xs min-w-[820px]">
+                          <table className="w-full text-left border-collapse text-xs min-w-[1080px]">
                             <thead>
                               <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
                                 <th className="p-4">Tanggal</th>
                                 <th className="p-4">Team</th>
+                                <th className="p-4">Project</th>
+                                <th className="p-4">Region</th>
+                                <th className="p-4">Vendor</th>
                                 <th className="p-4">Modem / SN</th>
                                 <th className="p-4">Kabel</th>
                                 <th className="p-4 text-center">Status</th>
@@ -3622,11 +3927,14 @@ function DashboardAdmin({ session, onLogout }) {
                             </thead>
                             <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                               {pagedPemakaian.length === 0 ? (
-                                <tr><td colSpan={canManageMaterial(session.role) ? 7 : 6}><EmptyState title="Belum ada log pemakaian" subtitle="Tambahkan baris pertama lewat formulir di samping." icon={<IconCable className="w-5 h-5" />} /></td></tr>
+                                <tr><td colSpan={canManageMaterial(session.role) ? 10 : 9}><EmptyState title="Belum ada log pemakaian" subtitle="Tambahkan baris pertama lewat formulir di samping." icon={<IconCable className="w-5 h-5" />} /></td></tr>
                               ) : pagedPemakaian.map(l => (
                                 <tr key={l._id} className="hover:bg-gray-50/60 transition">
                                   <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{new Date(l.tanggal_pengambilan).toLocaleDateString("id-ID")}</td>
                                   <td className="p-3.5 font-bold" style={{ color: "var(--ink)" }}>{l.nama_team}</td>
+                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{l.project || "—"}</td>
+                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{l.region || "—"}</td>
+                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{l.vendor || "—"}</td>
                                   <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>
                                     <p>{l.merek_modem || "—"}</p>
                                     <p className="font-mono text-[10px]">{l.sn_ont || "—"}</p>
@@ -3684,6 +3992,15 @@ function DashboardAdmin({ session, onLogout }) {
                                 className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: stkFormErrors.jumlah ? "var(--red)" : "var(--border)" }} />
                               {stkFormErrors.jumlah && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{stkFormErrors.jumlah}</p>}
                             </div>
+                            {jumlahSnOntDibutuhkan > 0 && (
+                              <div className="space-y-2">
+                                <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT ({jumlahSnOntDibutuhkan} unit, opsional)</label>
+                                {stkSnOntList.map((sn, idx) => (
+                                  <input key={idx} type="text" list="sn-ont-datalist" placeholder={`SN ONT unit #${idx + 1}`} value={sn} onChange={e => updateStkSnOntAt(idx, e.target.value)}
+                                    className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
+                                ))}
+                              </div>
+                            )}
                             {stkTipe === "Pengembalian" && (
                               <>
                                 <div>
@@ -4138,10 +4455,29 @@ function DashboardAdmin({ session, onLogout }) {
   );
 }
 
+// Key localStorage buat nyimpen sesi login — dibaca lagi tiap kali halaman di-refresh/dibuka
+// ulang, supaya admin/gudang/owner dll tidak ke-logout otomatis hanya karena refresh browser.
+const SESSION_STORAGE_KEY = "setnet_admin_session";
+
 function App() {
-  const [session, setSession] = useState(null);
-  if (!session) return <LoginScreen onLoginSuccess={setSession} />;
-  return <DashboardAdmin session={session} onLogout={() => setSession(null)} />;
+  const [session, setSession] = useState(() => {
+    try {
+      const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
+
+  const handleLoginSuccess = (karyawan) => {
+    try { localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(karyawan)); } catch {}
+    setSession(karyawan);
+  };
+  const handleLogout = () => {
+    try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
+    setSession(null);
+  };
+
+  if (!session) return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+  return <DashboardAdmin session={session} onLogout={handleLogout} />;
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root"));

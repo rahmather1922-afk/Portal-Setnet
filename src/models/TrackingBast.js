@@ -28,6 +28,9 @@ const trackingBastSchema = new mongoose.Schema({
   // Diisi otomatis begitu tombol "+" (Buat Invoice) dipakai dari baris BAST Final ini.
   // Dipakai untuk: (1) mencegah 1 dokumen BAST dibuatkan Invoice dobel, (2) linking balik ke Invoice terkait.
   invoice_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice', default: null },
+  // Tambahan klasifikasi pekerjaan — diisi lewat dropdown di form Tracking BAST.
+  project: { type: String, enum: ['AMT', 'FS', 'LinkNet', ''], default: '' },
+  vendor: { type: String, enum: ['Quantum', 'Satu Visi', 'BBB', ''], default: '' },
   dibuat_oleh: { type: String, default: '' },                     // karyawan_id yang input
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

@@ -34,12 +34,33 @@ router.get('/kasbon/limit/:karyawan_id', async (req, res) => {
 // --- KARYAWAN: AJUKAN KASBON BARU ---
 router.post('/kasbon', async (req, res) => {
   try {
-    const { karyawan_id, nama, jumlah, alasan } = req.body;
+    const {
+      karyawan_id, nama, jumlah, alasan,
+      region, vendor, metode_pembayaran, penyedia_pembayaran, no_rekening
+    } = req.body;
     if (!karyawan_id || !nama || !jumlah) {
       return res.status(400).json({ message: 'ID Karyawan, nama, dan jumlah kasbon wajib diisi!' });
     }
     if (Number(jumlah) <= 0) {
       return res.status(400).json({ message: 'Jumlah kasbon harus lebih dari 0' });
+    }
+    if (!region || !vendor) {
+      return res.status(400).json({ message: 'Region dan vendor wajib diisi!' });
+    }
+    if (!['E-Wallet', 'Transfer Bank'].includes(metode_pembayaran)) {
+      return res.status(400).json({ message: 'Metode pembayaran harus "E-Wallet" atau "Transfer Bank"' });
+    }
+    if (!penyedia_pembayaran) {
+      return res.status(400).json({
+        message: metode_pembayaran === 'E-Wallet'
+          ? 'Pilih penyedia e-wallet (Dana/OVO/GoPay/ShopeePay)'
+          : 'Pilih nama bank tujuan transfer'
+      });
+    }
+    if (!no_rekening) {
+      return res.status(400).json({
+        message: metode_pembayaran === 'E-Wallet' ? 'Nomor e-wallet wajib diisi' : 'Nomor rekening wajib diisi'
+      });
     }
 
     const karyawan = await Karyawan.findOne({ karyawan_id });
@@ -55,7 +76,10 @@ router.post('/kasbon', async (req, res) => {
       });
     }
 
-    const kasbonBaru = new Kasbon({ karyawan_id, nama, jumlah: Number(jumlah), alasan: alasan || '' });
+    const kasbonBaru = new Kasbon({
+      karyawan_id, nama, jumlah: Number(jumlah), alasan: alasan || '',
+      region, vendor, metode_pembayaran, penyedia_pembayaran, no_rekening
+    });
     await kasbonBaru.save();
     res.status(201).json({ message: 'Pengajuan kasbon berhasil dikirim, menunggu persetujuan Owner.', data: kasbonBaru });
   } catch (error) {

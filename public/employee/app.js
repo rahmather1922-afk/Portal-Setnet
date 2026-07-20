@@ -1,5 +1,11 @@
 const API_BASE = '/api';
 
+// Pilihan untuk form pengajuan Kasbon
+const KASBON_REGION_OPTIONS = ["Jakbar", "Jakut", "Jakpus", "Jaksel", "Jaktim", "Bekasi", "Bogor", "Depok", "Bekasi Timur", "Tangerang", "Tangkot"];
+const KASBON_VENDOR_OPTIONS = ["Quantum", "Satu Visi", "BBB"];
+const KASBON_EWALLET_OPTIONS = ["Dana", "OVO", "GoPay", "ShopeePay"];
+const KASBON_BANK_OPTIONS = ["BCA", "BRI", "Mandiri", "Seabank", "Jago", "Dll"];
+
 function formatRupiah(angka) {
     return 'Rp' + Number(angka || 0).toLocaleString('id-ID');
 }
@@ -74,7 +80,7 @@ function MenuDashboard({ userSession, onNavigate, onLogout }) {
         <div class="w-full">
             <div class="bg-blue-900 rounded-2xl px-5 pt-5 pb-8 shadow-xl relative overflow-hidden">
                 <div class="flex items-center justify-between mb-4">
-                    <span class="text-white font-black tracking-wide text-sm">SATNET <span class="text-blue-300">Mobile</span></span>
+                    <span class="text-white font-black tracking-wide text-sm">SETNET <span class="text-blue-300">Mobile</span></span>
                     <span class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white text-sm">🔔</span>
                 </div>
                 <h1 class="text-white font-black text-lg leading-tight">{userSession.nama}</h1>
@@ -239,6 +245,11 @@ function PengajuanPanel({ userSession, onBack }) {
     // Form Kasbon
     const [jumlahKasbon, setJumlahKasbon] = React.useState('');
     const [alasanKasbon, setAlasanKasbon] = React.useState('');
+    const [regionKasbon, setRegionKasbon] = React.useState('');
+    const [vendorKasbon, setVendorKasbon] = React.useState('');
+    const [metodeBayarKasbon, setMetodeBayarKasbon] = React.useState('E-Wallet');
+    const [penyediaBayarKasbon, setPenyediaBayarKasbon] = React.useState('');
+    const [noRekKasbon, setNoRekKasbon] = React.useState('');
 
     // Form Cuti/Izin/Sakit
     const [tglMulai, setTglMulai] = React.useState('');
@@ -263,6 +274,10 @@ function PengajuanPanel({ userSession, onBack }) {
     const ajukanKasbon = async (e) => {
         e.preventDefault();
         if (!jumlahKasbon || Number(jumlahKasbon) <= 0) return alert('Isi jumlah kasbon dengan benar!');
+        if (!regionKasbon) return alert('Pilih region terlebih dahulu!');
+        if (!vendorKasbon) return alert('Pilih vendor terlebih dahulu!');
+        if (!penyediaBayarKasbon) return alert(metodeBayarKasbon === 'E-Wallet' ? 'Pilih penyedia e-wallet!' : 'Pilih nama bank tujuan!');
+        if (!noRekKasbon.trim()) return alert(metodeBayarKasbon === 'E-Wallet' ? 'Isi nomor e-wallet!' : 'Isi nomor rekening!');
         setLoading(true); setPesan('');
         try {
             const response = await fetch(`${API_BASE}/kasbon`, {
@@ -272,13 +287,20 @@ function PengajuanPanel({ userSession, onBack }) {
                     karyawan_id: userSession.karyawan_id,
                     nama: userSession.nama,
                     jumlah: Number(jumlahKasbon),
-                    alasan: alasanKasbon
+                    alasan: alasanKasbon,
+                    region: regionKasbon,
+                    vendor: vendorKasbon,
+                    metode_pembayaran: metodeBayarKasbon,
+                    penyedia_pembayaran: penyediaBayarKasbon,
+                    no_rekening: noRekKasbon.trim()
                 })
             });
             const data = await response.json();
             if (response.status === 201) {
                 setPesan('✅ ' + data.message);
                 setJumlahKasbon(''); setAlasanKasbon('');
+                setRegionKasbon(''); setVendorKasbon('');
+                setMetodeBayarKasbon('E-Wallet'); setPenyediaBayarKasbon(''); setNoRekKasbon('');
                 muatUlangData();
             } else {
                 setPesan('❌ ' + data.message);
@@ -347,9 +369,49 @@ function PengajuanPanel({ userSession, onBack }) {
                             <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Jumlah Kasbon (Rp)</label>
                             <input type="number" min="1" placeholder="cth: 500000" value={jumlahKasbon} onChange={e => setJumlahKasbon(e.target.value)} class="w-full px-4 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold" />
                         </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Region</label>
+                                <select value={regionKasbon} onChange={e => setRegionKasbon(e.target.value)} class="w-full px-3 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold bg-white">
+                                    <option value="">Pilih region</option>
+                                    {KASBON_REGION_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Vendor</label>
+                                <select value={vendorKasbon} onChange={e => setVendorKasbon(e.target.value)} class="w-full px-3 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold bg-white">
+                                    <option value="">Pilih vendor</option>
+                                    {KASBON_VENDOR_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
+                                </select>
+                            </div>
+                        </div>
                         <div>
                             <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Alasan / Keperluan</label>
                             <textarea placeholder="Jelaskan keperluan kasbon..." value={alasanKasbon} onChange={e => setAlasanKasbon(e.target.value)} class="w-full px-4 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold" rows="2"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Metode Pembayaran</label>
+                            <div class="grid grid-cols-2 gap-1.5">
+                                {['E-Wallet', 'Transfer Bank'].map(m => (
+                                    <button key={m} type="button" onClick={() => { setMetodeBayarKasbon(m); setPenyediaBayarKasbon(''); }}
+                                        class={`py-2 rounded-lg text-[11px] font-bold border transition ${metodeBayarKasbon === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}>
+                                        {m}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">{metodeBayarKasbon === 'E-Wallet' ? 'Penyedia E-Wallet' : 'Nama Bank'}</label>
+                                <select value={penyediaBayarKasbon} onChange={e => setPenyediaBayarKasbon(e.target.value)} class="w-full px-3 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold bg-white">
+                                    <option value="">{metodeBayarKasbon === 'E-Wallet' ? 'Pilih e-wallet' : 'Pilih bank'}</option>
+                                    {(metodeBayarKasbon === 'E-Wallet' ? KASBON_EWALLET_OPTIONS : KASBON_BANK_OPTIONS).map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">{metodeBayarKasbon === 'E-Wallet' ? 'No. E-Wallet' : 'No. Rekening'}</label>
+                                <input type="text" inputmode="numeric" placeholder={metodeBayarKasbon === 'E-Wallet' ? 'cth: 08123456789' : 'cth: 1234567890'} value={noRekKasbon} onChange={e => setNoRekKasbon(e.target.value)} class="w-full px-3 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold" />
+                            </div>
                         </div>
                         <button type="submit" disabled={loading} class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition disabled:bg-gray-400 text-sm">
                             {loading ? 'Mengirim...' : 'AJUKAN KASBON'}
@@ -365,7 +427,13 @@ function PengajuanPanel({ userSession, onBack }) {
                                     <span class="font-black text-sm text-gray-900">{formatRupiah(k.jumlah)}</span>
                                     <StatusBadge status={k.status} />
                                 </div>
+                                {(k.region || k.vendor) && (
+                                    <p class="text-[10px] text-gray-500 mb-1">{k.region}{k.region && k.vendor ? ' • ' : ''}{k.vendor}</p>
+                                )}
                                 {k.alasan && <p class="text-xs text-gray-500 mb-1">{k.alasan}</p>}
+                                {k.metode_pembayaran && (
+                                    <p class="text-[10px] text-gray-500 mb-1">{k.metode_pembayaran} - {k.penyedia_pembayaran} • {k.no_rekening}</p>
+                                )}
                                 <p class="text-[10px] font-mono text-gray-400">{new Date(k.tanggal_pengajuan).toLocaleDateString('id-ID')}</p>
                                 {k.status === 'Disetujui' && <p class="text-[10px] font-bold mt-1 text-green-700">{k.lunas ? '✔ Lunas' : '⏳ Belum lunas / akan dipotong gaji'}</p>}
                                 {k.status === 'Ditolak' && k.catatan_admin && <p class="text-[10px] mt-1 text-red-600">Catatan: {k.catatan_admin}</p>}
@@ -480,9 +548,11 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
 }
 
 function AppAbsensi() {
+    const SESSION_KEY = 'setnet_absensi_session';
     const [isLoggedIn, setIsLoggedIn] = React.useState(false);
     const [userSession, setUserSession] = React.useState(null);
     const [tabAktif, setTabAktif] = React.useState('Menu'); // Menu | Absensi | Form | Riwayat
+    const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
 
     const [karyawanId, setKaryawanId] = React.useState('');
     const [password, setPassword] = React.useState('');
@@ -495,6 +565,21 @@ function AppAbsensi() {
 
     // State baru untuk Modal Notification Kustom
     const [modalData, setModalData] = React.useState(null);
+
+    // Pulihkan sesi login dari penyimpanan lokal saat halaman di-refresh,
+    // supaya karyawan tidak perlu login ulang tiap kali me-refresh halaman.
+    React.useEffect(() => {
+        try {
+            const tersimpan = localStorage.getItem(SESSION_KEY);
+            if (tersimpan) {
+                const karyawan = JSON.parse(tersimpan);
+                if (karyawan && karyawan.karyawan_id) {
+                    setUserSession(karyawan);
+                    setIsLoggedIn(true);
+                }
+            }
+        } catch (err) { /* penyimpanan lokal tidak tersedia/rusak, anggap belum login */ }
+    }, []);
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -511,6 +596,7 @@ function AppAbsensi() {
                 setUserSession(data.karyawan);
                 setIsLoggedIn(true);
                 setTabAktif('Menu');
+                try { localStorage.setItem(SESSION_KEY, JSON.stringify(data.karyawan)); } catch (err) { /* abaikan jika penyimpanan lokal tidak tersedia */ }
             } else {
                 setPesan(`❌ ${data.message}`);
             }
@@ -518,14 +604,18 @@ function AppAbsensi() {
         finally { setLoading(false); }
     };
 
+    // Tombol Logout di menu hanya MEMINTA konfirmasi; proses logout sesungguhnya ada di handleLogout di bawah.
+    const requestLogout = () => setShowLogoutConfirm(true);
+
     const handleLogout = () => {
-        if (!confirm('Yakin ingin logout dari sesi ini?')) return;
         matikanKamera();
         setIsLoggedIn(false);
         setUserSession(null);
         setTabAktif('Menu');
         setKaryawanId('');
         setPassword('');
+        setShowLogoutConfirm(false);
+        try { localStorage.removeItem(SESSION_KEY); } catch (err) { /* abaikan jika penyimpanan lokal tidak tersedia */ }
     };
 
     // Kamera hanya aktif ketika berada di halaman Absensi
@@ -607,7 +697,7 @@ function AppAbsensi() {
         return (
             <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-100 w-full">
                 <div class="text-center mb-6">
-                    <h1 class="text-3xl font-extrabold text-blue-600 tracking-wider">SATNET</h1>
+                    <h1 class="text-3xl font-extrabold text-blue-600 tracking-wider">SETNET</h1>
                     <p class="text-sm text-gray-400 mt-1">Portal Absensi Karyawan & Teknisi</p>
                 </div>
                 {pesan && <div class="p-3 rounded-xl text-xs font-bold mb-4 text-center bg-red-100 text-red-800">{pesan}</div>}
@@ -628,8 +718,9 @@ function AppAbsensi() {
         );
     }
 
+    let konten;
     if (tabAktif === 'Absensi') {
-        return (
+        konten = (
             <AbsensiPanel
                 userSession={userSession}
                 onBack={() => setTabAktif('Menu')}
@@ -643,17 +734,38 @@ function AppAbsensi() {
                 onSelesai={() => { setModalData(null); setTabAktif('Menu'); }}
             />
         );
+    } else if (tabAktif === 'Form') {
+        konten = <PengajuanPanel userSession={userSession} onBack={() => setTabAktif('Menu')} />;
+    } else if (tabAktif === 'Riwayat') {
+        konten = <RiwayatAbsensiPanel userSession={userSession} onBack={() => setTabAktif('Menu')} />;
+    } else {
+        konten = <MenuDashboard userSession={userSession} onNavigate={setTabAktif} onLogout={requestLogout} />;
     }
 
-    if (tabAktif === 'Form') {
-        return <PengajuanPanel userSession={userSession} onBack={() => setTabAktif('Menu')} />;
-    }
+    return (
+        <React.Fragment>
+            {konten}
 
-    if (tabAktif === 'Riwayat') {
-        return <RiwayatAbsensiPanel userSession={userSession} onBack={() => setTabAktif('Menu')} />;
-    }
-
-    return <MenuDashboard userSession={userSession} onNavigate={setTabAktif} onLogout={handleLogout} />;
+            {/* MODAL KONFIRMASI LOGOUT */}
+            {showLogoutConfirm && (
+                <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-gray-100 text-center">
+                        <div class="w-14 h-14 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto text-2xl mb-3">🚪</div>
+                        <h3 class="text-lg font-black text-gray-900">Keluar dari Akun?</h3>
+                        <p class="text-xs text-gray-400 mt-1 mb-5">Anda perlu login kembali dengan ID Karyawan &amp; Password untuk mengakses sistem absensi.</p>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button type="button" onClick={() => setShowLogoutConfirm(false)} class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 rounded-xl transition text-sm">
+                                Batal
+                            </button>
+                            <button type="button" onClick={handleLogout} class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-xl shadow-md transition text-sm">
+                                Ya, Logout
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </React.Fragment>
+    );
 }
 
 const root = ReactDOM.createRoot(document.getElementById('root'));

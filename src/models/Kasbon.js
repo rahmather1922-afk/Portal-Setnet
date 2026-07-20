@@ -8,6 +8,15 @@ const kasbonSchema = new mongoose.Schema({
   nama: { type: String, required: true },
   jumlah: { type: Number, required: true, min: 0 },
   alasan: { type: String, default: '' },
+  region: { type: String, required: true },
+  vendor: { type: String, required: true },
+  metode_pembayaran: {
+    type: String,
+    enum: ['E-Wallet', 'Transfer Bank'],
+    required: true
+  },
+  penyedia_pembayaran: { type: String, required: true }, // Dana/OVO/GoPay/ShopeePay (jika E-Wallet) atau BCA/BRI/Mandiri/dst (jika Transfer Bank)
+  no_rekening: { type: String, required: true },          // no rekening bank atau no e-wallet tujuan pencairan
   status: {
     type: String,
     enum: ['Pending', 'Disetujui', 'Ditolak'],

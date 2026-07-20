@@ -13,6 +13,11 @@ const materialSchema = new mongoose.Schema({
   satuan: { type: String, default: 'Roll' },             // ex: Roll, Meter, Pcs, Box
   stock_awal: { type: Number, required: true, min: 0, default: 0 },
   stock: { type: Number, required: true, min: 0, default: 0 },
+  // Daftar SN ONT yang sudah "dikenal"/terdaftar untuk jenis material ini (khusus kategori ONT).
+  // Diisi opsional saat Tambah Jenis Material, dan bertambah otomatis tiap kali ada SN baru
+  // dicatat lewat STOK MASUK (Penambahan). Dipakai sebagai daftar pilihan (dropdown/autocomplete)
+  // SN ONT di form Pemakaian Teknisi.
+  sn_list: { type: [String], default: [] },
   keterangan: { type: String, default: '' },
   dibuat_oleh: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now },

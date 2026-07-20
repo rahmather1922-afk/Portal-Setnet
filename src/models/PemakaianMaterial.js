@@ -31,7 +31,17 @@ const pemakaianMaterialSchema = new mongoose.Schema({
   // model MaterialStokLog (tipe "Pengembalian") supaya angkanya rapi & bisa direkap.
   return_catatan: { type: String, default: '' },
 
+  // Tambahan klasifikasi pekerjaan — diisi lewat dropdown di form Pemakaian Teknisi.
+  project: { type: String, enum: ['AMT', 'FS', 'LinkNet', ''], default: '' },
+  region: {
+    type: String,
+    enum: ['Jakbar', 'Jakut', 'Jakpus', 'Jaksel', 'Jaktim', 'Bekasi', 'Bogor', 'Depok', 'Bekasi Timur', 'Tangerang', 'Tangkot', ''],
+    default: ''
+  },
+  vendor: { type: String, enum: ['Quantum', 'Satu Visi', 'BBB', ''], default: '' },
+
   dibuat_oleh: { type: String, default: '' }, // karyawan_id admin/gudang yang input baris ini
+
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

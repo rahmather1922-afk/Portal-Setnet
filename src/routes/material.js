@@ -122,7 +122,7 @@ router.post('/pemakaian-material', MANAGE_ROLES, async (req, res) => {
   try {
     const {
       tanggal_pengambilan, teknisi_id, nama_team, merek_modem, sn_ont,
-      kabel_id, status, return_catatan
+      kabel_id, status, return_catatan, project, region, vendor
     } = req.body;
 
     if (!nama_team || !kabel_id) {
@@ -148,10 +148,126 @@ router.post('/pemakaian-material', MANAGE_ROLES, async (req, res) => {
       kabel_nama: kabel.nama,
       status: statusFinal,
       return_catatan: return_catatan || '',
+      project: project || '',
+      region: region || '',
+      vendor: vendor || '',
       dibuat_oleh
     });
     await logBaru.save();
     res.status(201).json({ message: 'Log pemakaian material berhasil disimpan', data: logBaru });
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal menyimpan log pemakaian material', error: error.message });
+  }
+});
+
+// --- TAMBAH BANYAK BARIS LOG SEKALIGUS (batch) — dipakai form "Tambah Log Pemakaian" di
+// frontend, yang bisa input beberapa unit ONT & beberapa jenis kabel dalam satu kali submit.
+// Body: { ..., project, region, vendor, ont_list: [sn, ...], kabel_list: [{kabel_id, jumlah}, ...] }
+// Setiap unit kabel (dihitung dari jumlah tiap baris kabel_list) jadi 1 dokumen PemakaianMaterial,
+// dipasangkan berurutan dengan SN di ont_list (kalau ont_list lebih pendek, sisanya sn_ont kosong).
+router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
+  try {
+    const {
+      tanggal_pengambilan, teknisi_id, nama_team, merek_modem,
+      status, return_catatan, project, region, vendor,
+      ont_list, kabel_list
+    } = req.body;
+
+    if (!nama_team) {
+      return res.status(400).json({ message: 'Nama team wajib diisi!' });
+    }
+    if (!Array.isArray(kabel_list) || kabel_list.length === 0) {
+      return res.status(400).json({ message: 'Minimal 1 jenis kabel wajib dipilih!' });
+    }
+
+    const rows = kabel_list
+      .filter(r => r && r.kabel_id)
+      .map(r => ({ kabel_id: r.kabel_id, jumlah: Math.max(1, Number(r.jumlah) || 1) }));
+    if (rows.length === 0) {
+      return res.status(400).json({ message: 'Minimal 1 jenis kabel wajib dipilih!' });
+    }
+    const totalUnit = rows.reduce((total, r) => total + r.jumlah, 0);
+
+    // Ambil master data untuk tiap jenis kabel unik, sekaligus pastikan semuanya ada.
+    const uniqueIds = [...new Set(rows.map(r => r.kabel_id))];
+    const materialsMap = {};
+    for (const id of uniqueIds) {
+      const m = await Material.findById(id);
+      if (!m) return res.status(404).json({ message: 'Salah satu jenis kabel tidak ditemukan di master material' });
+      materialsMap[id] = m;
+    }
+
+    const statusFinal = ['Terpakai', 'Idle'].includes(status) ? status : 'Idle';
+
+    // Total kebutuhan per jenis kabel (kalau 1 jenis kabel dipakai di beberapa baris).
+    const totalPerKabel = {};
+    rows.forEach(r => { totalPerKabel[r.kabel_id] = (totalPerKabel[r.kabel_id] || 0) + r.jumlah; });
+
+    // Kalau langsung "Terpakai", cek dulu stok semua jenis kabel CUKUP sebelum motong apapun,
+    // supaya tidak ada potongan stok "setengah jalan" kalau salah satu kurang.
+    if (statusFinal === 'Terpakai') {
+      for (const id of Object.keys(totalPerKabel)) {
+        const m = materialsMap[id];
+        if (m.stock < totalPerKabel[id]) {
+          return res.status(400).json({
+            message: `Stok tidak cukup. Sisa stok "${m.nama}" saat ini: ${m.stock} ${m.satuan}, dibutuhkan ${totalPerKabel[id]}.`
+          });
+        }
+      }
+    }
+
+    // Ratakan jadi 1 kabel_id per unit, dipasangkan berurutan dengan SN ONT (kalau ada).
+    const flatKabelIds = [];
+    rows.forEach(r => { for (let i = 0; i < r.jumlah; i++) flatKabelIds.push(r.kabel_id); });
+    const snList = Array.isArray(ont_list) ? ont_list : [];
+
+    const dibuat_oleh = req.header('x-user-id') || '';
+    const tanggalFinal = tanggal_pengambilan ? new Date(tanggal_pengambilan) : new Date();
+
+    const stokTerpotong = []; // { id, jumlah } — untuk rollback kalau ada error di tengah jalan
+    const dibuatDocs = [];
+    try {
+      if (statusFinal === 'Terpakai') {
+        for (const id of Object.keys(totalPerKabel)) {
+          await ubahStok(id, -totalPerKabel[id]);
+          stokTerpotong.push({ id, jumlah: totalPerKabel[id] });
+        }
+      }
+
+      for (let i = 0; i < totalUnit; i++) {
+        const kabelId = flatKabelIds[i];
+        const kabelDoc = materialsMap[kabelId];
+        const logBaru = new PemakaianMaterial({
+          tanggal_pengambilan: tanggalFinal,
+          teknisi_id: teknisi_id || '',
+          nama_team,
+          merek_modem: merek_modem || '',
+          sn_ont: snList[i] || '',
+          kabel_id: kabelId,
+          kabel_nama: kabelDoc.nama,
+          status: statusFinal,
+          return_catatan: return_catatan || '',
+          project: project || '',
+          region: region || '',
+          vendor: vendor || '',
+          dibuat_oleh
+        });
+        await logBaru.save();
+        dibuatDocs.push(logBaru);
+      }
+
+      res.status(201).json({ message: `${totalUnit} log pemakaian material berhasil disimpan`, data: dibuatDocs });
+    } catch (innerError) {
+      // Rollback: kembalikan stok yang sudah terpotong & hapus dokumen yang sempat kebuat,
+      // supaya data tidak nyangkut setengah kalau ada error di tengah proses.
+      for (const s of stokTerpotong) {
+        try { await ubahStok(s.id, +s.jumlah); } catch (_) { /* abaikan, best-effort rollback */ }
+      }
+      for (const d of dibuatDocs) {
+        try { await PemakaianMaterial.findByIdAndDelete(d._id); } catch (_) { /* abaikan */ }
+      }
+      throw innerError;
+    }
   } catch (error) {
     res.status(500).json({ message: 'Gagal menyimpan log pemakaian material', error: error.message });
   }
@@ -166,7 +282,7 @@ router.put('/pemakaian-material/:id', MANAGE_ROLES, async (req, res) => {
 
     const {
       tanggal_pengambilan, teknisi_id, nama_team, merek_modem, sn_ont,
-      kabel_id, status, return_catatan
+      kabel_id, status, return_catatan, project, region, vendor
     } = req.body;
 
     const kabelIdBaru = kabel_id || String(log.kabel_id);
@@ -191,6 +307,9 @@ router.put('/pemakaian-material/:id', MANAGE_ROLES, async (req, res) => {
     if (merek_modem !== undefined) log.merek_modem = merek_modem;
     if (sn_ont !== undefined) log.sn_ont = sn_ont;
     if (return_catatan !== undefined) log.return_catatan = return_catatan;
+    if (project !== undefined) log.project = project;
+    if (region !== undefined) log.region = region;
+    if (vendor !== undefined) log.vendor = vendor;
     log.status = statusBaru;
     log.kabel_id = kabelIdBaru;
     log.kabel_nama = kabelBaruDoc ? kabelBaruDoc.nama : log.kabel_nama;
