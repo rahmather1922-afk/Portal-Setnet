@@ -86,6 +86,17 @@ router.post('/absen/login', async (req, res) => {
       return res.status(401).json({ message: 'ID Karyawan atau Password salah!' });
     }
 
+    // Karyawan berstatus "Non Aktif" (sudah resign/diberhentikan) tidak boleh lagi masuk
+    // ke sistem sama sekali — baik aplikasi absensi HP maupun Portal Admin, karena login
+    // keduanya sama-sama lewat endpoint ini. Dicek SETELAH password cocok supaya pesan
+    // error tetap "ID/Password salah" untuk kredensial yang memang salah (tidak membocorkan
+    // status akun ke pihak yang belum tentu pemilik akun aslinya).
+    if (akun.status === 'Non Aktif') {
+      return res.status(403).json({
+        message: 'Akun ini sudah Non Aktif (tidak bekerja lagi). Akses absensi & Portal Admin telah dinonaktifkan. Hubungi HRD/Owner jika ini keliru.'
+      });
+    }
+
     res.status(200).json({
       message: 'Login Berhasil!',
       karyawan: { karyawan_id: akun.karyawan_id, nama: akun.nama, role: akun.role }
@@ -101,6 +112,17 @@ router.post('/absen', async (req, res) => {
     const { karyawan_id, nama, status, shift, foto, latitude, longitude, alamat } = req.body;
     if (!karyawan_id || !nama || !status || !shift || !foto) {
       return res.status(400).json({ message: 'Data absensi tidak lengkap!' });
+    }
+
+    // Jaga-jaga untuk sesi yang sudah terlanjur login di HP SEBELUM status diubah jadi
+    // "Non Aktif" (sesi HP disimpan di localStorage & tidak otomatis logout). Begitu status
+    // berubah, karyawan yang bersangkutan tetap tidak boleh mengirim absensi baru.
+    const akunAbsen = await Karyawan.findOne({ karyawan_id });
+    if (!akunAbsen) {
+      return res.status(404).json({ message: 'Data karyawan tidak ditemukan.' });
+    }
+    if (akunAbsen.status === 'Non Aktif') {
+      return res.status(403).json({ message: 'Akun ini sudah Non Aktif. Tidak bisa melakukan absensi lagi.' });
     }
 
     // GPS wajib diisi, sama seperti foto wajib. Ditolak kalau tidak ada koordinat.
