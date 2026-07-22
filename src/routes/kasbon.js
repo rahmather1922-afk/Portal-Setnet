@@ -97,6 +97,36 @@ router.get('/kasbon/mine/:karyawan_id', async (req, res) => {
   }
 });
 
+// --- KARYAWAN: NOTIFIKASI KASBON YANG SUDAH DIPUTUSKAN OWNER (ACC/TOLAK) ---
+// Dipakai halaman "Notifikasi" di app mobile. Hanya menampilkan yang statusnya
+// sudah bukan Pending lagi (artinya sudah ada keputusan dari Owner).
+router.get('/kasbon/notifikasi/:karyawan_id', async (req, res) => {
+  try {
+    const data = await Kasbon.find({
+      karyawan_id: req.params.karyawan_id,
+      status: { $ne: 'Pending' }
+    }).sort({ tanggal_keputusan: -1 });
+    res.status(200).json(data);
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal mengambil notifikasi kasbon', error: error.message });
+  }
+});
+
+// --- KARYAWAN: TANDAI NOTIFIKASI KASBON SEBAGAI SUDAH DIBACA ---
+router.put('/kasbon/:id/baca', async (req, res) => {
+  try {
+    const kasbon = await Kasbon.findByIdAndUpdate(
+      req.params.id,
+      { notif_dibaca: true },
+      { new: true }
+    );
+    if (!kasbon) return res.status(404).json({ message: 'Pengajuan kasbon tidak ditemukan' });
+    res.status(200).json({ message: 'Notifikasi ditandai dibaca', data: kasbon });
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal menandai notifikasi', error: error.message });
+  }
+});
+
 // --- OWNER & HRD: DAFTAR SELURUH PENGAJUAN KASBON (filter opsional status) ---
 // HRD boleh LIHAT daftar kasbon (akses penuh dashboard), tapi approve/tolak
 // tetap DIKUNCI khusus 'owner' saja di endpoint /keputusan di bawah.

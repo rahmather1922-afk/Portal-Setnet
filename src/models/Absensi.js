@@ -8,7 +8,8 @@ const absensiSchema = new mongoose.Schema({
   status: { type: String, required: true },       // "Masuk" atau "Pulang"
   shift: { type: String, required: true },        // "Shift 1", "Shift 2", atau "Non-Shift"
   keterangan: { type: String, default: "Normal" }, // "Normal" atau "Terlambat (X Jam Y Menit)"
-  foto: { type: String, required: true },         // Menyimpan string Base64 gambar wajah hasil capture HP
+  foto: { type: String, required: true },         // URL foto hasil upload ke Cloudinary (bukan base64 lagi)
+  foto_public_id: { type: String, default: "" },  // ID Cloudinary, dipakai kalau nanti perlu hapus foto dari Cloudinary
   lokasi: {
     latitude: { type: Number, required: true },
     longitude: { type: Number, required: true },

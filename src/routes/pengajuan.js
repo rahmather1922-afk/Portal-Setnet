@@ -42,6 +42,36 @@ router.get('/pengajuan/mine/:karyawan_id', async (req, res) => {
   }
 });
 
+// --- KARYAWAN: NOTIFIKASI PENGAJUAN YANG SUDAH DIPUTUSKAN OWNER/HRD (ACC/TOLAK) ---
+// Dipakai halaman "Notifikasi" di app mobile. Hanya menampilkan yang statusnya
+// sudah bukan Pending lagi (artinya sudah ada keputusan dari Owner/HRD).
+router.get('/pengajuan/notifikasi/:karyawan_id', async (req, res) => {
+  try {
+    const data = await Pengajuan.find({
+      karyawan_id: req.params.karyawan_id,
+      status: { $ne: 'Pending' }
+    }).sort({ tanggal_keputusan: -1 });
+    res.status(200).json(data);
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal mengambil notifikasi pengajuan', error: error.message });
+  }
+});
+
+// --- KARYAWAN: TANDAI NOTIFIKASI PENGAJUAN SEBAGAI SUDAH DIBACA ---
+router.put('/pengajuan/:id/baca', async (req, res) => {
+  try {
+    const pengajuan = await Pengajuan.findByIdAndUpdate(
+      req.params.id,
+      { notif_dibaca: true },
+      { new: true }
+    );
+    if (!pengajuan) return res.status(404).json({ message: 'Pengajuan tidak ditemukan' });
+    res.status(200).json({ message: 'Notifikasi ditandai dibaca', data: pengajuan });
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal menandai notifikasi', error: error.message });
+  }
+});
+
 // --- OWNER & HRD: DAFTAR SELURUH PENGAJUAN (filter opsional jenis/status) ---
 router.get('/pengajuan', requireRole('owner', 'hrd'), async (req, res) => {
   try {

@@ -23,6 +23,7 @@ const kasbonSchema = new mongoose.Schema({
     default: 'Pending'
   },
   lunas: { type: Boolean, default: false },        // ditandai true setelah kasbon dipotong/dibayar
+  notif_dibaca: { type: Boolean, default: false },  // false = notif ACC/Tolak belum dibaca karyawan di app
   catatan_admin: { type: String, default: '' },     // alasan tolak / catatan owner
   diputuskan_oleh: { type: String, default: '' },   // karyawan_id owner yang ACC/tolak
   tanggal_pengajuan: { type: Date, default: Date.now },

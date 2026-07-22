@@ -234,19 +234,30 @@ const EmptyState = ({ title, subtitle, icon }) => (
   </div>
 );
 
-const Pagination = ({ page, setPage, totalPages, totalItems, pageSize }) => {
+const Pagination = ({ page, setPage, totalPages, totalItems, pageSize, pageSizeOptions, onPageSizeChange }) => {
   if (totalItems === 0) return null;
   const from = (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, totalItems);
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-t text-xs" style={{ borderColor: "var(--border)" }}>
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 px-4 py-3 border-t text-xs" style={{ borderColor: "var(--border)" }}>
       <span style={{ color: "var(--ink-soft)" }}>Menampilkan <b style={{ color: "var(--ink)" }}>{from}–{to}</b> dari {totalItems}</span>
-      <div className="flex items-center gap-1.5">
-        <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-          className="px-2.5 py-1.5 rounded-lg border font-semibold disabled:opacity-40 hover:bg-gray-50" style={{ borderColor: "var(--border)" }}>Prev</button>
-        <span className="font-mono px-1.5" style={{ color: "var(--ink-soft)" }}>{page} / {totalPages}</span>
-        <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-          className="px-2.5 py-1.5 rounded-lg border font-semibold disabled:opacity-40 hover:bg-gray-50" style={{ borderColor: "var(--border)" }}>Next</button>
+      <div className="flex items-center gap-3">
+        {Array.isArray(pageSizeOptions) && pageSizeOptions.length > 0 && (
+          <label className="flex items-center gap-1.5 whitespace-nowrap" style={{ color: "var(--ink-soft)" }}>
+            Tampilkan
+            <select value={pageSize} onChange={e => onPageSizeChange && onPageSizeChange(Number(e.target.value))}
+              className="border rounded-lg text-xs font-semibold px-2 py-1 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
+              {pageSizeOptions.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+        )}
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+            className="px-2.5 py-1.5 rounded-lg border font-semibold disabled:opacity-40 hover:bg-gray-50" style={{ borderColor: "var(--border)" }}>Prev</button>
+          <span className="font-mono px-1.5" style={{ color: "var(--ink-soft)" }}>{page} / {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+            className="px-2.5 py-1.5 rounded-lg border font-semibold disabled:opacity-40 hover:bg-gray-50" style={{ borderColor: "var(--border)" }}>Next</button>
+        </div>
       </div>
     </div>
   );
@@ -605,6 +616,11 @@ function DashboardAdmin({ session, onLogout }) {
   const [kasbonList, setKasbonList] = useState([]);
   const [pengajuanCISList, setPengajuanCISList] = useState([]);
   const [kasbonSubTab, setKasbonSubTab] = useState("Kasbon");
+  const [pageKasbon, setPageKasbon] = useState(1);
+  const [pageSizeKasbon, setPageSizeKasbon] = useState(10);
+  const [pagePengajuanCIS, setPagePengajuanCIS] = useState(1);
+  const [pageSizePengajuanCIS, setPageSizePengajuanCIS] = useState(10);
+  const PAGE_SIZE_OPTIONS_KASBON = [10, 20, 50, 100];
 
   // ==================== NOTIFIKASI LONCENG (header): pengajuan kasbon & cuti/izin/sakit Pending ====================
   const [notifOpen, setNotifOpen] = useState(false);
@@ -998,7 +1014,7 @@ function DashboardAdmin({ session, onLogout }) {
   const [finDari, setFinDari] = useState("");
   const [finSampai, setFinSampai] = useState("");
   const [pageFin, setPageFin] = useState(1);
-  const PAGE_SIZE_F = 8;
+  const [pageSizeFin, setPageSizeFin] = useState(10);
 
   const KATEGORI_MASUK = ["Penjualan Jasa", "Pemasangan Baru", "Pembayaran Tagihan Pelanggan", "Lain-lain"];
   const KATEGORI_KELUAR = ["Gaji Karyawan", "Operasional", "Sewa & Utilitas", "Pembelian Perangkat", "Maintenance", "Lain-lain"];
@@ -1077,8 +1093,8 @@ function DashboardAdmin({ session, onLogout }) {
       return matchQ && matchTipe && matchDari && matchSampai;
     });
   }, [transaksiList, finSearch, finTipeFilter, finDari, finSampai]);
-  const totalPagesFin = Math.max(1, Math.ceil(filteredTransaksi.length / PAGE_SIZE_F));
-  const pagedFin = filteredTransaksi.slice((pageFin - 1) * PAGE_SIZE_F, pageFin * PAGE_SIZE_F);
+  const totalPagesFin = Math.max(1, Math.ceil(filteredTransaksi.length / pageSizeFin));
+  const pagedFin = filteredTransaksi.slice((pageFin - 1) * pageSizeFin, pageFin * pageSizeFin);
   useEffect(() => { setPageFin(1); }, [finSearch, finTipeFilter, finDari, finSampai]);
 
   const finTotalMasuk = useMemo(() => filteredTransaksi.filter(t => t.tipe === "Masuk").reduce((a, b) => a + b.jumlah, 0), [filteredTransaksi]);
@@ -1202,7 +1218,7 @@ function DashboardAdmin({ session, onLogout }) {
   const [invSearch, setInvSearch] = useState("");
   const [invStatusFilter, setInvStatusFilter] = useState("semua");
   const [pageInv, setPageInv] = useState(1);
-  const PAGE_SIZE_INV = 8;
+  const [pageSizeInv, setPageSizeInv] = useState(10);
 
   const buatNomorInvoiceOtomatis = () => `QN${new Date().toISOString().slice(0, 10).replace(/-/g, "")}${String(Math.floor(Math.random() * 90) + 10)}`;
 
@@ -1378,9 +1394,47 @@ function DashboardAdmin({ session, onLogout }) {
       return matchQ && matchStatus;
     }).sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
   }, [invoiceList, invSearch, invStatusFilter]);
-  const totalPagesInv = Math.max(1, Math.ceil(filteredInvoice.length / PAGE_SIZE_INV));
-  const pagedInvoice = filteredInvoice.slice((pageInv - 1) * PAGE_SIZE_INV, pageInv * PAGE_SIZE_INV);
+  const totalPagesInv = Math.max(1, Math.ceil(filteredInvoice.length / pageSizeInv));
+  const pagedInvoice = filteredInvoice.slice((pageInv - 1) * pageSizeInv, pageInv * pageSizeInv);
   useEffect(() => { setPageInv(1); }, [invSearch, invStatusFilter]);
+
+  // Ekspor Excel: Sheet "Invoice" (daftar sesuai filter aktif) + Sheet "Ringkasan" (total per status)
+  const eksporExcelInvoice = () => {
+    if (typeof XLSX === "undefined") { notify("Modul export Excel gagal dimuat, cek koneksi internet.", "error"); return; }
+    if (filteredInvoice.length === 0) { notify("Tidak ada data invoice untuk diekspor.", "error"); return; }
+
+    const wb = XLSX.utils.book_new();
+
+    const wsData = XLSX.utils.json_to_sheet(filteredInvoice.map(inv => {
+      const t = hitungTotalInvoice(inv.items, inv.pinalty, inv.less_deposit, inv.denda_setelah_ppn, inv.pungutan_ppn);
+      return {
+        "No. Invoice": inv.nomor, Pelanggan: inv.bill_nama || "-", "PO Number": inv.po_number || "-",
+        Tanggal: inv.tanggal ? new Date(inv.tanggal).toLocaleDateString("id-ID") : "-",
+        "Harga Jual": t.hargaJual, "Balance Due": t.balanceDue, Status: inv.status || "Belum Dibayar",
+        "Sudah Tercatat di Keuangan": inv.dicatat_keuangan ? "Ya" : "Tidak",
+      };
+    }));
+    wsData["!cols"] = [{ wch: 16 }, { wch: 26 }, { wch: 16 }, { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, wsData, "Invoice");
+
+    const totalHargaJual = filteredInvoice.reduce((a, inv) => a + hitungTotalInvoice(inv.items, inv.pinalty, inv.less_deposit, inv.denda_setelah_ppn, inv.pungutan_ppn).hargaJual, 0);
+    const totalBalanceDue = filteredInvoice.reduce((a, inv) => a + hitungTotalInvoice(inv.items, inv.pinalty, inv.less_deposit, inv.denda_setelah_ppn, inv.pungutan_ppn).balanceDue, 0);
+    const jumlahLunas = filteredInvoice.filter(inv => inv.status === "Lunas").length;
+    const jumlahBelumDibayar = filteredInvoice.filter(inv => inv.status !== "Lunas").length;
+    const wsRingkasan = XLSX.utils.json_to_sheet([
+      { Uraian: "Jumlah Invoice", Nilai: filteredInvoice.length },
+      { Uraian: "Jumlah Lunas", Nilai: jumlahLunas },
+      { Uraian: "Jumlah Belum Dibayar", Nilai: jumlahBelumDibayar },
+      { Uraian: "Total Harga Jual", Nilai: totalHargaJual },
+      { Uraian: "Total Balance Due", Nilai: totalBalanceDue },
+    ]);
+    wsRingkasan["!cols"] = [{ wch: 26 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, wsRingkasan, "Ringkasan");
+
+    const namaFile = `Invoice-SATNET-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, namaFile);
+    notify("Laporan Invoice Excel berhasil diunduh (Invoice, Ringkasan)");
+  };
 
   const handleCetakInvoice = (inv) => {
     setInvPrintTarget(inv);
@@ -1439,7 +1493,7 @@ function DashboardAdmin({ session, onLogout }) {
   const [trkStatusFilter, setTrkStatusFilter] = useState("semua");
   const [trkWoTypeFilter, setTrkWoTypeFilter] = useState("semua");
   const [pageTrk, setPageTrk] = useState(1);
-  const PAGE_SIZE_T = 8;
+  const [pageSizeTrk, setPageSizeTrk] = useState(10);
 
   const resetFormTracking = () => {
     setTrkEditId(null); setTrkRegion(TRACKING_REGIONS[0]); setTrkTahun(new Date().getFullYear());
@@ -1531,8 +1585,8 @@ function DashboardAdmin({ session, onLogout }) {
       return matchQ && matchRegion && matchStatus && matchWoType;
     });
   }, [trackingList, trkSearch, trkRegionFilter, trkStatusFilter, trkWoTypeFilter]);
-  const totalPagesTrk = Math.max(1, Math.ceil(filteredTracking.length / PAGE_SIZE_T));
-  const pagedTrk = filteredTracking.slice((pageTrk - 1) * PAGE_SIZE_T, pageTrk * PAGE_SIZE_T);
+  const totalPagesTrk = Math.max(1, Math.ceil(filteredTracking.length / pageSizeTrk));
+  const pagedTrk = filteredTracking.slice((pageTrk - 1) * pageSizeTrk, pageTrk * pageSizeTrk);
   useEffect(() => { setPageTrk(1); }, [trkSearch, trkRegionFilter, trkStatusFilter, trkWoTypeFilter]);
 
   // Rekap per Region x Status, dihitung langsung di frontend dari data yang sudah ke-fetch
@@ -2142,6 +2196,14 @@ function DashboardAdmin({ session, onLogout }) {
 
   const kasbonPending = kasbonList.filter(k => k.status === "Pending").length;
   const pengajuanPending = pengajuanCISList.filter(p => p.status === "Pending").length;
+
+  // Pagination untuk tabel Kasbon & Cuti/Izin/Sakit, supaya tidak scroll panjang ke bawah.
+  const totalPagesKasbon = Math.max(1, Math.ceil(kasbonList.length / pageSizeKasbon));
+  const pageKasbonAman = Math.min(pageKasbon, totalPagesKasbon);
+  const pagedKasbon = kasbonList.slice((pageKasbonAman - 1) * pageSizeKasbon, pageKasbonAman * pageSizeKasbon);
+  const totalPagesPengajuanCIS = Math.max(1, Math.ceil(pengajuanCISList.length / pageSizePengajuanCIS));
+  const pagePengajuanCISAman = Math.min(pagePengajuanCIS, totalPagesPengajuanCIS);
+  const pagedPengajuanCIS = pengajuanCISList.slice((pagePengajuanCISAman - 1) * pageSizePengajuanCIS, pagePengajuanCISAman * pageSizePengajuanCIS);
 
   // Gabungan notifikasi pengajuan yang masih Pending (kasbon + cuti/izin/sakit), terbaru duluan
   const notifPendingList = useMemo(() => {
@@ -3102,15 +3164,20 @@ function DashboardAdmin({ session, onLogout }) {
                               className="pl-8 pr-3 py-2 border rounded-xl text-xs font-medium outline-none w-full sm:w-52" style={{ borderColor: "var(--border)" }} />
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          <select value={finTipeFilter} onChange={e => setFinTipeFilter(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
-                            <option value="semua">Semua Tipe</option>
-                            <option value="Masuk">Uang Masuk</option>
-                            <option value="Keluar">Uang Keluar</option>
-                          </select>
-                          <input type="date" value={finDari} onChange={e => setFinDari(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none" style={{ borderColor: "var(--border)" }} />
-                          <span className="self-center text-[11px]" style={{ color: "var(--ink-soft)" }}>s/d</span>
-                          <input type="date" value={finSampai} onChange={e => setFinSampai(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none" style={{ borderColor: "var(--border)" }} />
+                        <div className="flex flex-wrap gap-2 sm:items-center sm:justify-between">
+                          <div className="flex flex-wrap gap-2">
+                            <select value={finTipeFilter} onChange={e => setFinTipeFilter(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
+                              <option value="semua">Semua Tipe</option>
+                              <option value="Masuk">Uang Masuk</option>
+                              <option value="Keluar">Uang Keluar</option>
+                            </select>
+                            <input type="date" value={finDari} onChange={e => setFinDari(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none" style={{ borderColor: "var(--border)" }} />
+                            <span className="self-center text-[11px]" style={{ color: "var(--ink-soft)" }}>s/d</span>
+                            <input type="date" value={finSampai} onChange={e => setFinSampai(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none" style={{ borderColor: "var(--border)" }} />
+                          </div>
+                          <button onClick={eksporExcelKeuangan} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white shadow-sm" style={{ background: "var(--green)" }}>
+                            <IconFileExcel className="w-3.5 h-3.5" /> Ekspor ke Excel
+                          </button>
                         </div>
                       </div>
                       <div className="overflow-x-auto">
@@ -3156,7 +3223,9 @@ function DashboardAdmin({ session, onLogout }) {
                           </tbody>
                         </table>
                       </div>
-                      <Pagination page={pageFin} setPage={setPageFin} totalPages={totalPagesFin} totalItems={filteredTransaksi.length} pageSize={PAGE_SIZE_F} />
+                      <Pagination page={pageFin} setPage={setPageFin} totalPages={totalPagesFin} totalItems={filteredTransaksi.length}
+                        pageSize={pageSizeFin} pageSizeOptions={[10, 20, 50, 100]}
+                        onPageSizeChange={(n) => { setPageSizeFin(n); setPageFin(1); }} />
                     </div>
                   </div>
                 </div>
@@ -3446,7 +3515,9 @@ function DashboardAdmin({ session, onLogout }) {
                           </tbody>
                         </table>
                       </div>
-                      <Pagination page={pageTrk} setPage={setPageTrk} totalPages={totalPagesTrk} totalItems={filteredTracking.length} pageSize={PAGE_SIZE_T} />
+                      <Pagination page={pageTrk} setPage={setPageTrk} totalPages={totalPagesTrk} totalItems={filteredTracking.length}
+                        pageSize={pageSizeTrk} pageSizeOptions={[10, 20, 50, 100]}
+                        onPageSizeChange={(n) => { setPageSizeTrk(n); setPageTrk(1); }} />
                     </div>
                   </div>
                 </div>
@@ -3460,12 +3531,12 @@ function DashboardAdmin({ session, onLogout }) {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 max-w-xs">
-                    <button onClick={() => setKasbonSubTab("Kasbon")}
+                    <button onClick={() => { setKasbonSubTab("Kasbon"); setPageKasbon(1); }}
                       className="py-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5"
                       style={kasbonSubTab === "Kasbon" ? { background: "var(--brand)", color: "#fff", borderColor: "var(--brand)" } : { borderColor: "var(--border)", color: "var(--ink-soft)" }}>
                       Kasbon {kasbonPending > 0 && <span className="px-1.5 rounded-full text-[10px] font-black" style={{ background: kasbonSubTab === "Kasbon" ? "rgba(255,255,255,.25)" : "var(--amber-soft)", color: kasbonSubTab === "Kasbon" ? "#fff" : "var(--amber)" }}>{kasbonPending}</span>}
                     </button>
-                    <button onClick={() => setKasbonSubTab("Pengajuan")}
+                    <button onClick={() => { setKasbonSubTab("Pengajuan"); setPagePengajuanCIS(1); }}
                       className="py-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5"
                       style={kasbonSubTab === "Pengajuan" ? { background: "var(--brand)", color: "#fff", borderColor: "var(--brand)" } : { borderColor: "var(--border)", color: "var(--ink-soft)" }}>
                       Cuti/Izin/Sakit {pengajuanPending > 0 && <span className="px-1.5 rounded-full text-[10px] font-black" style={{ background: kasbonSubTab === "Pengajuan" ? "rgba(255,255,255,.25)" : "var(--amber-soft)", color: kasbonSubTab === "Pengajuan" ? "#fff" : "var(--amber)" }}>{pengajuanPending}</span>}
@@ -3474,10 +3545,34 @@ function DashboardAdmin({ session, onLogout }) {
 
                   {kasbonSubTab === "Kasbon" ? (
                     <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                      <div className="p-4 border-b flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between" style={{ borderColor: "var(--border)" }}>
+                        <div>
+                          <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Daftar Pengajuan Kasbon</h3>
+                          <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{kasbonList.length} pengajuan</p>
+                        </div>
+                        <button onClick={() => downloadCsv("kasbon.csv", toCsv(kasbonList, [
+                          { label: "ID Karyawan", get: r => r.karyawan_id },
+                          { label: "Nama", get: r => r.nama },
+                          { label: "Jumlah", get: r => r.jumlah },
+                          { label: "Region", get: r => r.region || "" },
+                          { label: "Vendor", get: r => r.vendor || "" },
+                          { label: "Alasan", get: r => r.alasan || "" },
+                          { label: "Metode Pembayaran", get: r => r.metode_pembayaran || "" },
+                          { label: "Penyedia Pembayaran", get: r => r.penyedia_pembayaran || "" },
+                          { label: "No Rekening", get: r => r.no_rekening || "" },
+                          { label: "Tanggal Pengajuan", get: r => r.tanggal_pengajuan ? new Date(r.tanggal_pengajuan).toLocaleDateString("id-ID") : "" },
+                          { label: "Status", get: r => r.status },
+                          { label: "Status Lunas", get: r => r.status === "Disetujui" ? (r.lunas ? "Lunas" : "Belum Lunas") : "-" },
+                          { label: "Catatan Admin", get: r => r.catatan_admin || "" },
+                        ]))} className="flex items-center gap-1.5 px-3 py-2 border rounded-xl hover:bg-gray-50 text-xs font-semibold shrink-0" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                          <IconDownload className="w-3.5 h-3.5" /> Ekspor Excel
+                        </button>
+                      </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs">
                           <thead>
                             <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                              <th className="p-3.5 text-left w-10">No</th>
                               <th className="p-3.5 text-left">Karyawan</th>
                               <th className="p-3.5 text-right">Jumlah</th>
                               <th className="p-3.5 text-left">Region / Vendor</th>
@@ -3490,11 +3585,12 @@ function DashboardAdmin({ session, onLogout }) {
                           </thead>
                           <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                             {kasbonList.length === 0 ? (
-                              <tr><td colSpan="8"><EmptyState title="Belum ada pengajuan kasbon" subtitle="Pengajuan dari karyawan akan muncul di sini." icon={<IconWallet className="w-5 h-5" />} /></td></tr>
-                            ) : kasbonList.map(k => {
+                              <tr><td colSpan="9"><EmptyState title="Belum ada pengajuan kasbon" subtitle="Pengajuan dari karyawan akan muncul di sini." icon={<IconWallet className="w-5 h-5" />} /></td></tr>
+                            ) : pagedKasbon.map((k, idx) => {
                               const tone = keputusanStatusTone(k.status);
                               return (
                                 <tr key={k._id} className="hover:bg-gray-50/60 transition align-top">
+                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{(pageKasbonAman - 1) * pageSizeKasbon + idx + 1}</td>
                                   <td className="p-3.5">
                                     <p className="font-bold text-sm" style={{ color: "var(--ink)" }}>{k.nama}</p>
                                     <p className="text-[10px] font-mono" style={{ color: "var(--ink-soft)" }}>{k.karyawan_id}</p>
@@ -3538,13 +3634,36 @@ function DashboardAdmin({ session, onLogout }) {
                           </tbody>
                         </table>
                       </div>
+                      <Pagination page={pageKasbonAman} setPage={setPageKasbon} totalPages={totalPagesKasbon} totalItems={kasbonList.length}
+                        pageSize={pageSizeKasbon} pageSizeOptions={PAGE_SIZE_OPTIONS_KASBON}
+                        onPageSizeChange={(n) => { setPageSizeKasbon(n); setPageKasbon(1); }} />
                     </div>
                   ) : (
                     <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                      <div className="p-4 border-b flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between" style={{ borderColor: "var(--border)" }}>
+                        <div>
+                          <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Daftar Pengajuan Cuti/Izin/Sakit</h3>
+                          <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{pengajuanCISList.length} pengajuan</p>
+                        </div>
+                        <button onClick={() => downloadCsv("cuti-izin-sakit.csv", toCsv(pengajuanCISList, [
+                          { label: "ID Karyawan", get: r => r.karyawan_id },
+                          { label: "Nama", get: r => r.nama },
+                          { label: "Jenis", get: r => r.jenis },
+                          { label: "Tanggal Mulai", get: r => r.tanggal_mulai ? new Date(r.tanggal_mulai).toLocaleDateString("id-ID") : "" },
+                          { label: "Tanggal Selesai", get: r => r.tanggal_selesai ? new Date(r.tanggal_selesai).toLocaleDateString("id-ID") : "" },
+                          { label: "Alasan", get: r => r.alasan || "" },
+                          { label: "Status", get: r => r.status },
+                          { label: "Catatan Admin", get: r => r.catatan_admin || "" },
+                          { label: "Tanggal Pengajuan", get: r => r.tanggal_pengajuan ? new Date(r.tanggal_pengajuan).toLocaleDateString("id-ID") : "" },
+                        ]))} className="flex items-center gap-1.5 px-3 py-2 border rounded-xl hover:bg-gray-50 text-xs font-semibold shrink-0" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                          <IconDownload className="w-3.5 h-3.5" /> Ekspor Excel
+                        </button>
+                      </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs">
                           <thead>
                             <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                              <th className="p-3.5 text-left w-10">No</th>
                               <th className="p-3.5 text-left">Karyawan</th>
                               <th className="p-3.5 text-center">Jenis</th>
                               <th className="p-3.5 text-center">Periode</th>
@@ -3555,11 +3674,12 @@ function DashboardAdmin({ session, onLogout }) {
                           </thead>
                           <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                             {pengajuanCISList.length === 0 ? (
-                              <tr><td colSpan="6"><EmptyState title="Belum ada pengajuan" subtitle="Pengajuan cuti/izin/sakit dari karyawan akan muncul di sini." icon={<IconClock className="w-5 h-5" />} /></td></tr>
-                            ) : pengajuanCISList.map(p => {
+                              <tr><td colSpan="7"><EmptyState title="Belum ada pengajuan" subtitle="Pengajuan cuti/izin/sakit dari karyawan akan muncul di sini." icon={<IconClock className="w-5 h-5" />} /></td></tr>
+                            ) : pagedPengajuanCIS.map((p, idx) => {
                               const tone = keputusanStatusTone(p.status);
                               return (
                                 <tr key={p._id} className="hover:bg-gray-50/60 transition align-top">
+                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{(pagePengajuanCISAman - 1) * pageSizePengajuanCIS + idx + 1}</td>
                                   <td className="p-3.5">
                                     <p className="font-bold text-sm" style={{ color: "var(--ink)" }}>{p.nama}</p>
                                     <p className="text-[10px] font-mono" style={{ color: "var(--ink-soft)" }}>{p.karyawan_id}</p>
@@ -3587,6 +3707,9 @@ function DashboardAdmin({ session, onLogout }) {
                           </tbody>
                         </table>
                       </div>
+                      <Pagination page={pagePengajuanCISAman} setPage={setPagePengajuanCIS} totalPages={totalPagesPengajuanCIS} totalItems={pengajuanCISList.length}
+                        pageSize={pageSizePengajuanCIS} pageSizeOptions={PAGE_SIZE_OPTIONS_KASBON}
+                        onPageSizeChange={(n) => { setPageSizePengajuanCIS(n); setPagePengajuanCIS(1); }} />
                     </div>
                   )}
                 </div>
@@ -4389,12 +4512,15 @@ function DashboardAdmin({ session, onLogout }) {
                               className="pl-8 pr-3 py-2 border rounded-xl text-xs font-medium outline-none w-full sm:w-56" style={{ borderColor: "var(--border)" }} />
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-2 sm:items-center sm:justify-between">
                           <select value={invStatusFilter} onChange={e => setInvStatusFilter(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
                             <option value="semua">Semua Status</option>
                             <option value="Belum Dibayar">Belum Dibayar</option>
                             <option value="Lunas">Lunas</option>
                           </select>
+                          <button onClick={eksporExcelInvoice} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white shadow-sm" style={{ background: "var(--green)" }}>
+                            <IconFileExcel className="w-3.5 h-3.5" /> Ekspor ke Excel
+                          </button>
                         </div>
                       </div>
                       <div className="overflow-x-auto">
@@ -4455,7 +4581,9 @@ function DashboardAdmin({ session, onLogout }) {
                           </tbody>
                         </table>
                       </div>
-                      <Pagination page={pageInv} setPage={setPageInv} totalPages={totalPagesInv} totalItems={filteredInvoice.length} pageSize={PAGE_SIZE_INV} />
+                      <Pagination page={pageInv} setPage={setPageInv} totalPages={totalPagesInv} totalItems={filteredInvoice.length}
+                        pageSize={pageSizeInv} pageSizeOptions={[10, 20, 50, 100]}
+                        onPageSizeChange={(n) => { setPageSizeInv(n); setPageInv(1); }} />
                     </div>
                   </div>
                 </div>

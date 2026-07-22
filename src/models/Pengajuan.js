@@ -15,6 +15,7 @@ const pengajuanSchema = new mongoose.Schema({
     default: 'Pending'
   },
   catatan_admin: { type: String, default: '' },
+  notif_dibaca: { type: Boolean, default: false },   // false = notif ACC/Tolak belum dibaca karyawan di app
   diputuskan_oleh: { type: String, default: '' },
   tanggal_pengajuan: { type: Date, default: Date.now },
   tanggal_keputusan: { type: Date, default: null }

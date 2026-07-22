@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const Karyawan = require('../models/Karyawan');
 const Absensi = require('../models/Absensi');
+const cloudinary = require('../config/cloudinary');
 
 const router = express.Router();
 
@@ -24,6 +25,24 @@ const getJamMenitWIB = (date = new Date()) => {
   const jam = Number(parts.find(p => p.type === 'hour').value);
   const menit = Number(parts.find(p => p.type === 'minute').value);
   return { jam, menit };
+};
+
+// Helper: ambil rentang "hari ini" versi WIB (00:00 - 23:59:59.999 WIB), dikonversi
+// ke Date UTC, supaya query "apakah sudah absen hari ini" akurat sesuai kalender WIB
+// walaupun server hosting berjalan di timezone UTC.
+const getRentangHariIniWIB = (date = new Date()) => {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  });
+  const parts = formatter.formatToParts(date);
+  const tahun = Number(parts.find(p => p.type === 'year').value);
+  const bulan = Number(parts.find(p => p.type === 'month').value);
+  const hari = Number(parts.find(p => p.type === 'day').value);
+  // 00:00 WIB = 17:00 UTC hari sebelumnya (WIB = UTC+7, tanpa DST)
+  const mulai = new Date(Date.UTC(tahun, bulan - 1, hari, -7, 0, 0, 0));
+  const selesai = new Date(Date.UTC(tahun, bulan - 1, hari, 17, 0, 0, 0));
+  return { mulai, selesai };
 };
 
 // Helper: hitung jarak antar 2 koordinat GPS pakai formula Haversine, hasil dalam meter.
@@ -94,6 +113,19 @@ router.post('/absen', async (req, res) => {
       return res.status(400).json({ message: 'Data lokasi GPS tidak valid!' });
     }
 
+    // Cegah absen dobel: karyawan hanya boleh 1x Absen Masuk dan 1x Absen Pulang per hari (WIB).
+    const { mulai: mulaiHariIni, selesai: selesaiHariIni } = getRentangHariIniWIB();
+    const sudahAbsenHariIni = await Absensi.findOne({
+      karyawan_id,
+      status,
+      waktu_absen: { $gte: mulaiHariIni, $lt: selesaiHariIni }
+    });
+    if (sudahAbsenHariIni) {
+      return res.status(400).json({
+        message: `Anda sudah melakukan Absen ${status} hari ini. Tidak bisa absen ${status} lagi hari ini.`
+      });
+    }
+
     let keterangan = "Normal";
     // Pengecekan status terlambat hanya dihitung saat karyawan melakukan "Absen Masuk"
     if (status === "Masuk") {
@@ -126,9 +158,28 @@ router.post('/absen', async (req, res) => {
       }
     }
 
-    // Pembuatan dokumen log baru ke MongoDB Atlas
+    // Upload foto (base64 dataURL dari kamera HP) ke Cloudinary DULU, sebelum disimpan ke MongoDB.
+    // Cloudinary bisa langsung menerima string base64 sebagai sumber file (tidak perlu multer/multipart
+    // di endpoint ini karena frontend memang mengirimnya sebagai JSON, bukan form-data).
+    // Yang disimpan ke MongoDB nantinya cuma URL-nya (pendek), bukan string base64 (bisa ratusan KB).
+    let fotoUrl;
+    let fotoPublicId;
+    try {
+      const hasilUpload = await cloudinary.uploader.upload(foto, {
+        folder: 'absensi', // semua foto absen dikumpulkan rapi dalam 1 folder di Cloudinary
+        resource_type: 'image',
+      });
+      fotoUrl = hasilUpload.secure_url;
+      fotoPublicId = hasilUpload.public_id;
+    } catch (uploadError) {
+      return res.status(502).json({ message: 'Gagal mengunggah foto absensi ke penyimpanan cloud', error: uploadError.message });
+    }
+
+    // Pembuatan dokumen log baru ke MongoDB Atlas (foto disimpan sebagai URL Cloudinary)
     const absenBaru = new Absensi({
-      karyawan_id, nama, status, shift, keterangan, foto,
+      karyawan_id, nama, status, shift, keterangan,
+      foto: fotoUrl,
+      foto_public_id: fotoPublicId,
       lokasi: { latitude: lat, longitude: lng, alamat: alamat || '' }
     });
     await absenBaru.save();

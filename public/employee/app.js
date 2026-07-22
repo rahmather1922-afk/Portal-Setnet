@@ -42,6 +42,7 @@ function SubHeader({ title, onBack }) {
 // ==================== MENU UTAMA (DASHBOARD) ====================
 function MenuDashboard({ userSession, onNavigate, onLogout }) {
     const [rekap, setRekap] = React.useState({ hadir: 0, terlambat: 0 });
+    const [notifBelumDibaca, setNotifBelumDibaca] = React.useState(0);
     const now = new Date();
 
     React.useEffect(() => {
@@ -69,6 +70,28 @@ function MenuDashboard({ userSession, onNavigate, onLogout }) {
         return () => { batal = true; };
     }, []);
 
+    // Ambil jumlah notifikasi (kasbon + cuti/izin/sakit) yang sudah diputuskan Owner/HRD
+    // tapi belum dibaca karyawan, untuk badge titik merah di ikon lonceng.
+    React.useEffect(() => {
+        let batal = false;
+        (async () => {
+            try {
+                const [resKasbon, resPengajuan] = await Promise.all([
+                    fetch(`${API_BASE}/kasbon/notifikasi/${userSession.karyawan_id}`),
+                    fetch(`${API_BASE}/pengajuan/notifikasi/${userSession.karyawan_id}`)
+                ]);
+                const dataKasbon = await resKasbon.json();
+                const dataPengajuan = await resPengajuan.json();
+                if (batal) return;
+                const belumDibaca =
+                    (Array.isArray(dataKasbon) ? dataKasbon.filter(k => !k.notif_dibaca).length : 0) +
+                    (Array.isArray(dataPengajuan) ? dataPengajuan.filter(p => !p.notif_dibaca).length : 0);
+                setNotifBelumDibaca(belumDibaca);
+            } catch (err) { /* diam-diam gagal, badge tetap 0 */ }
+        })();
+        return () => { batal = true; };
+    }, [userSession.karyawan_id]);
+
     const MENU_ITEMS = [
         { key: 'Absensi', label: 'Absensi', icon: '📷', bg: 'bg-blue-100 text-blue-600' },
         { key: 'Form', label: 'Form', icon: '📝', bg: 'bg-violet-100 text-violet-600' },
@@ -81,7 +104,14 @@ function MenuDashboard({ userSession, onNavigate, onLogout }) {
             <div class="bg-blue-900 rounded-2xl px-5 pt-5 pb-8 shadow-xl relative overflow-hidden">
                 <div class="flex items-center justify-between mb-4">
                     <span class="text-white font-black tracking-wide text-sm">SETNET <span class="text-blue-300">Mobile</span></span>
-                    <span class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white text-sm">🔔</span>
+                    <button type="button" onClick={() => onNavigate('Notifikasi')} class="relative w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white text-sm">
+                        🔔
+                        {notifBelumDibaca > 0 && (
+                            <span class="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 border border-blue-900 text-white text-[9px] font-black flex items-center justify-center">
+                                {notifBelumDibaca > 9 ? '9+' : notifBelumDibaca}
+                            </span>
+                        )}
+                    </button>
                 </div>
                 <h1 class="text-white font-black text-lg leading-tight">{userSession.nama}</h1>
                 <p class="text-blue-200 text-xs font-mono font-bold mb-1">ID: {userSession.karyawan_id}</p>
@@ -564,12 +594,104 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
     );
 }
 
+// Batas waktu tidak ada aktivitas (idle) sebelum user otomatis di-logout paksa.
+// Diset 90 menit (di tengah rentang 1-2 jam yang diminta).
+const IDLE_LOGOUT_MS = 90 * 60 * 1000;
+
+// ==================== TAB: NOTIFIKASI (KASBON / CUTI / IZIN / SAKIT YANG SUDAH DIPUTUSKAN) ====================
+function NotifikasiPanel({ userSession, onBack }) {
+    const [daftar, setDaftar] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
+    const [gagal, setGagal] = React.useState(false);
+
+    const muatNotifikasi = React.useCallback(async () => {
+        setLoading(true); setGagal(false);
+        try {
+            const [resKasbon, resPengajuan] = await Promise.all([
+                fetch(`${API_BASE}/kasbon/notifikasi/${userSession.karyawan_id}`),
+                fetch(`${API_BASE}/pengajuan/notifikasi/${userSession.karyawan_id}`)
+            ]);
+            if (!resKasbon.ok || !resPengajuan.ok) throw new Error('Gagal memuat');
+            const dataKasbon = await resKasbon.json();
+            const dataPengajuan = await resPengajuan.json();
+
+            // Gabungkan notifikasi Kasbon + Cuti/Izin/Sakit jadi satu daftar, urut terbaru dulu
+            const gabungan = [
+                ...(Array.isArray(dataKasbon) ? dataKasbon.map(k => ({
+                    _id: k._id, tipe: 'kasbon', jenisLabel: 'Kasbon', status: k.status,
+                    catatan_admin: k.catatan_admin, tanggal_keputusan: k.tanggal_keputusan,
+                    notif_dibaca: k.notif_dibaca,
+                    detail: formatRupiah(k.jumlah)
+                })) : []),
+                ...(Array.isArray(dataPengajuan) ? dataPengajuan.map(p => ({
+                    _id: p._id, tipe: 'pengajuan', jenisLabel: p.jenis, status: p.status,
+                    catatan_admin: p.catatan_admin, tanggal_keputusan: p.tanggal_keputusan,
+                    notif_dibaca: p.notif_dibaca,
+                    detail: `${new Date(p.tanggal_mulai).toLocaleDateString('id-ID')} — ${new Date(p.tanggal_selesai).toLocaleDateString('id-ID')}`
+                })) : [])
+            ].sort((a, b) => new Date(b.tanggal_keputusan || 0) - new Date(a.tanggal_keputusan || 0));
+
+            setDaftar(gabungan);
+
+            // Tandai semua notifikasi yang baru ditampilkan sebagai sudah dibaca (best-effort, diam-diam kalau gagal)
+            const belumDibaca = gabungan.filter(n => !n.notif_dibaca);
+            belumDibaca.forEach(n => {
+                const endpoint = n.tipe === 'kasbon' ? `${API_BASE}/kasbon/${n._id}/baca` : `${API_BASE}/pengajuan/${n._id}/baca`;
+                fetch(endpoint, { method: 'PUT' }).catch(() => {});
+            });
+        } catch (err) {
+            setGagal(true);
+        } finally {
+            setLoading(false);
+        }
+    }, [userSession.karyawan_id]);
+
+    React.useEffect(() => { muatNotifikasi(); }, [muatNotifikasi]);
+
+    return (
+        <div class="bg-white p-5 rounded-2xl shadow-xl border border-gray-100 w-full">
+            <SubHeader title="Notifikasi" onBack={onBack} />
+            <div class="space-y-2 max-h-[28rem] overflow-y-auto">
+                {loading && <p class="text-xs text-gray-400 text-center py-4">Memuat notifikasi...</p>}
+                {!loading && gagal && (
+                    <div class="text-center py-4">
+                        <p class="text-xs text-red-500 mb-2">Gagal memuat notifikasi.</p>
+                        <button type="button" onClick={muatNotifikasi} class="text-xs font-bold text-blue-600 underline">Coba Lagi</button>
+                    </div>
+                )}
+                {!loading && !gagal && daftar.length === 0 && (
+                    <p class="text-xs text-gray-400 text-center py-6">Belum ada notifikasi. Notifikasi akan muncul di sini setelah pengajuan Kasbon/Cuti/Izin/Sakit Anda di-ACC atau ditolak Owner.</p>
+                )}
+                {!loading && daftar.map(n => (
+                    <div key={`${n.tipe}-${n._id}`} class={`rounded-xl p-3 border ${n.notif_dibaca ? 'bg-gray-50 border-gray-150' : 'bg-blue-50 border-blue-150'}`}>
+                        <div class="flex justify-between items-start mb-1">
+                            <span class="font-black text-xs text-gray-800 uppercase">{n.jenisLabel}</span>
+                            <StatusBadge status={n.status} />
+                        </div>
+                        <p class="text-xs text-gray-600 font-semibold mb-1">{n.detail}</p>
+                        <p class={`text-[11px] font-bold ${n.status === 'Disetujui' ? 'text-green-600' : 'text-red-600'}`}>
+                            {n.status === 'Disetujui'
+                                ? `✅ Pengajuan ${n.jenisLabel} Anda telah di-ACC Owner`
+                                : `❌ Pengajuan ${n.jenisLabel} Anda ditolak Owner`}
+                        </p>
+                        {n.catatan_admin && <p class="text-[10px] text-gray-500 mt-1">Catatan: {n.catatan_admin}</p>}
+                        {n.tanggal_keputusan && (
+                            <p class="text-[10px] font-mono text-gray-400 mt-1">{new Date(n.tanggal_keputusan).toLocaleString('id-ID')}</p>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 function AppAbsensi() {
     const SESSION_KEY = 'setnet_absensi_session';
     const [isLoggedIn, setIsLoggedIn] = React.useState(false);
     const [userSession, setUserSession] = React.useState(null);
-    const [tabAktif, setTabAktif] = React.useState('Menu'); // Menu | Absensi | Form | Riwayat
+    const [tabAktif, setTabAktif] = React.useState('Menu'); // Menu | Absensi | Form | Riwayat | Notifikasi
     const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
+    const idleTimerRef = React.useRef(null);
 
     const [karyawanId, setKaryawanId] = React.useState('');
     const [password, setPassword] = React.useState('');
@@ -663,6 +785,42 @@ function AppAbsensi() {
         setShowLogoutConfirm(false);
         try { localStorage.removeItem(SESSION_KEY); } catch (err) { /* abaikan jika penyimpanan lokal tidak tersedia */ }
     };
+
+    // Logout otomatis (paksa, tanpa modal konfirmasi) karena user meninggalkan halaman
+    // tanpa aktivitas apa pun selama IDLE_LOGOUT_MS. User harus login ulang setelah ini.
+    const handleAutoLogout = React.useCallback(() => {
+        matikanKamera();
+        setIsLoggedIn(false);
+        setUserSession(null);
+        setTabAktif('Menu');
+        setKaryawanId('');
+        setPassword('');
+        setShowLogoutConfirm(false);
+        try { localStorage.removeItem(SESSION_KEY); } catch (err) { /* abaikan jika penyimpanan lokal tidak tersedia */ }
+        setPesan('⏰ Sesi Anda berakhir karena tidak ada aktivitas. Silakan login kembali.');
+    }, []);
+
+    // Pantau aktivitas user (klik, ketik, sentuh, scroll) selama sudah login.
+    // Setiap ada aktivitas, timer idle direset. Kalau timer habis (tidak ada
+    // aktivitas sama sekali selama IDLE_LOGOUT_MS), user otomatis di-logout.
+    React.useEffect(() => {
+        if (!isLoggedIn) {
+            if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+            return;
+        }
+        const resetTimerIdle = () => {
+            if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+            idleTimerRef.current = setTimeout(handleAutoLogout, IDLE_LOGOUT_MS);
+        };
+        const daftarEvent = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+        daftarEvent.forEach(ev => window.addEventListener(ev, resetTimerIdle, { passive: true }));
+        resetTimerIdle(); // mulai hitung sejak login / halaman dibuka
+
+        return () => {
+            daftarEvent.forEach(ev => window.removeEventListener(ev, resetTimerIdle));
+            if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+        };
+    }, [isLoggedIn, handleAutoLogout]);
 
     // Kamera & GPS hanya aktif ketika berada di halaman Absensi
     React.useEffect(() => {
@@ -793,6 +951,8 @@ function AppAbsensi() {
         konten = <PengajuanPanel userSession={userSession} onBack={() => setTabAktif('Menu')} />;
     } else if (tabAktif === 'Riwayat') {
         konten = <RiwayatAbsensiPanel userSession={userSession} onBack={() => setTabAktif('Menu')} />;
+    } else if (tabAktif === 'Notifikasi') {
+        konten = <NotifikasiPanel userSession={userSession} onBack={() => setTabAktif('Menu')} />;
     } else {
         konten = <MenuDashboard userSession={userSession} onNavigate={setTabAktif} onLogout={requestLogout} />;
     }
