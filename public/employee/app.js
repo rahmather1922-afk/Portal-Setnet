@@ -518,9 +518,26 @@ function PengajuanPanel({ userSession, onBack }) {
 }
 
 // ==================== TAB: ABSENSI (KAMERA) ====================
-function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelectedShift, loading, handleAbsen, modalData, setModalData, onSelesai, lokasi, cariLokasi }) {
+function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelectedShift, loading, handleAbsen, modalData, setModalData, onSelesai, lokasi, cariLokasi, statusHariIni, statusHariIniLoading }) {
     const gpsSiap = lokasi.status === 'siap';
-    const tombolTerkunci = loading || !gpsSiap;
+    const tombolDasarTerkunci = loading || !gpsSiap || statusHariIniLoading;
+
+    // Aturan kunci tombol:
+    // - "Absen Masuk" terkunci kalau hari ini SUDAH absen masuk (tidak bisa absen masuk 2x / ganti shift)
+    // - "Absen Pulang" terkunci kalau BELUM absen masuk (harus masuk dulu baru bisa pulang),
+    //   atau kalau hari ini SUDAH absen pulang juga (sudah selesai, tidak bisa pulang 2x)
+    const masukTerkunci = tombolDasarTerkunci || statusHariIni.sudahMasuk;
+    const pulangTerkunci = tombolDasarTerkunci || !statusHariIni.sudahMasuk || statusHariIni.sudahPulang;
+
+    // Pilihan shift dikunci begitu sudah Absen Masuk hari ini, supaya konsisten sampai Absen Pulang
+    const shiftTerkunci = statusHariIni.sudahMasuk;
+
+    const kelasTombolShift = (aktif, terkunci) => {
+        if (terkunci && !aktif) return 'bg-gray-100 text-gray-300 border-gray-100 cursor-not-allowed';
+        if (aktif) return 'bg-blue-600 text-white border-blue-600 shadow-sm';
+        return 'bg-white text-gray-700 border-gray-200';
+    };
+
     return (
         <div class="bg-white p-5 rounded-2xl shadow-xl border border-gray-100 text-center w-full relative">
             <SubHeader title="Absensi" onBack={onBack} />
@@ -546,27 +563,44 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
                 )}
             </div>
 
+            {/* STATUS ABSEN HARI INI: kasih tahu karyawan sudah sampai tahap mana */}
+            {!statusHariIniLoading && (statusHariIni.sudahMasuk || statusHariIni.sudahPulang) && (
+                <div class={`mb-4 text-left rounded-xl p-3 border ${statusHariIni.sudahPulang ? 'bg-blue-50 border-blue-150' : 'bg-green-50 border-green-150'}`}>
+                    <p class={`text-[11px] font-black uppercase ${statusHariIni.sudahPulang ? 'text-blue-700' : 'text-green-700'}`}>
+                        {statusHariIni.sudahPulang ? '✅ Absensi Hari Ini Selesai' : '✅ Sudah Absen Masuk'}
+                    </p>
+                    <p class="text-[10px] text-gray-500">
+                        {statusHariIni.sudahPulang
+                            ? 'Anda sudah Absen Masuk dan Absen Pulang hari ini. Sampai jumpa besok!'
+                            : `Shift terkunci di "${statusHariIni.shift}". Tinggal klik Absen Pulang saat selesai kerja.`}
+                    </p>
+                </div>
+            )}
+
             <div class="mb-5 text-left bg-gray-50 p-3 rounded-xl border border-gray-150">
                 <label class="block text-xs font-bold text-gray-600 uppercase mb-2 tracking-wide text-center">PILIH JADWAL SHIFT ANDA HARI INI:</label>
                 <div class="grid grid-cols-3 gap-2">
-                    <button type="button" onClick={() => setSelectedShift('Shift 1')} class={`py-2 rounded-lg text-xs font-bold border transition ${selectedShift === 'Shift 1' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-200'}`}>
+                    <button type="button" disabled={shiftTerkunci} onClick={() => setSelectedShift('Shift 1')} class={`py-2 rounded-lg text-xs font-bold border transition ${kelasTombolShift(selectedShift === 'Shift 1', shiftTerkunci)}`}>
                         Shift 1 <span class="block text-[9px] font-medium opacity-80">07:00</span>
                     </button>
-                    <button type="button" onClick={() => setSelectedShift('Shift 2')} class={`py-2 rounded-lg text-xs font-bold border transition ${selectedShift === 'Shift 2' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-200'}`}>
+                    <button type="button" disabled={shiftTerkunci} onClick={() => setSelectedShift('Shift 2')} class={`py-2 rounded-lg text-xs font-bold border transition ${kelasTombolShift(selectedShift === 'Shift 2', shiftTerkunci)}`}>
                         Shift 2 <span class="block text-[9px] font-medium opacity-80">15:00</span>
                     </button>
-                    <button type="button" onClick={() => setSelectedShift('Non-Shift')} class={`py-2 rounded-lg text-xs font-bold border transition ${selectedShift === 'Non-Shift' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-200'}`}>
+                    <button type="button" disabled={shiftTerkunci} onClick={() => setSelectedShift('Non-Shift')} class={`py-2 rounded-lg text-xs font-bold border transition ${kelasTombolShift(selectedShift === 'Non-Shift', shiftTerkunci)}`}>
                         Regular <span class="block text-[9px] font-medium opacity-80">09:00</span>
                     </button>
                 </div>
+                {shiftTerkunci && (
+                    <p class="text-[10px] text-gray-400 mt-2 text-center">🔒 Shift terkunci karena sudah Absen Masuk hari ini.</p>
+                )}
             </div>
 
             <div class="grid grid-cols-2 gap-3">
-                <button onClick={() => handleAbsen('Masuk')} disabled={tombolTerkunci} class="bg-green-600 hover:bg-green-700 text-white font-extrabold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-300 text-sm">
-                    {loading ? 'Memproses...' : 'ABSEN MASUK'}
+                <button onClick={() => handleAbsen('Masuk')} disabled={masukTerkunci} class="bg-green-600 hover:bg-green-700 text-white font-extrabold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-300 disabled:cursor-not-allowed text-sm">
+                    {loading ? 'Memproses...' : statusHariIni.sudahMasuk ? '✓ SUDAH ABSEN MASUK' : 'ABSEN MASUK'}
                 </button>
-                <button onClick={() => handleAbsen('Pulang')} disabled={tombolTerkunci} class="bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-300 text-sm">
-                    {loading ? 'Memproses...' : 'ABSEN PULANG'}
+                <button onClick={() => handleAbsen('Pulang')} disabled={pulangTerkunci} class="bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-300 disabled:cursor-not-allowed text-sm">
+                    {loading ? 'Memproses...' : statusHariIni.sudahPulang ? '✓ SUDAH ABSEN PULANG' : 'ABSEN PULANG'}
                 </button>
             </div>
 
@@ -709,6 +743,32 @@ function AppAbsensi() {
     // status: 'idle' | 'mencari' | 'siap' | 'gagal'
     const [lokasi, setLokasi] = React.useState({ status: 'idle', latitude: null, longitude: null, alamat: '' });
 
+    // Status absen HARI INI (WIB): dipakai untuk mengunci tombol "Absen Masuk" setelah
+    // sudah absen masuk (biar tidak bisa absen masuk 2x / ganti shift), dan mengunci
+    // tombol "Absen Pulang" sampai karyawan sudah absen masuk dulu.
+    const [statusHariIni, setStatusHariIni] = React.useState({ sudahMasuk: false, sudahPulang: false, shift: null });
+    const [statusHariIniLoading, setStatusHariIniLoading] = React.useState(true);
+
+    const muatStatusHariIni = React.useCallback(async () => {
+        if (!userSession) return;
+        setStatusHariIniLoading(true);
+        try {
+            const res = await fetch(`${API_BASE}/absen/status-hari-ini/${userSession.karyawan_id}`);
+            const data = await res.json();
+            setStatusHariIni(data);
+            // Kalau sudah absen masuk hari ini, kunci pilihan shift ke shift yang dipakai saat itu
+            if (data.sudahMasuk && data.shift) {
+                setSelectedShift(data.shift);
+            }
+        } catch (err) {
+            // Diam-diam gagal — anggap belum absen supaya tidak salah memblokir user.
+            // (Server tetap jadi penjaga terakhir kalau ternyata sudah absen.)
+            setStatusHariIni({ sudahMasuk: false, sudahPulang: false, shift: null });
+        } finally {
+            setStatusHariIniLoading(false);
+        }
+    }, [userSession]);
+
     const cariLokasi = React.useCallback(() => {
         if (!navigator.geolocation) {
             setLokasi({ status: 'gagal', latitude: null, longitude: null, alamat: '' });
@@ -827,11 +887,12 @@ function AppAbsensi() {
         if (isLoggedIn && tabAktif === 'Absensi') {
             bukaKamera();
             cariLokasi();
+            muatStatusHariIni();
         } else {
             matikanKamera();
         }
         return () => matikanKamera();
-    }, [isLoggedIn, tabAktif]);
+    }, [isLoggedIn, tabAktif, muatStatusHariIni]);
 
     const bukaKamera = async () => {
         try {
@@ -861,6 +922,15 @@ function AppAbsensi() {
         }
         if (lokasi.status !== 'siap') {
             return alert("⚠️ Lokasi GPS belum aktif/ditemukan. Mohon izinkan akses lokasi lalu coba lagi!");
+        }
+        if (statusAbsen === 'Masuk' && statusHariIni.sudahMasuk) {
+            return alert("⚠️ Anda sudah Absen Masuk hari ini. Tidak bisa Absen Masuk lagi.");
+        }
+        if (statusAbsen === 'Pulang' && !statusHariIni.sudahMasuk) {
+            return alert("⚠️ Anda belum Absen Masuk hari ini. Silakan Absen Masuk terlebih dahulu.");
+        }
+        if (statusAbsen === 'Pulang' && statusHariIni.sudahPulang) {
+            return alert("⚠️ Anda sudah Absen Pulang hari ini.");
         }
         setLoading(true);
 
@@ -896,6 +966,18 @@ function AppAbsensi() {
                     keterangan: result.data.keterangan,
                     status: result.data.status
                 });
+                // Update status hari ini secara langsung, supaya tombol yang baru dipakai
+                // langsung terkunci tanpa perlu fetch ulang ke server.
+                setStatusHariIni(prev => ({
+                    sudahMasuk: prev.sudahMasuk || statusAbsen === 'Masuk',
+                    sudahPulang: prev.sudahPulang || statusAbsen === 'Pulang',
+                    shift: prev.shift || (statusAbsen === 'Masuk' ? selectedShift : prev.shift)
+                }));
+            } else if (response.status === 400 && result.message) {
+                // Kasus race-condition: misal 2 tab dibuka bersamaan, atau status hari ini
+                // belum sempat termuat sebelum user klik. Server tetap jadi penjaga terakhir.
+                alert(`⚠️ ${result.message}`);
+                muatStatusHariIni(); // sinkronkan ulang tombol biar tidak nyangkut salah kunci
             }
         } catch (error) {
             alert('❌ Terjadi kesalahan sistem.');
@@ -945,6 +1027,8 @@ function AppAbsensi() {
                 onSelesai={() => { setModalData(null); setTabAktif('Menu'); }}
                 lokasi={lokasi}
                 cariLokasi={cariLokasi}
+                statusHariIni={statusHariIni}
+                statusHariIniLoading={statusHariIniLoading}
             />
         );
     } else if (tabAktif === 'Form') {

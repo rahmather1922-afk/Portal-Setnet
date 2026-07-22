@@ -194,6 +194,35 @@ router.post('/absen', async (req, res) => {
   }
 });
 
+// --- API CEK STATUS ABSEN HARI INI (dipakai frontend untuk mengunci tombol Absen Masuk/Pulang
+//     dan mengunci pilihan shift, supaya karyawan tidak bisa Absen Masuk 2x atau ganti shift
+//     setelah sudah Absen Masuk di hari yang sama) ---
+router.get('/absen/status-hari-ini/:karyawan_id', async (req, res) => {
+  try {
+    const { karyawan_id } = req.params;
+    const { mulai, selesai } = getRentangHariIniWIB();
+
+    const catatanHariIni = await Absensi.find({
+      karyawan_id,
+      waktu_absen: { $gte: mulai, $lt: selesai }
+    }).sort({ waktu_absen: 1 });
+
+    const absenMasuk = catatanHariIni.find(c => c.status === 'Masuk');
+    const absenPulang = catatanHariIni.find(c => c.status === 'Pulang');
+
+    res.status(200).json({
+      sudahMasuk: !!absenMasuk,
+      sudahPulang: !!absenPulang,
+      // Shift dikunci ke shift yang dipakai saat Absen Masuk tadi, supaya konsisten sampai Absen Pulang
+      shift: absenMasuk ? absenMasuk.shift : null,
+      waktuMasuk: absenMasuk ? absenMasuk.waktu_absen : null,
+      waktuPulang: absenPulang ? absenPulang.waktu_absen : null
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal mengambil status absensi hari ini', error: error.message });
+  }
+});
+
 // --- API RIWAYAT ABSENSI MILIK SATU KARYAWAN (dipakai halaman "Kehadiran Bulan Ini" & "Riwayat Absensi" di app mobile) ---
 router.get('/absen/mine/:karyawan_id', async (req, res) => {
   try {
