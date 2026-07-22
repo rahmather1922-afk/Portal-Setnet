@@ -1,7 +1,7 @@
 const API_BASE = '/api';
 
 // Pilihan untuk form pengajuan Kasbon
-const KASBON_REGION_OPTIONS = ["Jakbar", "Jakut", "Jakpus", "Jaksel", "Jaktim", "Bekasi", "Bogor", "Depok", "Bekasi Timur", "Tangerang", "Tangkot"];
+const KASBON_REGION_OPTIONS = ["Jakbar", "Jakut", "Jakpus", "Jaksel", "Jaktim", "Bekasi", "Bogor", "Depok", "Bekasi Timur", "Tangerang", "Tangkot", "Bali"];
 const KASBON_VENDOR_OPTIONS = ["Quantum", "Satu Visi", "BBB"];
 const KASBON_EWALLET_OPTIONS = ["Dana", "OVO", "GoPay", "ShopeePay"];
 const KASBON_BANK_OPTIONS = ["BCA", "BRI", "Mandiri", "Seabank", "Jago", "Dll"];
@@ -581,13 +581,13 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
                 <label class="block text-xs font-bold text-gray-600 uppercase mb-2 tracking-wide text-center">PILIH JADWAL SHIFT ANDA HARI INI:</label>
                 <div class="grid grid-cols-3 gap-2">
                     <button type="button" disabled={shiftTerkunci} onClick={() => setSelectedShift('Shift 1')} class={`py-2 rounded-lg text-xs font-bold border transition ${kelasTombolShift(selectedShift === 'Shift 1', shiftTerkunci)}`}>
-                        Shift 1 <span class="block text-[9px] font-medium opacity-80">07:00</span>
+                        Shift 1 <span class="block text-[9px] font-medium opacity-80">07:00- 16:00</span>
                     </button>
                     <button type="button" disabled={shiftTerkunci} onClick={() => setSelectedShift('Shift 2')} class={`py-2 rounded-lg text-xs font-bold border transition ${kelasTombolShift(selectedShift === 'Shift 2', shiftTerkunci)}`}>
-                        Shift 2 <span class="block text-[9px] font-medium opacity-80">15:00</span>
+                        Shift 2 <span class="block text-[9px] font-medium opacity-80">15:00- 23:59</span>
                     </button>
                     <button type="button" disabled={shiftTerkunci} onClick={() => setSelectedShift('Non-Shift')} class={`py-2 rounded-lg text-xs font-bold border transition ${kelasTombolShift(selectedShift === 'Non-Shift', shiftTerkunci)}`}>
-                        Regular <span class="block text-[9px] font-medium opacity-80">09:00</span>
+                        Regular <span class="block text-[9px] font-medium opacity-80">09:00 - 18:00</span>
                     </button>
                 </div>
                 {shiftTerkunci && (

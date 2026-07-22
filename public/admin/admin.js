@@ -332,6 +332,271 @@ const PhotoModal = ({ data, onClose }) => {
   );
 };
 
+/* ---------------------------------- IMPORT KARYAWAN DARI EXCEL ---------------------------------- */
+// Path file template Excel di server. Taruh file "Template_Import_Karyawan.xlsx"
+// di folder public backend kamu pada path ini (sama polanya dengan AVATAR_DEFAULT_SRC di atas).
+// Sesuaikan path-nya kalau kamu taruh di lokasi lain.
+const TEMPLATE_IMPORT_KARYAWAN_SRC = "/admin/assets/Template_Import_Karyawan.xlsx";
+
+const ImportKaryawanModal = ({ open, onClose, apiUrl, authHeaders, onSuccess, notify }) => {
+  const [step, setStep] = useState("upload"); // upload -> preview -> done
+  const [file, setFile] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [previewRows, setPreviewRows] = useState([]);
+  const [summary, setSummary] = useState({ total: 0, valid: 0, invalid: 0 });
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [loadingConfirm, setLoadingConfirm] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const resetState = () => {
+    setStep("upload"); setFile(null); setDragOver(false); setPreviewRows([]);
+    setSummary({ total: 0, valid: 0, invalid: 0 }); setLoadingPreview(false);
+    setLoadingConfirm(false); setError(""); setResult(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+  const handleClose = () => { resetState(); onClose(); };
+
+  const pilihFile = (f) => {
+    if (!f) return;
+    const namaCocok = /\.(xlsx|xls)$/i.test(f.name);
+    if (!namaCocok) { setError("File harus berformat .xlsx atau .xls"); return; }
+    setError(""); setFile(f);
+  };
+
+  const handleUploadPreview = async () => {
+    if (!file) { setError("Pilih file Excel terlebih dahulu"); return; }
+    setLoadingPreview(true); setError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      // JANGAN set Content-Type manual untuk FormData — browser yang atur boundary-nya sendiri
+      const res = await fetch(`${apiUrl}/import-karyawan/preview`, { method: "POST", headers: authHeaders(), body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Gagal memvalidasi file");
+      setPreviewRows(data.rows || []);
+      setSummary({ total: data.total || 0, valid: data.valid || 0, invalid: data.invalid || 0 });
+      setStep("preview");
+    } catch (err) {
+      setError(err.message || "Terjadi kesalahan saat membaca file");
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    const rowsValid = previewRows.filter(r => r.valid);
+    if (rowsValid.length === 0) { setError("Tidak ada baris valid untuk disimpan"); return; }
+    setLoadingConfirm(true); setError("");
+    try {
+      const payload = rowsValid.map(r => ({
+        karyawan_id: r.data.karyawan_id,
+        nama: r.data.nama,
+        password: r._password,
+        role: r.data.role,
+        alamat: r.data.alamat,
+        nik: r.data.nik,
+        tanggal_lahir: r.data.tanggal_lahir,
+        no_telp: r.data.no_telp,
+        cabang: r.data.cabang,
+      }));
+      const res = await fetch(`${apiUrl}/import-karyawan/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ rows: payload }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Gagal menyimpan data");
+      setResult(data);
+      setStep("done");
+      onSuccess && onSuccess();
+      notify && notify(`Import selesai: ${data.total_berhasil} berhasil, ${data.total_gagal} gagal`, data.total_gagal > 0 ? "info" : "success");
+    } catch (err) {
+      setError(err.message || "Terjadi kesalahan saat menyimpan data");
+    } finally {
+      setLoadingConfirm(false);
+    }
+  };
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[92] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.5)" }} onClick={handleClose}>
+      <div className="modal-in bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b flex items-center justify-between shrink-0" style={{ borderColor: "var(--border)" }}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--green-soft)", color: "var(--green)" }}>
+              <IconFileExcel className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <h3 className="font-bold font-display text-sm" style={{ color: "var(--ink)" }}>Import Karyawan dari Excel</h3>
+              <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>Tambah banyak anggota sekaligus lewat file Excel</p>
+            </div>
+          </div>
+          <button onClick={handleClose} className="p-1.5 rounded-lg hover:bg-gray-100"><IconX className="w-4 h-4" style={{ color: "var(--ink-soft)" }} /></button>
+        </div>
+
+        <div className="p-5 overflow-y-auto flex-1">
+          {step === "upload" && (
+            <div className="space-y-4">
+              <a href={TEMPLATE_IMPORT_KARYAWAN_SRC} download
+                className="flex items-center justify-between p-3.5 rounded-xl border-2 border-dashed hover:bg-gray-50 transition"
+                style={{ borderColor: "var(--border)" }}>
+                <div className="flex items-center gap-2.5">
+                  <IconDownload className="w-4 h-4" style={{ color: "var(--brand-dark)" }} />
+                  <div>
+                    <p className="text-xs font-bold" style={{ color: "var(--ink)" }}>Download Template Excel</p>
+                    <p className="text-[10px]" style={{ color: "var(--ink-soft)" }}>Isi data karyawan sesuai format template ini</p>
+                  </div>
+                </div>
+              </a>
+
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={e => { e.preventDefault(); setDragOver(false); pilihFile(e.dataTransfer.files?.[0]); }}
+                onClick={() => fileInputRef.current?.click()}
+                className="p-6 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition text-center"
+                style={{ borderColor: dragOver ? "var(--brand)" : "var(--border)", background: dragOver ? "var(--brand-soft)" : "transparent" }}>
+                <IconFileExcel className="w-6 h-6" style={{ color: file ? "var(--green)" : "var(--ink-soft)" }} />
+                {file ? (
+                  <p className="text-xs font-bold" style={{ color: "var(--ink)" }}>{file.name}</p>
+                ) : (
+                  <>
+                    <p className="text-xs font-bold" style={{ color: "var(--ink)" }}>Klik untuk pilih file, atau drag & drop di sini</p>
+                    <p className="text-[10px]" style={{ color: "var(--ink-soft)" }}>Format .xlsx atau .xls, sesuai template di atas</p>
+                  </>
+                )}
+                <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden"
+                  onChange={e => pilihFile(e.target.files?.[0])} />
+              </div>
+
+              {error && (
+                <p className="text-[11px] font-semibold flex items-center gap-1.5" style={{ color: "var(--red)" }}>
+                  <IconAlert className="w-3.5 h-3.5 shrink-0" /> {error}
+                </p>
+              )}
+            </div>
+          )}
+
+          {step === "preview" && (
+            <div className="space-y-3.5">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl p-3 text-center" style={{ background: "var(--canvas)" }}>
+                  <p className="text-lg font-bold font-display" style={{ color: "var(--ink)" }}>{summary.total}</p>
+                  <p className="text-[10px] font-bold uppercase" style={{ color: "var(--ink-soft)" }}>Total Baris</p>
+                </div>
+                <div className="rounded-xl p-3 text-center" style={{ background: "var(--green-soft)" }}>
+                  <p className="text-lg font-bold font-display" style={{ color: "var(--green)" }}>{summary.valid}</p>
+                  <p className="text-[10px] font-bold uppercase" style={{ color: "var(--green)" }}>Valid</p>
+                </div>
+                <div className="rounded-xl p-3 text-center" style={{ background: "var(--red-soft)" }}>
+                  <p className="text-lg font-bold font-display" style={{ color: "var(--red)" }}>{summary.invalid}</p>
+                  <p className="text-[10px] font-bold uppercase" style={{ color: "var(--red)" }}>Bermasalah</p>
+                </div>
+              </div>
+
+              <div className="border rounded-xl overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                  <table className="w-full text-left border-collapse text-[11px] min-w-[560px]">
+                    <thead className="sticky top-0">
+                      <tr className="border-b font-bold uppercase tracking-wide" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                        <th className="p-2.5">Baris</th>
+                        <th className="p-2.5">ID</th>
+                        <th className="p-2.5">Nama</th>
+                        <th className="p-2.5">Role</th>
+                        <th className="p-2.5">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
+                      {previewRows.map(r => (
+                        <tr key={r.baris} style={{ background: r.valid ? "transparent" : "var(--red-soft)" }}>
+                          <td className="p-2.5 font-mono" style={{ color: "var(--ink-soft)" }}>{r.baris}</td>
+                          <td className="p-2.5 font-semibold" style={{ color: "var(--ink)" }}>{r.data.karyawan_id || "—"}</td>
+                          <td className="p-2.5" style={{ color: "var(--ink)" }}>{r.data.nama || "—"}</td>
+                          <td className="p-2.5" style={{ color: "var(--ink-soft)" }}>{r.data.role}</td>
+                          <td className="p-2.5">
+                            {r.valid ? (
+                              <span className="inline-flex items-center gap-1 font-bold" style={{ color: "var(--green)" }}><IconCheck className="w-3 h-3" /> Valid</span>
+                            ) : (
+                              <span className="font-semibold" style={{ color: "var(--red)" }} title={r.errors.join(", ")}>
+                                {r.errors.join(", ")}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>
+                Periksa kembali data di atas. Baris berwarna merah <strong>tidak akan diimpor</strong> — hanya {summary.valid} baris valid yang akan disimpan ke database saat Anda menekan "Konfirmasi & Simpan".
+              </p>
+              {error && (
+                <p className="text-[11px] font-semibold flex items-center gap-1.5" style={{ color: "var(--red)" }}>
+                  <IconAlert className="w-3.5 h-3.5 shrink-0" /> {error}
+                </p>
+              )}
+            </div>
+          )}
+
+          {step === "done" && result && (
+            <div className="space-y-4">
+              <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: result.total_gagal > 0 ? "var(--amber-soft)" : "var(--green-soft)" }}>
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "white", color: result.total_gagal > 0 ? "var(--amber)" : "var(--green)" }}>
+                  <IconCheck className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: "var(--ink)" }}>{result.total_berhasil} karyawan berhasil ditambahkan</p>
+                  {result.total_gagal > 0 && <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{result.total_gagal} baris gagal disimpan, lihat rincian di bawah.</p>}
+                </div>
+              </div>
+
+              {result.gagal && result.gagal.length > 0 && (
+                <div className="border rounded-xl overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                  <div className="max-h-56 overflow-y-auto divide-y" style={{ borderColor: "var(--border)" }}>
+                    {result.gagal.map((g, i) => (
+                      <div key={i} className="p-2.5 flex items-center justify-between text-[11px]">
+                        <span className="font-semibold" style={{ color: "var(--ink)" }}>{g.karyawan_id}</span>
+                        <span style={{ color: "var(--red)" }}>{g.alasan}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="p-5 border-t flex gap-2 shrink-0" style={{ borderColor: "var(--border)" }}>
+          {step === "upload" && (
+            <>
+              <button onClick={handleClose} className="flex-1 py-2.5 rounded-xl border font-semibold text-xs hover:bg-gray-50" style={{ borderColor: "var(--border)" }}>Batal</button>
+              <button onClick={handleUploadPreview} disabled={!file || loadingPreview}
+                className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white disabled:opacity-60" style={{ background: "var(--brand)" }}>
+                {loadingPreview ? "Memvalidasi..." : "Upload & Validasi"}
+              </button>
+            </>
+          )}
+          {step === "preview" && (
+            <>
+              <button onClick={resetState} className="flex-1 py-2.5 rounded-xl border font-semibold text-xs hover:bg-gray-50" style={{ borderColor: "var(--border)" }}>Upload Ulang</button>
+              <button onClick={handleConfirm} disabled={summary.valid === 0 || loadingConfirm}
+                className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white disabled:opacity-60" style={{ background: "var(--green)" }}>
+                {loadingConfirm ? "Menyimpan..." : `Konfirmasi & Simpan (${summary.valid})`}
+              </button>
+            </>
+          )}
+          {step === "done" && (
+            <button onClick={handleClose} className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white" style={{ background: "var(--brand)" }}>Selesai</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ---------------------------------- INVOICE PRINT VIEW ---------------------------------- */
 const InvoicePrintView = ({ invoice }) => {
   if (!invoice) return null;
@@ -531,8 +796,8 @@ const MATERIAL_API = "/api";
 // Preset pilihan dropdown Master Material & Pemakaian Teknisi — bisa ditambah/kurangi sesuai kebutuhan.
 const KABEL_METER_PRESETS = [50, 80, 100, 150, 200, 250];
 const ONT_MEREK_PRESETS = ["ZTE", "Huawei", "Nokia", "Pejas"];
-const PROJECT_PRESETS = ["AMT", "FS", "LinkNet"];
-const REGION_PRESETS = ["Jakbar", "Jakut", "Jakpus", "Jaksel", "Jaktim", "Bekasi", "Bogor", "Depok", "Bekasi Timur", "Tangerang", "Tangkot"];
+const PROJECT_PRESETS = ["AMT", "FS", "LinkNet", "Hifi"];
+const REGION_PRESETS = ["Jakbar", "Jakut", "Jakpus", "Jaksel", "Jaktim", "Bekasi", "Bogor", "Depok", "Bekasi Timur", "Tangerang", "Tangkot", "Bali"];
 const VENDOR_PRESETS = ["Quantum", "Satu Visi", "BBB"];
 
 function DashboardAdmin({ session, onLogout }) {
@@ -564,6 +829,7 @@ function DashboardAdmin({ session, onLogout }) {
   };
 
   const [karyawanList, setKaryawanList] = useState([]);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [rekapAbsen, setRekapAbsen] = useState([]);
   const [loading, setLoading] = useState(true);
   const [online, setOnline] = useState(true);
@@ -601,8 +867,11 @@ function DashboardAdmin({ session, onLogout }) {
   const [sortDir, setSortDir] = useState("asc");
   const [pageKaryawan, setPageKaryawan] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [selectedKaryawanIds, setSelectedKaryawanIds] = useState(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
   const [statusUbahTarget, setStatusUbahTarget] = useState(null); // karyawan yang sedang dikonfirmasi ubah status Aktif/Non Aktif
-  const PAGE_SIZE_K = 6;
+  const [pageSizeKaryawan, setPageSizeKaryawan] = useState(10);
 
   // log controls
   const [searchLog, setSearchLog] = useState("");
@@ -860,6 +1129,56 @@ function DashboardAdmin({ session, onLogout }) {
     }
   };
 
+  // Centang/hapus centang satu baris karyawan (dipakai checkbox per baris di tabel)
+  const toggleSelectKaryawan = (id) => {
+    setSelectedKaryawanIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  // Centang/hapus centang semua baris yang tampil di halaman tabel saat ini
+  const toggleSelectAllKaryawan = () => {
+    setSelectedKaryawanIds(prev => {
+      const semuaTercentang = pagedKaryawan.length > 0 && pagedKaryawan.every(k => prev.has(k._id));
+      const next = new Set(prev);
+      if (semuaTercentang) {
+        pagedKaryawan.forEach(k => next.delete(k._id));
+      } else {
+        pagedKaryawan.forEach(k => next.add(k._id));
+      }
+      return next;
+    });
+  };
+
+  // Hapus banyak karyawan sekaligus berdasarkan checkbox yang dicentang
+  const hapusKaryawanBatch = async () => {
+    if (selectedKaryawanIds.size === 0) return;
+    setBulkDeleteLoading(true);
+    try {
+      const ids = Array.from(selectedKaryawanIds);
+      const res = await fetch(`${API}/karyawan/hapus-batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        notify(`${data.total_dihapus ?? ids.length} karyawan berhasil dihapus`);
+        if (ids.includes(editId)) resetForm();
+        setSelectedKaryawanIds(new Set());
+        muatSemuaData(true);
+      } else {
+        notify(data.message || "Gagal menghapus data terpilih", "error");
+      }
+    } catch {
+      notify("Gagal menghapus data terpilih", "error");
+    } finally {
+      setBulkDeleteLoading(false);
+      setBulkDeleteOpen(false);
+    }
+  };
+
   const onSort = (field) => {
     if (sortKey === field) setSortDir(d => (d === "asc" ? "desc" : "asc"));
     else { setSortKey(field); setSortDir("asc"); }
@@ -881,9 +1200,9 @@ function DashboardAdmin({ session, onLogout }) {
     return list;
   }, [karyawanList, searchKaryawan, roleFilterKaryawan, statusFilterKaryawan, sortKey, sortDir]);
 
-  const totalPagesKaryawan = Math.max(1, Math.ceil(filteredKaryawan.length / PAGE_SIZE_K));
-  const pagedKaryawan = filteredKaryawan.slice((pageKaryawan - 1) * PAGE_SIZE_K, pageKaryawan * PAGE_SIZE_K);
-  useEffect(() => { setPageKaryawan(1); }, [searchKaryawan, roleFilterKaryawan, statusFilterKaryawan, sortKey, sortDir]);
+  const totalPagesKaryawan = Math.max(1, Math.ceil(filteredKaryawan.length / pageSizeKaryawan));
+  const pagedKaryawan = filteredKaryawan.slice((pageKaryawan - 1) * pageSizeKaryawan, pageKaryawan * pageSizeKaryawan);
+  useEffect(() => { setPageKaryawan(1); setSelectedKaryawanIds(new Set()); }, [searchKaryawan, roleFilterKaryawan, statusFilterKaryawan, sortKey, sortDir]);
 
   // Ringkasan cepat Master Data Karyawan: total, Aktif, Non Aktif, dan jumlah role Owner
   // (dipakai untuk baris StatCard di atas tabel "Database Karyawan")
@@ -2294,6 +2613,14 @@ function DashboardAdmin({ session, onLogout }) {
         onCancel={() => setDeleteTarget(null)}
       />
       <ConfirmModal
+        open={bulkDeleteOpen}
+        title="Hapus karyawan terpilih?"
+        description={`${selectedKaryawanIds.size} data karyawan yang dicentang akan dihapus permanen dan tidak bisa dikembalikan.`}
+        confirmLabel={bulkDeleteLoading ? "Menghapus..." : "Ya, Hapus Semua"}
+        onConfirm={hapusKaryawanBatch}
+        onCancel={() => !bulkDeleteLoading && setBulkDeleteOpen(false)}
+      />
+      <ConfirmModal
         open={!!finDeleteTarget}
         title="Hapus transaksi keuangan?"
         description={finDeleteTarget ? `Transaksi "${finDeleteTarget.kategori}" senilai ${fmtRupiah(finDeleteTarget.jumlah)} akan dihapus permanen.` : ""}
@@ -2350,6 +2677,14 @@ function DashboardAdmin({ session, onLogout }) {
         onCancel={() => setLogoutConfirmOpen(false)}
       />
       <PhotoModal data={fotoPreview} onClose={() => setFotoPreview(null)} />
+      <ImportKaryawanModal
+        open={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        apiUrl={API}
+        authHeaders={authHeaders}
+        onSuccess={() => muatSemuaData(true)}
+        notify={notify}
+      />
       <InvoicePrintView invoice={invPrintTarget} />
 
       {/* TOP BAR */}
@@ -2653,9 +2988,16 @@ function DashboardAdmin({ session, onLogout }) {
 
               {currentMenu === "crud" && canAccess(session.role, "crud") && (
                 <div className="space-y-6">
-                  <div>
-                    <h1 className="text-2xl font-bold font-display" style={{ color: "var(--ink)" }}>Master Data Karyawan</h1>
-                    <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>Profil lengkap seluruh anggota tim: identitas, NIK KTP, jabatan, cabang, dan hak akses</p>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <h1 className="text-2xl font-bold font-display" style={{ color: "var(--ink)" }}>Master Data Karyawan</h1>
+                      <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>Profil lengkap seluruh anggota tim: identitas, NIK KTP, jabatan, cabang, dan hak akses</p>
+                    </div>
+                    <button onClick={() => setImportModalOpen(true)}
+                      className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-white shadow-sm shrink-0"
+                      style={{ background: "var(--green)" }}>
+                      <IconFileExcel className="w-3.5 h-3.5" /> Import Excel
+                    </button>
                   </div>
 
                   {/* RINGKASAN KARYAWAN */}
@@ -2798,10 +3140,28 @@ function DashboardAdmin({ session, onLogout }) {
                         </button>
                       </div>
                     </div>
+                    {selectedKaryawanIds.size > 0 && (
+                      <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 border-b" style={{ background: "var(--red-soft)", borderColor: "var(--border)" }}>
+                        <p className="text-xs font-bold" style={{ color: "var(--red)" }}>{selectedKaryawanIds.size} karyawan dipilih</p>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => setSelectedKaryawanIds(new Set())} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg hover:bg-white/60" style={{ color: "var(--ink-soft)" }}>
+                            Batalkan pilihan
+                          </button>
+                          <button onClick={() => setBulkDeleteOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white" style={{ background: "var(--red)" }}>
+                            <IconTrash className="w-3 h-3" /> Hapus Terpilih
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse text-xs min-w-[900px]">
                         <thead>
                           <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                            <th className="p-4 w-8">
+                              <input type="checkbox" className="w-3.5 h-3.5 rounded"
+                                checked={pagedKaryawan.length > 0 && pagedKaryawan.every(k => selectedKaryawanIds.has(k._id))}
+                                onChange={toggleSelectAllKaryawan} />
+                            </th>
                             <th className="p-4">Karyawan</th>
                             <th className="p-4">NIK KTP</th>
                             <th className="p-4">No. Telepon</th>
@@ -2814,10 +3174,15 @@ function DashboardAdmin({ session, onLogout }) {
                         </thead>
                         <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                           {pagedKaryawan.length === 0 ? (
-                            <tr><td colSpan="8"><EmptyState title={(searchKaryawan || roleFilterKaryawan !== "semua" || statusFilterKaryawan !== "semua") ? "Tidak ditemukan" : "Belum ada data user"} subtitle={(searchKaryawan || roleFilterKaryawan !== "semua" || statusFilterKaryawan !== "semua") ? "Coba ubah kata kunci atau filter." : "Tambahkan anggota baru lewat formulir di samping."} icon={<IconUsers className="w-5 h-5" />} /></td></tr>
+                            <tr><td colSpan="9"><EmptyState title={(searchKaryawan || roleFilterKaryawan !== "semua" || statusFilterKaryawan !== "semua") ? "Tidak ditemukan" : "Belum ada data user"} subtitle={(searchKaryawan || roleFilterKaryawan !== "semua" || statusFilterKaryawan !== "semua") ? "Coba ubah kata kunci atau filter." : "Tambahkan anggota baru lewat formulir di samping."} icon={<IconUsers className="w-5 h-5" />} /></td></tr>
                           ) : (
                             pagedKaryawan.map(k => (
                               <tr key={k._id} className="hover:bg-gray-50/60 transition">
+                                <td className="p-3.5">
+                                  <input type="checkbox" className="w-3.5 h-3.5 rounded"
+                                    checked={selectedKaryawanIds.has(k._id)}
+                                    onChange={() => toggleSelectKaryawan(k._id)} />
+                                </td>
                                 <td className="p-3.5">
                                   <div className="flex items-center gap-2.5">
                                     <Avatar name={k.nama} size={32} />
@@ -2860,7 +3225,9 @@ function DashboardAdmin({ session, onLogout }) {
                         </tbody>
                       </table>
                     </div>
-                    <Pagination page={pageKaryawan} setPage={setPageKaryawan} totalPages={totalPagesKaryawan} totalItems={filteredKaryawan.length} pageSize={PAGE_SIZE_K} />
+                    <Pagination page={pageKaryawan} setPage={setPageKaryawan} totalPages={totalPagesKaryawan} totalItems={filteredKaryawan.length}
+                      pageSize={pageSizeKaryawan} pageSizeOptions={[10, 20, 50, 100]}
+                      onPageSizeChange={(n) => { setPageSizeKaryawan(n); setPageKaryawan(1); }} />
                   </div>
                 </div>
                 </div>
