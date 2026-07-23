@@ -48,7 +48,6 @@ app.use('/admin', express.static(path.join(__dirname, 'public/admin')));
 connectDB();
 
 // 3. ROUTER API
-app.use('/', absenRoutes);
 app.use('/api', adminRoutes);
 app.use('/api', financeRoutes);
 app.use('/api', trackingRoutes);
