@@ -1,4 +1,5 @@
-const API_BASE = '/api';
+const BASE_URL = 'https://absensi-backend-production-0c63.up.railway.app';
+const API_BASE = `${BASE_URL}/api`;
 
 // Pilihan untuk form pengajuan Kasbon
 const KASBON_REGION_OPTIONS = ["Jakbar", "Jakut", "Jakpus", "Jaksel", "Jaktim", "Bekasi", "Bogor", "Depok", "Bekasi Timur", "Tangerang", "Tangkot", "Bali"];
