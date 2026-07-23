@@ -57,6 +57,11 @@ app.use('/api', pengajuanRoutes);
 app.use('/api', materialRoutes);
 app.use('/api', salaryRoutes);
 
+
+app.get('/', (req, res) => {
+  res.redirect('/admin/');
+});
+
 // 4. RUNNING SERVER APPLICATION
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
