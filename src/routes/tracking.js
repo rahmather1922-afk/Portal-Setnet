@@ -1,5 +1,6 @@
 const express = require('express');
 const TrackingBast = require('../models/TrackingBast');
+const Transaksi = require('../models/Transaksi');
 const requireRole = require('../middleware/requireRole');
 
 const router = express.Router();
@@ -117,6 +118,48 @@ router.put('/tracking/:id/proses-finance', requireRole('owner', 'hrd', 'finance'
   }
 });
 
+// --- TRACKING: TANDAI PROSES FINANCE -> DONE INVOICE (dipicu tombol dompet di Portal Admin) ---
+// Dipanggil FE saat user meng-klik tombol "Catat ke Keuangan" pada baris berstatus "Proses
+// Finance". Endpoint ini akan:
+//  1. Membuat 1 transaksi "Masuk" baru di modul Keuangan (Transaksi) sebesar `jumlah` yang dikirim
+//  2. Memindahkan status tracking dari "Proses Finance" -> "Done Invoice"
+// Guard status di server (bukan cuma di FE) supaya baris yang sama tidak bisa dicatat dobel ke
+// saldo Keuangan walau tombolnya di-klik berkali-kali/dua tab berbeda.
+router.put('/tracking/:id/catat-keuangan', requireRole('owner', 'hrd', 'finance'), async (req, res) => {
+  try {
+    const trk = await TrackingBast.findById(req.params.id);
+    if (!trk) return res.status(404).json({ message: 'Data tracking tidak ditemukan' });
+    if (trk.status !== 'Proses Finance') {
+      return res.status(400).json({ message: 'Hanya dokumen berstatus Proses Finance yang bisa dicatat ke Keuangan' });
+    }
+
+    const { jumlah } = req.body;
+    const nominal = Number(jumlah);
+    if (!nominal || nominal <= 0) {
+      return res.status(400).json({ message: 'Jumlah tidak valid' });
+    }
+
+    const dibuat_oleh = req.header('x-user-id') || '';
+    const transaksiBaru = new Transaksi({
+      tanggal: new Date(),
+      tipe: 'Masuk',
+      kategori: 'Pencairan Invoice Tracking BAST',
+      jumlah: nominal,
+      metode: 'Transfer',
+      keterangan: `Pencairan ${trk.region} - ${trk.woType}${trk.bulan ? ` (${trk.bulan} ${trk.tahun})` : ` (${trk.tahun})`}`,
+      dibuat_oleh
+    });
+    await transaksiBaru.save();
+
+    trk.status = 'Done Invoice';
+    await trk.save();
+
+    res.status(200).json({ message: 'Berhasil dicatat sebagai uang masuk di Keuangan', data: { tracking: trk, transaksi: transaksiBaru } });
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal mencatat ke Keuangan', error: error.message });
+  }
+});
+
 // --- NOTIFIKASI RINGKAS DOKUMEN BAST FINAL YANG BELUM DIBUATKAN INVOICE ---
 // Sebelumnya dipakai khusus untuk role yang punya akses Invoice tapi TIDAK punya akses
 // Tracking penuh. Sekarang Finance sudah punya akses Tracking penuh (lihat OWNER_ONLY di
@@ -137,7 +180,7 @@ router.get('/tracking/notif-finance', requireRole('owner', 'hrd', 'finance'), as
 router.get('/tracking/summary', OWNER_ONLY, async (req, res) => {
   try {
     const semua = await TrackingBast.find();
-    const STATUSES = ['Waiting Submit', 'Waiting BAST Final', 'BAST Final', 'Proses Finance'];
+    const STATUSES = ['Waiting Submit', 'Waiting BAST Final', 'BAST Final', 'Proses Finance', 'Done Invoice'];
 
     const regionMap = {};
     semua.forEach(d => {

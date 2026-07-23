@@ -174,12 +174,13 @@ const hitungTotalInvoice = (items, pinalty, lessDeposit, dendaSetelahPpn, pungut
 const TRACKING_REGIONS = ["Jabodetabek", "Medan", "Jawa Timur", "Bali"];
 const TRACKING_WO_TYPES = ["IB", "Fault Repair", "ONM", "Material ONM", "SWAP ONT", "LBS", "Rectification", "ODC"];
 const TRACKING_BULAN = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-const TRACKING_STATUS = ["Waiting Submit", "Waiting BAST Final", "BAST Final", "Proses Finance"];
+const TRACKING_STATUS = ["Waiting Submit", "Waiting BAST Final", "BAST Final", "Proses Finance", "Done Invoice"];
 const trackingStatusTone = (s) => ({
   "Waiting Submit": { bg: "var(--amber-soft)", fg: "var(--amber)" },
   "Waiting BAST Final": { bg: "var(--brand-soft)", fg: "var(--brand-dark)" },
   "BAST Final": { bg: "var(--green-soft)", fg: "var(--green)" },
   "Proses Finance": { bg: "#EDE9FE", fg: "#6D28D9" },
+  "Done Invoice": { bg: "#DBEAFE", fg: "#1D4ED8" },
 }[s] || { bg: "var(--canvas)", fg: "var(--ink-soft)" });
 
 // --- Konstanta Modul Kasbon & Pengajuan Cuti/Izin/Sakit ---
@@ -188,6 +189,18 @@ const keputusanStatusTone = (s) => ({
   "Pending": { bg: "var(--amber-soft)", fg: "var(--amber)" },
   "Disetujui": { bg: "var(--green-soft)", fg: "var(--green)" },
   "Ditolak": { bg: "var(--red-soft)", fg: "var(--red)" },
+}[s] || { bg: "var(--canvas)", fg: "var(--ink-soft)" });
+
+// --- Konstanta Modul Pemakaian Material — warna kategori biar Laporan enak dibaca Owner ---
+const kategoriMaterialTone = (k) => ({
+  "Kabel": { bg: "var(--brand-soft)", fg: "var(--brand-dark)" },
+  "ONT": { bg: "#EDE9FE", fg: "#6D28D9" },
+  "Lainnya": { bg: "var(--canvas)", fg: "var(--ink-soft)" },
+}[k] || { bg: "var(--canvas)", fg: "var(--ink-soft)" });
+const snStatusTone = (s) => ({
+  "Tersedia": { bg: "var(--green-soft)", fg: "var(--green)" },
+  "Idle": { bg: "var(--amber-soft)", fg: "var(--amber)" },
+  "Terpakai": { bg: "var(--red-soft)", fg: "var(--red)" },
 }[s] || { bg: "var(--canvas)", fg: "var(--ink-soft)" });
 
 const toCsv = (rows, headers) => {
@@ -597,6 +610,804 @@ const ImportKaryawanModal = ({ open, onClose, apiUrl, authHeaders, onSuccess, no
   );
 };
 
+/* ---------------------------------- IMPORT PEMAKAIAN MATERIAL DARI EXCEL ---------------------------------- */
+// Beda dengan ImportKaryawanModal (validasi di backend), modal ini parse & validasi file Excel
+// LANGSUNG di browser (pakai SheetJS yang sudah dimuat lewat window.XLSX untuk Ekspor Laporan),
+// supaya tidak perlu endpoint upload baru di server. Baris valid dikirim satu-satu ke endpoint
+// POST /pemakaian-material yang sudah ada.
+const parseTanggalExcel = (v) => {
+  if (!v && v !== 0) return null;
+  if (v instanceof Date && !isNaN(v)) return v;
+  if (typeof v === "number") {
+    const ms = Math.round((v - 25569) * 86400 * 1000); // konversi serial date Excel -> epoch JS
+    const d = new Date(ms);
+    return isNaN(d) ? null : d;
+  }
+  const d = new Date(String(v).trim());
+  return isNaN(d) ? null : d;
+};
+
+const ImportPemakaianModal = ({ open, onClose, materialList, apiUrl, authHeaders, onSuccess, notify }) => {
+  const [step, setStep] = useState("upload"); // upload -> preview -> done
+  const [file, setFile] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [previewRows, setPreviewRows] = useState([]);
+  const [summary, setSummary] = useState({ total: 0, valid: 0, invalid: 0 });
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [loadingConfirm, setLoadingConfirm] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const kabelOptions = useMemo(() => materialList.filter(m => m.kategori === "Kabel"), [materialList]);
+
+  const resetState = () => {
+    setStep("upload"); setFile(null); setDragOver(false); setPreviewRows([]);
+    setSummary({ total: 0, valid: 0, invalid: 0 }); setLoadingPreview(false);
+    setLoadingConfirm(false); setError(""); setResult(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+  const handleClose = () => { resetState(); onClose(); };
+
+  const pilihFile = (f) => {
+    if (!f) return;
+    const namaCocok = /\.(xlsx|xls)$/i.test(f.name);
+    if (!namaCocok) { setError("File harus berformat .xlsx atau .xls"); return; }
+    setError(""); setFile(f);
+  };
+
+  const downloadTemplate = () => {
+    if (typeof XLSX === "undefined") { notify && notify("Modul Excel gagal dimuat, cek koneksi internet.", "error"); return; }
+    const wb = XLSX.utils.book_new();
+    const contohRow = {
+      "Tanggal Pengambilan": new Date().toLocaleDateString("id-ID"), "Nama Team": "Contoh Team A", "Merek Modem": "ZTE", "SN ONT": "SN00001",
+      "Kabel": kabelOptions[0]?.nama || "100 M", "Status": "Idle", "Return": "", "Project": PROJECT_PRESETS[0], "Region": REGION_PRESETS[0], "Vendor": VENDOR_PRESETS[0],
+    };
+    const wsData = XLSX.utils.json_to_sheet([contohRow]);
+    wsData["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 9 }, { wch: 14 }, { wch: 9 }, { wch: 10 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, wsData, "Data");
+
+    // Sheet Panduan: daftar nilai yang valid per kolom, biar user tidak salah format saat isi.
+    const maxLen = Math.max(kabelOptions.length, PROJECT_PRESETS.length, REGION_PRESETS.length, VENDOR_PRESETS.length, 2);
+    const panduanRows = [];
+    for (let i = 0; i < maxLen; i++) {
+      panduanRows.push({
+        "Status (valid)": ["Terpakai", "Idle"][i] || "",
+        "Kabel terdaftar (valid)": kabelOptions[i]?.nama || "",
+        "Project (valid)": PROJECT_PRESETS[i] || "",
+        "Region (valid)": REGION_PRESETS[i] || "",
+        "Vendor (valid)": VENDOR_PRESETS[i] || "",
+      });
+    }
+    const wsPanduan = XLSX.utils.json_to_sheet(panduanRows);
+    wsPanduan["!cols"] = [{ wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, wsPanduan, "Panduan");
+
+    XLSX.writeFile(wb, "Template-Import-Pemakaian-Material.xlsx");
+  };
+
+  const handleUploadPreview = () => {
+    if (!file) { setError("Pilih file Excel terlebih dahulu"); return; }
+    if (typeof XLSX === "undefined") { setError("Modul Excel gagal dimuat, cek koneksi internet."); return; }
+    setLoadingPreview(true); setError("");
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: "array", cellDates: true });
+        // Ambil sheet "Data" secara eksplisit (lihat catatan yang sama di ImportMaterialModal)
+        // supaya tetap aman walau urutan sheet di file berubah.
+        const sheetNameData = wb.SheetNames.find(n => n.trim().toLowerCase() === "data") || wb.SheetNames[0];
+        const ws = wb.Sheets[sheetNameData];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+        const kabelMap = {};
+        kabelOptions.forEach(k => { kabelMap[String(k.nama).trim().toLowerCase()] = k; });
+
+        const hasil = rows.map((row, idx) => {
+          const errors = [];
+          const tanggalRaw = row["Tanggal Pengambilan"];
+          const tanggal = parseTanggalExcel(tanggalRaw);
+          if (!tanggal) errors.push("Tanggal Pengambilan tidak valid");
+
+          const namaTeam = String(row["Nama Team"] || "").trim();
+          if (!namaTeam) errors.push("Nama Team wajib diisi");
+
+          const kabelNama = String(row["Kabel"] || "").trim();
+          const kabelDoc = kabelMap[kabelNama.toLowerCase()];
+          if (!kabelNama) errors.push("Kabel wajib diisi");
+          else if (!kabelDoc) errors.push(`Kabel "${kabelNama}" tidak ada di Master Material`);
+
+          const statusRaw = String(row["Status"] || "Idle").trim();
+          const status = statusRaw || "Idle";
+          if (!["Terpakai", "Idle"].includes(status)) errors.push(`Status "${statusRaw}" harus "Terpakai" atau "Idle"`);
+
+          const project = String(row["Project"] || "").trim();
+          if (!project) errors.push("Project wajib diisi");
+          else if (!PROJECT_PRESETS.includes(project)) errors.push(`Project "${project}" tidak dikenal`);
+
+          const region = String(row["Region"] || "").trim();
+          if (!region) errors.push("Region wajib diisi");
+          else if (!REGION_PRESETS.includes(region)) errors.push(`Region "${region}" tidak dikenal`);
+
+          const vendor = String(row["Vendor"] || "").trim();
+          if (!vendor) errors.push("Vendor wajib diisi");
+          else if (!VENDOR_PRESETS.includes(vendor)) errors.push(`Vendor "${vendor}" tidak dikenal`);
+
+          return {
+            baris: idx + 2,
+            valid: errors.length === 0,
+            errors,
+            data: {
+              tanggal_pengambilan: tanggal ? tanggal.toISOString().slice(0, 10) : "",
+              nama_team: namaTeam,
+              merek_modem: String(row["Merek Modem"] || "").trim(),
+              sn_ont: String(row["SN ONT"] || "").trim(),
+              kabel_id: kabelDoc ? kabelDoc._id : "",
+              kabel_nama: kabelNama,
+              status,
+              return_catatan: String(row["Return"] || "").trim(),
+              project, region, vendor,
+            },
+          };
+        });
+
+        setPreviewRows(hasil);
+        setSummary({ total: hasil.length, valid: hasil.filter(r => r.valid).length, invalid: hasil.filter(r => !r.valid).length });
+        setStep("preview");
+      } catch (err) {
+        setError("Gagal membaca file. Pastikan formatnya sesuai template.");
+      } finally {
+        setLoadingPreview(false);
+      }
+    };
+    reader.onerror = () => { setError("Gagal membaca file"); setLoadingPreview(false); };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleConfirm = async () => {
+    const rowsValid = previewRows.filter(r => r.valid);
+    if (rowsValid.length === 0) { setError("Tidak ada baris valid untuk disimpan"); return; }
+    setLoadingConfirm(true); setError("");
+    let totalBerhasil = 0;
+    const gagal = [];
+    for (const r of rowsValid) {
+      try {
+        const res = await fetch(`${apiUrl}/pemakaian-material`, {
+          method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify(r.data),
+        });
+        const resData = await res.json().catch(() => ({}));
+        if (res.status === 201) totalBerhasil += 1;
+        else gagal.push({ baris: r.baris, alasan: resData.message || "Gagal disimpan" });
+      } catch {
+        gagal.push({ baris: r.baris, alasan: "Gagal terhubung ke server" });
+      }
+    }
+    setResult({ total_berhasil: totalBerhasil, total_gagal: gagal.length, gagal });
+    setStep("done");
+    setLoadingConfirm(false);
+    onSuccess && onSuccess();
+    notify && notify(`Import selesai: ${totalBerhasil} berhasil, ${gagal.length} gagal`, gagal.length > 0 ? "info" : "success");
+  };
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[92] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.5)" }} onClick={handleClose}>
+      <div className="modal-in bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b flex items-center justify-between shrink-0" style={{ borderColor: "var(--border)" }}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--green-soft)", color: "var(--green)" }}>
+              <IconFileExcel className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <h3 className="font-bold font-display text-sm" style={{ color: "var(--ink)" }}>Import Pemakaian Material dari Excel</h3>
+              <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>Input banyak baris log pemakaian teknisi sekaligus</p>
+            </div>
+          </div>
+          <button onClick={handleClose} className="p-1.5 rounded-lg hover:bg-gray-100"><IconX className="w-4 h-4" style={{ color: "var(--ink-soft)" }} /></button>
+        </div>
+
+        <div className="p-5 overflow-y-auto flex-1">
+          {step === "upload" && (
+            <div className="space-y-4">
+              <button type="button" onClick={downloadTemplate}
+                className="w-full flex items-center justify-between p-3.5 rounded-xl border-2 border-dashed hover:bg-gray-50 transition text-left"
+                style={{ borderColor: "var(--border)" }}>
+                <div className="flex items-center gap-2.5">
+                  <IconDownload className="w-4 h-4" style={{ color: "var(--brand-dark)" }} />
+                  <div>
+                    <p className="text-xs font-bold" style={{ color: "var(--ink)" }}>Download Template Excel</p>
+                    <p className="text-[10px]" style={{ color: "var(--ink-soft)" }}>Berisi contoh baris + sheet "Panduan" berisi nilai yang valid per kolom</p>
+                  </div>
+                </div>
+              </button>
+
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={e => { e.preventDefault(); setDragOver(false); pilihFile(e.dataTransfer.files?.[0]); }}
+                onClick={() => fileInputRef.current?.click()}
+                className="p-6 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition text-center"
+                style={{ borderColor: dragOver ? "var(--brand)" : "var(--border)", background: dragOver ? "var(--brand-soft)" : "transparent" }}>
+                <IconFileExcel className="w-6 h-6" style={{ color: file ? "var(--green)" : "var(--ink-soft)" }} />
+                {file ? (
+                  <p className="text-xs font-bold" style={{ color: "var(--ink)" }}>{file.name}</p>
+                ) : (
+                  <>
+                    <p className="text-xs font-bold" style={{ color: "var(--ink)" }}>Klik untuk pilih file, atau drag & drop di sini</p>
+                    <p className="text-[10px]" style={{ color: "var(--ink-soft)" }}>Format .xlsx atau .xls, sesuai template di atas</p>
+                  </>
+                )}
+                <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden"
+                  onChange={e => pilihFile(e.target.files?.[0])} />
+              </div>
+
+              {error && (
+                <p className="text-[11px] font-semibold flex items-center gap-1.5" style={{ color: "var(--red)" }}>
+                  <IconAlert className="w-3.5 h-3.5 shrink-0" /> {error}
+                </p>
+              )}
+            </div>
+          )}
+
+          {step === "preview" && (
+            <div className="space-y-3.5">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl p-3 text-center" style={{ background: "var(--canvas)" }}>
+                  <p className="text-lg font-bold font-display" style={{ color: "var(--ink)" }}>{summary.total}</p>
+                  <p className="text-[10px] font-bold uppercase" style={{ color: "var(--ink-soft)" }}>Total Baris</p>
+                </div>
+                <div className="rounded-xl p-3 text-center" style={{ background: "var(--green-soft)" }}>
+                  <p className="text-lg font-bold font-display" style={{ color: "var(--green)" }}>{summary.valid}</p>
+                  <p className="text-[10px] font-bold uppercase" style={{ color: "var(--green)" }}>Valid</p>
+                </div>
+                <div className="rounded-xl p-3 text-center" style={{ background: "var(--red-soft)" }}>
+                  <p className="text-lg font-bold font-display" style={{ color: "var(--red)" }}>{summary.invalid}</p>
+                  <p className="text-[10px] font-bold uppercase" style={{ color: "var(--red)" }}>Bermasalah</p>
+                </div>
+              </div>
+
+              <div className="border rounded-xl overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                  <table className="w-full text-left border-collapse text-[11px] min-w-[640px]">
+                    <thead className="sticky top-0">
+                      <tr className="border-b font-bold uppercase tracking-wide" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                        <th className="p-2.5">Baris</th>
+                        <th className="p-2.5">Team</th>
+                        <th className="p-2.5">Kabel</th>
+                        <th className="p-2.5">Status</th>
+                        <th className="p-2.5">Keterangan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
+                      {previewRows.map(r => (
+                        <tr key={r.baris} style={{ background: r.valid ? "transparent" : "var(--red-soft)" }}>
+                          <td className="p-2.5 font-mono" style={{ color: "var(--ink-soft)" }}>{r.baris}</td>
+                          <td className="p-2.5 font-semibold" style={{ color: "var(--ink)" }}>{r.data.nama_team || "—"}</td>
+                          <td className="p-2.5" style={{ color: "var(--ink-soft)" }}>{r.data.kabel_nama || "—"}</td>
+                          <td className="p-2.5" style={{ color: "var(--ink-soft)" }}>{r.data.status}</td>
+                          <td className="p-2.5">
+                            {r.valid ? (
+                              <span className="inline-flex items-center gap-1 font-bold" style={{ color: "var(--green)" }}><IconCheck className="w-3 h-3" /> Valid</span>
+                            ) : (
+                              <span className="font-semibold" style={{ color: "var(--red)" }} title={r.errors.join(", ")}>
+                                {r.errors.join(", ")}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>
+                Periksa kembali data di atas. Baris berwarna merah <strong>tidak akan diimpor</strong> — hanya {summary.valid} baris valid yang akan disimpan saat Anda menekan "Konfirmasi & Simpan".
+              </p>
+              {error && (
+                <p className="text-[11px] font-semibold flex items-center gap-1.5" style={{ color: "var(--red)" }}>
+                  <IconAlert className="w-3.5 h-3.5 shrink-0" /> {error}
+                </p>
+              )}
+            </div>
+          )}
+
+          {step === "done" && result && (
+            <div className="space-y-4">
+              <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: result.total_gagal > 0 ? "var(--amber-soft)" : "var(--green-soft)" }}>
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "white", color: result.total_gagal > 0 ? "var(--amber)" : "var(--green)" }}>
+                  <IconCheck className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: "var(--ink)" }}>{result.total_berhasil} baris pemakaian berhasil ditambahkan</p>
+                  {result.total_gagal > 0 && <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{result.total_gagal} baris gagal disimpan, lihat rincian di bawah.</p>}
+                </div>
+              </div>
+
+              {result.gagal && result.gagal.length > 0 && (
+                <div className="border rounded-xl overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                  <div className="max-h-56 overflow-y-auto divide-y" style={{ borderColor: "var(--border)" }}>
+                    {result.gagal.map((g, i) => (
+                      <div key={i} className="p-2.5 flex items-center justify-between text-[11px]">
+                        <span className="font-semibold" style={{ color: "var(--ink)" }}>Baris {g.baris}</span>
+                        <span style={{ color: "var(--red)" }}>{g.alasan}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="p-5 border-t flex gap-2 shrink-0" style={{ borderColor: "var(--border)" }}>
+          {step === "upload" && (
+            <>
+              <button onClick={handleClose} className="flex-1 py-2.5 rounded-xl border font-semibold text-xs hover:bg-gray-50" style={{ borderColor: "var(--border)" }}>Batal</button>
+              <button onClick={handleUploadPreview} disabled={!file || loadingPreview}
+                className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white disabled:opacity-60" style={{ background: "var(--brand)" }}>
+                {loadingPreview ? "Memvalidasi..." : "Upload & Validasi"}
+              </button>
+            </>
+          )}
+          {step === "preview" && (
+            <>
+              <button onClick={resetState} className="flex-1 py-2.5 rounded-xl border font-semibold text-xs hover:bg-gray-50" style={{ borderColor: "var(--border)" }}>Upload Ulang</button>
+              <button onClick={handleConfirm} disabled={summary.valid === 0 || loadingConfirm}
+                className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white disabled:opacity-60" style={{ background: "var(--green)" }}>
+                {loadingConfirm ? "Menyimpan..." : `Konfirmasi & Simpan (${summary.valid})`}
+              </button>
+            </>
+          )}
+          {step === "done" && (
+            <button onClick={handleClose} className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white" style={{ background: "var(--brand)" }}>Selesai</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ---------------------------------- IMPORT MASTER MATERIAL DARI EXCEL ---------------------------------- */
+// Sama polanya dengan ImportPemakaianModal: parse & validasi file Excel LANGSUNG di browser
+// (pakai SheetJS/window.XLSX), baris valid ditampilkan dulu untuk dicek user, baru dikirim
+// satu-satu ke endpoint POST /material yang sudah ada saat user menekan "Konfirmasi & Simpan".
+const SATUAN_DEFAULT_PER_KATEGORI = { Kabel: "Roll", ONT: "Unit", Lainnya: "Pcs" };
+
+// SheetJS (window.XLSX, dipakai di seluruh app untuk ekspor & baca file) versi gratis TIDAK bisa
+// menulis dropdown/data validation ke .xlsx. Khusus untuk generate TEMPLATE import Master Material
+// (yang butuh dropdown Kategori + dropdown Nama yang mengikuti kategori), kita muat ExcelJS on-demand
+// dari CDN — hanya dipakai saat user klik "Download Template", tidak dipakai untuk baca/parse file.
+let excelJsLoaderPromise = null;
+const loadExcelJS = () => {
+  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  if (excelJsLoaderPromise) return excelJsLoaderPromise;
+  excelJsLoaderPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js";
+    script.async = true;
+    script.onload = () => (window.ExcelJS ? resolve(window.ExcelJS) : reject(new Error("ExcelJS gagal dimuat")));
+    script.onerror = () => reject(new Error("ExcelJS gagal dimuat"));
+    document.head.appendChild(script);
+  });
+  return excelJsLoaderPromise;
+};
+
+const ImportMaterialModal = ({ open, onClose, materialList, apiUrl, authHeaders, onSuccess, notify }) => {
+  const [step, setStep] = useState("upload"); // upload -> preview -> done
+  const [file, setFile] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [previewRows, setPreviewRows] = useState([]);
+  const [summary, setSummary] = useState({ total: 0, valid: 0, invalid: 0 });
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [loadingConfirm, setLoadingConfirm] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState(null);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const resetState = () => {
+    setStep("upload"); setFile(null); setDragOver(false); setPreviewRows([]);
+    setSummary({ total: 0, valid: 0, invalid: 0 }); setLoadingPreview(false);
+    setLoadingConfirm(false); setError(""); setResult(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+  const handleClose = () => { resetState(); onClose(); };
+
+  const pilihFile = (f) => {
+    if (!f) return;
+    const namaCocok = /\.(xlsx|xls)$/i.test(f.name);
+    if (!namaCocok) { setError("File harus berformat .xlsx atau .xls"); return; }
+    setError(""); setFile(f);
+  };
+
+  const downloadTemplate = async () => {
+    setDownloadingTemplate(true); setError("");
+    try {
+      const ExcelJSLib = await loadExcelJS();
+      const wb = new ExcelJSLib.Workbook();
+
+      // ---- Sheet tersembunyi berisi daftar pilihan Nama per Kategori (sumber dropdown) ----
+      const kabelOptions = KABEL_METER_PRESETS.map(n => `${n} M`);
+      const ontOptions = ONT_MEREK_PRESETS;
+      const lainnyaOptions = ["Isi manual sesuai jenis material"];
+      const wsLists = wb.addWorksheet("Lists");
+      wsLists.state = "hidden";
+      wsLists.getColumn(1).values = ["Kabel", ...kabelOptions];
+      wsLists.getColumn(2).values = ["ONT", ...ontOptions];
+      wsLists.getColumn(3).values = ["Lainnya", ...lainnyaOptions];
+      wb.definedNames.add(`Lists!$A$2:$A$${1 + kabelOptions.length}`, "Kabel");
+      wb.definedNames.add(`Lists!$B$2:$B$${1 + ontOptions.length}`, "ONT");
+      wb.definedNames.add(`Lists!$C$2:$C$${1 + lainnyaOptions.length}`, "Lainnya");
+
+      // ---- Sheet Data: kolom kerja + dropdown ----
+      const wsData = wb.addWorksheet("Data");
+      wsData.columns = [
+        { header: "Kategori", key: "kategori", width: 12 },
+        { header: "Nama", key: "nama", width: 18 },
+        { header: "Satuan", key: "satuan", width: 10 },
+        { header: "Stok Awal", key: "stock_awal", width: 10 },
+        { header: "Keterangan", key: "keterangan", width: 26 },
+        { header: "SN ONT (pisahkan koma)", key: "sn_ont", width: 40 },
+      ];
+      wsData.addRow({ kategori: "Kabel", nama: "100 M", satuan: "Roll", stock_awal: 10, keterangan: "", sn_ont: "" });
+      wsData.addRow({ kategori: "ONT", nama: "ZTE", satuan: "Unit", stock_awal: 5, keterangan: "", sn_ont: "SN00001, SN00002, SN00003, SN00004, SN00005" });
+      wsData.getRow(1).font = { bold: true };
+
+      const LAST_ROW = 300; // sediakan dropdown sampai baris 300 supaya cukup untuk input massal
+      for (let r = 2; r <= LAST_ROW; r++) {
+        // Kolom A "Kategori" — dropdown TEGAS, hanya boleh salah satu dari 3 pilihan.
+        wsData.getCell(`A${r}`).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          formulae: ['"Kabel,ONT,Lainnya"'],
+          showErrorMessage: true,
+          errorStyle: "stop",
+          errorTitle: "Kategori tidak valid",
+          error: "Pilih salah satu dari daftar: Kabel, ONT, atau Lainnya.",
+        };
+        // Kolom B "Nama" — dropdown MENGIKUTI Kategori yang dipilih di kolom A pada baris yang sama
+        // (pakai INDIRECT ke named range Kabel/ONT/Lainnya). Tidak strict-block supaya kategori
+        // "Lainnya" tetap bisa diisi manual bebas.
+        wsData.getCell(`B${r}`).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          formulae: [`INDIRECT($A${r})`],
+          showErrorMessage: false,
+        };
+      }
+
+      // ---- Sheet Panduan ----
+      const wsPanduan = wb.addWorksheet("Panduan");
+      wsPanduan.columns = [{ width: 90 }];
+      const catatan = [
+        "CARA PAKAI DROPDOWN:",
+        "1. Klik sel di kolom Kategori (kolom A), pilih salah satu dari dropdown: Kabel / ONT / Lainnya.",
+        "2. Klik sel di kolom Nama (kolom B) pada baris yang sama, lalu klik tanda panah dropdown —",
+        "   pilihan yang muncul otomatis menyesuaikan Kategori yang sudah dipilih di kolom A.",
+        "3. Khusus Kategori \"Lainnya\", kolom Nama tidak punya daftar tetap — ketik manual namanya.",
+        "",
+        "Catatan lain:",
+        "- Kategori kosong dianggap \"Kabel\".",
+        "- Nama wajib diisi & sebaiknya unik per kategori (baris dgn Kategori+Nama yg sudah ada di Master Material akan ditandai bermasalah saat divalidasi).",
+        "- Satuan boleh dikosongkan, otomatis: Kabel=Roll, ONT=Unit, Lainnya=Pcs.",
+        "- Stok Awal wajib angka >= 0 (kosong dianggap 0), otomatis jadi Stok Terkini saat material baru dibuat.",
+        "- Kolom \"SN ONT (pisahkan koma)\" HANYA berlaku untuk Kategori=ONT, isi SN dipisah koma/titik-koma/baris baru, boleh dikosongkan atau diisi sebagian (tidak wajib sejumlah Stok Awal).",
+        "- Jumlah SN yang diisi tidak boleh melebihi Stok Awal pada baris yang sama.",
+      ];
+      catatan.forEach((line, i) => { wsPanduan.getCell(`A${i + 1}`).value = line; });
+      wsPanduan.getCell("A1").font = { bold: true };
+      wsPanduan.getCell("A7").font = { bold: true };
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: "application/octet-stream" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "Template-Import-Master-Material.xlsx";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError("Gagal membuat template Excel, cek koneksi internet lalu coba lagi.");
+      notify && notify("Gagal membuat template Excel", "error");
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  };
+
+  const handleUploadPreview = () => {
+    if (!file) { setError("Pilih file Excel terlebih dahulu"); return; }
+    if (typeof XLSX === "undefined") { setError("Modul Excel gagal dimuat, cek koneksi internet."); return; }
+    setLoadingPreview(true); setError("");
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: "array", cellDates: true });
+        // PENTING: ambil sheet "Data" secara eksplisit, JANGAN asal wb.SheetNames[0].
+        // Template Master Material dibuat pakai ExcelJS dengan urutan: Lists (hidden, sumber
+        // dropdown) -> Data -> Panduan. Karena "Lists" ditambahkan duluan, dia jadi SheetNames[0].
+        // Kalau parser ambil sheet pertama mentah-mentah, semua kolom (Kategori/Nama/Satuan/dst)
+        // kebaca dari sheet "Lists" (isinya cuma daftar Kabel/ONT/Lainnya) — makanya Nama SELALU
+        // kebaca kosong & baris selalu invalid meski user sudah isi dengan benar di sheet "Data".
+        const sheetNameData = wb.SheetNames.find(n => n.trim().toLowerCase() === "data") || wb.SheetNames[0];
+        const ws = wb.Sheets[sheetNameData];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
+        const existingSet = new Set(
+          materialList.map(m => `${String(m.kategori).trim().toLowerCase()}|${String(m.nama).trim().toLowerCase()}`)
+        );
+        const seenInFile = new Set();
+
+        const hasil = rows.map((row, idx) => {
+          const errors = [];
+
+          let kategori = String(row["Kategori"] || "").trim();
+          if (!kategori) kategori = "Kabel";
+          if (!["Kabel", "ONT", "Lainnya"].includes(kategori)) errors.push(`Kategori "${kategori}" harus salah satu dari Kabel/ONT/Lainnya`);
+
+          const nama = String(row["Nama"] || "").trim();
+          if (!nama) errors.push("Nama wajib diisi");
+
+          const kunci = `${kategori.trim().toLowerCase()}|${nama.trim().toLowerCase()}`;
+          if (nama && existingSet.has(kunci)) errors.push(`"${nama}" (${kategori}) sudah ada di Master Material`);
+          if (nama && seenInFile.has(kunci)) errors.push(`"${nama}" (${kategori}) duplikat di dalam file ini`);
+          if (nama) seenInFile.add(kunci);
+
+          let satuan = String(row["Satuan"] || "").trim();
+          if (!satuan) satuan = SATUAN_DEFAULT_PER_KATEGORI[kategori] || "Pcs";
+
+          const stokAwalRaw = row["Stok Awal"];
+          const stokAwalNum = stokAwalRaw === "" || stokAwalRaw === undefined || stokAwalRaw === null ? 0 : Number(stokAwalRaw);
+          if (isNaN(stokAwalNum) || stokAwalNum < 0) errors.push("Stok Awal harus angka 0 atau lebih");
+
+          // Kolom SN ONT hanya berlaku untuk kategori ONT — dipisah koma/titik-koma/baris baru.
+          let snList = [];
+          if (kategori === "ONT") {
+            const snRaw = String(row["SN ONT (pisahkan koma)"] ?? row["SN ONT"] ?? "").trim();
+            if (snRaw) {
+              snList = [...new Set(
+                snRaw.split(/[,;\n]+/).map(sn => sn.trim()).filter(Boolean)
+              )];
+              if (!isNaN(stokAwalNum) && snList.length > stokAwalNum) {
+                errors.push(`Jumlah SN (${snList.length}) melebihi Stok Awal (${stokAwalNum})`);
+              }
+            }
+          }
+
+          return {
+            baris: idx + 2,
+            valid: errors.length === 0,
+            errors,
+            data: {
+              kategori, nama, satuan,
+              stock_awal: isNaN(stokAwalNum) ? 0 : stokAwalNum,
+              keterangan: String(row["Keterangan"] || "").trim(),
+              sn_list: snList,
+            },
+          };
+        });
+
+        setPreviewRows(hasil);
+        setSummary({ total: hasil.length, valid: hasil.filter(r => r.valid).length, invalid: hasil.filter(r => !r.valid).length });
+        setStep("preview");
+      } catch (err) {
+        setError("Gagal membaca file. Pastikan formatnya sesuai template.");
+      } finally {
+        setLoadingPreview(false);
+      }
+    };
+    reader.onerror = () => { setError("Gagal membaca file"); setLoadingPreview(false); };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleConfirm = async () => {
+    const rowsValid = previewRows.filter(r => r.valid);
+    if (rowsValid.length === 0) { setError("Tidak ada baris valid untuk disimpan"); return; }
+    setLoadingConfirm(true); setError("");
+    let totalBerhasil = 0;
+    const gagal = [];
+    for (const r of rowsValid) {
+      try {
+        const res = await fetch(`${apiUrl}/material`, {
+          method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify(r.data),
+        });
+        const resData = await res.json().catch(() => ({}));
+        if (res.status === 201) totalBerhasil += 1;
+        else gagal.push({ baris: r.baris, alasan: resData.message || "Gagal disimpan" });
+      } catch {
+        gagal.push({ baris: r.baris, alasan: "Gagal terhubung ke server" });
+      }
+    }
+    setResult({ total_berhasil: totalBerhasil, total_gagal: gagal.length, gagal });
+    setStep("done");
+    setLoadingConfirm(false);
+    onSuccess && onSuccess();
+    notify && notify(`Import selesai: ${totalBerhasil} berhasil, ${gagal.length} gagal`, gagal.length > 0 ? "info" : "success");
+  };
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[92] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.5)" }} onClick={handleClose}>
+      <div className="modal-in bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b flex items-center justify-between shrink-0" style={{ borderColor: "var(--border)" }}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--green-soft)", color: "var(--green)" }}>
+              <IconFileExcel className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <h3 className="font-bold font-display text-sm" style={{ color: "var(--ink)" }}>Import Master Material dari Excel</h3>
+              <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>Tambah banyak jenis material sekaligus</p>
+            </div>
+          </div>
+          <button onClick={handleClose} className="p-1.5 rounded-lg hover:bg-gray-100"><IconX className="w-4 h-4" style={{ color: "var(--ink-soft)" }} /></button>
+        </div>
+
+        <div className="p-5 overflow-y-auto flex-1">
+          {step === "upload" && (
+            <div className="space-y-4">
+              <button type="button" onClick={downloadTemplate} disabled={downloadingTemplate}
+                className="w-full flex items-center justify-between p-3.5 rounded-xl border-2 border-dashed hover:bg-gray-50 transition text-left disabled:opacity-60"
+                style={{ borderColor: "var(--border)" }}>
+                <div className="flex items-center gap-2.5">
+                  <IconDownload className="w-4 h-4" style={{ color: "var(--brand-dark)" }} />
+                  <div>
+                    <p className="text-xs font-bold" style={{ color: "var(--ink)" }}>{downloadingTemplate ? "Menyiapkan template..." : "Download Template Excel"}</p>
+                    <p className="text-[10px]" style={{ color: "var(--ink-soft)" }}>Kolom Kategori & Nama berupa dropdown (Nama otomatis menyesuaikan Kategori), + sheet "Panduan"</p>
+                  </div>
+                </div>
+              </button>
+
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={e => { e.preventDefault(); setDragOver(false); pilihFile(e.dataTransfer.files?.[0]); }}
+                onClick={() => fileInputRef.current?.click()}
+                className="p-6 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition text-center"
+                style={{ borderColor: dragOver ? "var(--brand)" : "var(--border)", background: dragOver ? "var(--brand-soft)" : "transparent" }}>
+                <IconFileExcel className="w-6 h-6" style={{ color: file ? "var(--green)" : "var(--ink-soft)" }} />
+                {file ? (
+                  <p className="text-xs font-bold" style={{ color: "var(--ink)" }}>{file.name}</p>
+                ) : (
+                  <>
+                    <p className="text-xs font-bold" style={{ color: "var(--ink)" }}>Klik untuk pilih file, atau drag & drop di sini</p>
+                    <p className="text-[10px]" style={{ color: "var(--ink-soft)" }}>Format .xlsx atau .xls, sesuai template di atas</p>
+                  </>
+                )}
+                <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden"
+                  onChange={e => pilihFile(e.target.files?.[0])} />
+              </div>
+
+              {error && (
+                <p className="text-[11px] font-semibold flex items-center gap-1.5" style={{ color: "var(--red)" }}>
+                  <IconAlert className="w-3.5 h-3.5 shrink-0" /> {error}
+                </p>
+              )}
+            </div>
+          )}
+
+          {step === "preview" && (
+            <div className="space-y-3.5">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl p-3 text-center" style={{ background: "var(--canvas)" }}>
+                  <p className="text-lg font-bold font-display" style={{ color: "var(--ink)" }}>{summary.total}</p>
+                  <p className="text-[10px] font-bold uppercase" style={{ color: "var(--ink-soft)" }}>Total Baris</p>
+                </div>
+                <div className="rounded-xl p-3 text-center" style={{ background: "var(--green-soft)" }}>
+                  <p className="text-lg font-bold font-display" style={{ color: "var(--green)" }}>{summary.valid}</p>
+                  <p className="text-[10px] font-bold uppercase" style={{ color: "var(--green)" }}>Valid</p>
+                </div>
+                <div className="rounded-xl p-3 text-center" style={{ background: "var(--red-soft)" }}>
+                  <p className="text-lg font-bold font-display" style={{ color: "var(--red)" }}>{summary.invalid}</p>
+                  <p className="text-[10px] font-bold uppercase" style={{ color: "var(--red)" }}>Bermasalah</p>
+                </div>
+              </div>
+
+              <div className="border rounded-xl overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                  <table className="w-full text-left border-collapse text-[11px] min-w-[760px]">
+                    <thead className="sticky top-0">
+                      <tr className="border-b font-bold uppercase tracking-wide" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                        <th className="p-2.5">Baris</th>
+                        <th className="p-2.5">Kategori</th>
+                        <th className="p-2.5">Nama</th>
+                        <th className="p-2.5">Satuan</th>
+                        <th className="p-2.5 text-right">Stok Awal</th>
+                        <th className="p-2.5">SN ONT</th>
+                        <th className="p-2.5">Keterangan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
+                      {previewRows.map(r => (
+                        <tr key={r.baris} style={{ background: r.valid ? "transparent" : "var(--red-soft)" }}>
+                          <td className="p-2.5 font-mono" style={{ color: "var(--ink-soft)" }}>{r.baris}</td>
+                          <td className="p-2.5" style={{ color: "var(--ink-soft)" }}>{r.data.kategori}</td>
+                          <td className="p-2.5 font-semibold" style={{ color: "var(--ink)" }}>{r.data.nama || "—"}</td>
+                          <td className="p-2.5" style={{ color: "var(--ink-soft)" }}>{r.data.satuan}</td>
+                          <td className="p-2.5 text-right font-mono" style={{ color: "var(--ink-soft)" }}>{r.data.stock_awal}</td>
+                          <td className="p-2.5 font-mono text-[10px]" style={{ color: "#6D28D9" }} title={(r.data.sn_list || []).join(", ")}>
+                            {r.data.kategori === "ONT" ? (r.data.sn_list && r.data.sn_list.length > 0 ? `${r.data.sn_list.length} SN` : "—") : "—"}
+                          </td>
+                          <td className="p-2.5">
+                            {r.valid ? (
+                              <span className="inline-flex items-center gap-1 font-bold" style={{ color: "var(--green)" }}><IconCheck className="w-3 h-3" /> Valid</span>
+                            ) : (
+                              <span className="font-semibold" style={{ color: "var(--red)" }} title={r.errors.join(", ")}>
+                                {r.errors.join(", ")}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>
+                Periksa kembali data di atas. Baris berwarna merah <strong>tidak akan diimpor</strong> — hanya {summary.valid} baris valid yang akan disimpan saat Anda menekan "Konfirmasi & Simpan".
+              </p>
+              {error && (
+                <p className="text-[11px] font-semibold flex items-center gap-1.5" style={{ color: "var(--red)" }}>
+                  <IconAlert className="w-3.5 h-3.5 shrink-0" /> {error}
+                </p>
+              )}
+            </div>
+          )}
+
+          {step === "done" && result && (
+            <div className="space-y-4">
+              <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: result.total_gagal > 0 ? "var(--amber-soft)" : "var(--green-soft)" }}>
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "white", color: result.total_gagal > 0 ? "var(--amber)" : "var(--green)" }}>
+                  <IconCheck className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: "var(--ink)" }}>{result.total_berhasil} jenis material berhasil ditambahkan</p>
+                  {result.total_gagal > 0 && <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{result.total_gagal} baris gagal disimpan, lihat rincian di bawah.</p>}
+                </div>
+              </div>
+
+              {result.gagal && result.gagal.length > 0 && (
+                <div className="border rounded-xl overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                  <div className="max-h-56 overflow-y-auto divide-y" style={{ borderColor: "var(--border)" }}>
+                    {result.gagal.map((g, i) => (
+                      <div key={i} className="p-2.5 flex items-center justify-between text-[11px]">
+                        <span className="font-semibold" style={{ color: "var(--ink)" }}>Baris {g.baris}</span>
+                        <span style={{ color: "var(--red)" }}>{g.alasan}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="p-5 border-t flex gap-2 shrink-0" style={{ borderColor: "var(--border)" }}>
+          {step === "upload" && (
+            <>
+              <button onClick={handleClose} className="flex-1 py-2.5 rounded-xl border font-semibold text-xs hover:bg-gray-50" style={{ borderColor: "var(--border)" }}>Batal</button>
+              <button onClick={handleUploadPreview} disabled={!file || loadingPreview}
+                className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white disabled:opacity-60" style={{ background: "var(--brand)" }}>
+                {loadingPreview ? "Memvalidasi..." : "Upload & Validasi"}
+              </button>
+            </>
+          )}
+          {step === "preview" && (
+            <>
+              <button onClick={resetState} className="flex-1 py-2.5 rounded-xl border font-semibold text-xs hover:bg-gray-50" style={{ borderColor: "var(--border)" }}>Upload Ulang</button>
+              <button onClick={handleConfirm} disabled={summary.valid === 0 || loadingConfirm}
+                className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white disabled:opacity-60" style={{ background: "var(--green)" }}>
+                {loadingConfirm ? "Menyimpan..." : `Konfirmasi & Simpan (${summary.valid})`}
+              </button>
+            </>
+          )}
+          {step === "done" && (
+            <button onClick={handleClose} className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white" style={{ background: "var(--brand)" }}>Selesai</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ---------------------------------- INVOICE PRINT VIEW ---------------------------------- */
 const InvoicePrintView = ({ invoice }) => {
   if (!invoice) return null;
@@ -714,8 +1525,7 @@ const InvoicePrintView = ({ invoice }) => {
 };
 
 /* ---------------------------------- LOGIN SCREEN ---------------------------------- */
-const BASE_URL = '';
-const AUTH_API = '/api/absen/login';
+const AUTH_API = "/api/absen/login";
 
 const LoginScreen = ({ onLoginSuccess }) => {
   const [karyawanId, setKaryawanId] = useState("");
@@ -790,10 +1600,10 @@ const LoginScreen = ({ onLoginSuccess }) => {
 };
 
 /* ---------------------------------- MAIN APP ---------------------------------- */
-const API = '/api/admin';
-const FIN_API = '/api/finance';
-const TRACK_API = '/api';
-const MATERIAL_API = '/api';
+const API = "/api/admin";
+const FIN_API = "/api/finance";
+const TRACK_API = "/api";
+const MATERIAL_API = "/api"; 
 // Preset pilihan dropdown Master Material & Pemakaian Teknisi — bisa ditambah/kurangi sesuai kebutuhan.
 const KABEL_METER_PRESETS = [50, 80, 100, 150, 200, 250];
 const ONT_MEREK_PRESETS = ["ZTE", "Huawei", "Nokia", "Pejas"];
@@ -922,9 +1732,12 @@ function DashboardAdmin({ session, onLogout }) {
   const [bayarSubmittingId, setBayarSubmittingId] = useState(null); // karyawan_id yang sedang diproses tombol "Tandai Sudah Dibayar"
 
   // ==================== MODUL MATERIAL: state ====================
-  const [materialSubTab, setMaterialSubTab] = useState("Master"); // Master | Pemakaian | Stok | Laporan
+  const [materialSubTab, setMaterialSubTab] = useState("Master"); // Master | Pemakaian | Laporan
+  const [importPemakaianModalOpen, setImportPemakaianModalOpen] = useState(false);
+  const [importMaterialModalOpen, setImportMaterialModalOpen] = useState(false);
   const [materialList, setMaterialList] = useState([]);
   const [pemakaianList, setPemakaianList] = useState([]);
+  const [stokLogList, setStokLogList] = useState([]);
   const [materialReport, setMaterialReport] = useState({ perMaterial: [], perTeam: [] });
   const [reportLoading, setReportLoading] = useState(false);
 
@@ -934,14 +1747,22 @@ function DashboardAdmin({ session, onLogout }) {
   const [matNama, setMatNama] = useState("50 M");
   const [matNamaPilihan, setMatNamaPilihan] = useState("50"); // dropdown preset (angka kabel / merek ONT / "Lainnya")
   const [matSatuan, setMatSatuan] = useState("Roll");
-  const [matQty, setMatQty] = useState(""); // qty: stok awal (Kabel/Lainnya) atau jumlah unit ONT -> otomatis jadi jumlah kolom SN
-  const [matSnOntList, setMatSnOntList] = useState([]); // daftar SN ONT, jumlah kolom mengikuti Qty saat kategori ONT
+  const [matJumlah, setMatJumlah] = useState(""); // qty / stok awal — diisi saat TAMBAH material baru (Kabel/ONT/Lainnya)
+  const [matSnOntList, setMatSnOntList] = useState([]); // otomatis sejumlah matJumlah, khusus kategori ONT saat TAMBAH
   const [matFormErrors, setMatFormErrors] = useState({});
   const [matSubmitting, setMatSubmitting] = useState(false);
   const [matDeleteTarget, setMatDeleteTarget] = useState(null);
   const [searchMaterial, setSearchMaterial] = useState("");
   const [pageMaterial, setPageMaterial] = useState(1);
   const PAGE_SIZE_MAT = 8;
+
+  // form: Tambah Stok (restock) untuk material yang SUDAH ada — muncul saat mode Edit di tab
+  // Master Material, menggantikan tab "Stok Masuk/Kembali" yang lama.
+  const [addStokJumlah, setAddStokJumlah] = useState("");
+  const [addStokSnList, setAddStokSnList] = useState([]); // otomatis sejumlah addStokJumlah, khusus ONT
+  const [addStokKeterangan, setAddStokKeterangan] = useState("");
+  const [addStokError, setAddStokError] = useState("");
+  const [addStokSubmitting, setAddStokSubmitting] = useState(false);
 
   // form: log pemakaian material oleh teknisi
   const [pmkEditId, setPmkEditId] = useState(null);
@@ -971,6 +1792,13 @@ function DashboardAdmin({ session, onLogout }) {
   // filter laporan
   const [reportDari, setReportDari] = useState("");
   const [reportSampai, setReportSampai] = useState("");
+  // Pagination untuk tabel-tabel summary di halaman Laporan Material.
+  const [pagePerMaterial, setPagePerMaterial] = useState(1);
+  const [pageSizePerMaterial, setPageSizePerMaterial] = useState(10);
+  const [pagePerTeam, setPagePerTeam] = useState(1);
+  const [pageSizePerTeam, setPageSizePerTeam] = useState(10);
+  const [pageSnOnt, setPageSnOnt] = useState(1);
+  const [pageSizeSnOnt, setPageSizeSnOnt] = useState(10);
 
   const muatSemuaData = useCallback(async (silent = false) => {
     try {
@@ -988,6 +1816,7 @@ function DashboardAdmin({ session, onLogout }) {
       if (canAccess(session.role, "material")) {
         calls.push(fetch(`${MATERIAL_API}/material`, { headers: authHeaders() }));
         calls.push(fetch(`${MATERIAL_API}/pemakaian-material`, { headers: authHeaders() }));
+        calls.push(fetch(`${MATERIAL_API}/material/stok`, { headers: authHeaders() }));
       }
       const results = await Promise.all(calls);
       const dataKaryawan = await results[0].json();
@@ -1022,6 +1851,8 @@ function DashboardAdmin({ session, onLogout }) {
         setMaterialList(Array.isArray(dataMaterial) ? dataMaterial : []);
         const dataPemakaian = await results[idx++].json();
         setPemakaianList(Array.isArray(dataPemakaian) ? dataPemakaian : []);
+        const dataStokLog = await results[idx++].json();
+        setStokLogList(Array.isArray(dataStokLog) ? dataStokLog : []);
       }
       setOnline(true);
       setLastSync(new Date());
@@ -1790,6 +2621,37 @@ function DashboardAdmin({ session, onLogout }) {
     }
   };
 
+  // Dipicu tombol khusus di baris Tracking BAST berstatus "Proses Finance" (lihat modal
+  // konfirmasi trkCatatTarget). Backend akan: (1) membuat 1 transaksi "Masuk" otomatis di
+  // modul Keuangan sebesar nilaiAsianet baris tracking ini, dan (2) memindahkan status baris
+  // tracking dari "Proses Finance" -> "Done Invoice", supaya tidak bisa dobel-catat ke saldo.
+  const [trkCatatTarget, setTrkCatatTarget] = useState(null);
+  const [trkCatatSubmitting, setTrkCatatSubmitting] = useState(null);
+  const catatTrackingKeKeuangan = async () => {
+    if (!trkCatatTarget || trkCatatSubmitting) return;
+    const t = trkCatatTarget;
+    setTrkCatatSubmitting(t._id);
+    try {
+      const res = await fetch(`${TRACK_API}/tracking/${t._id}/catat-keuangan`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ jumlah: t.nilaiAsianet ?? t.amount ?? 0 })
+      });
+      const resData = await res.json().catch(() => ({}));
+      if (res.ok) {
+        notify(`Dana "${t.region} - ${t.woType}" berhasil dicatat sebagai uang masuk di Keuangan`);
+        muatSemuaData(true);
+      } else {
+        notify(resData.message || "Gagal mencatat ke Keuangan", "error");
+      }
+    } catch {
+      notify("Gagal mencatat ke Keuangan", "error");
+    } finally {
+      setTrkCatatSubmitting(null);
+      setTrkCatatTarget(null);
+    }
+  };
+
   /* ---------------- MODUL TRACKING BAST (Khusus Owner) ---------------- */
   const [trkEditId, setTrkEditId] = useState(null);
   const [trkRegion, setTrkRegion] = useState(TRACKING_REGIONS[0]);
@@ -2162,12 +3024,13 @@ function DashboardAdmin({ session, onLogout }) {
   }, [materialList]);
   const resetFormMaterial = () => {
     setMatEditId(null); setMatKategori("Kabel"); setMatNamaPilihan("50"); setMatNama("50 M"); setMatSatuan("Roll");
-    setMatQty(""); setMatSnOntList([]); setMatFormErrors({});
+    setMatJumlah(""); setMatSnOntList([]); setMatFormErrors({});
+    resetFormAddStok();
   };
   // Ganti kategori -> reset preset & satuan default yang relevan buat kategori itu
   const handleMatKategoriChange = (val) => {
     setMatKategori(val);
-    setMatSnOntList([]);
+    setMatJumlah(""); setMatSnOntList([]);
     if (val === "Kabel") { setMatNamaPilihan("50"); setMatNama("50 M"); setMatSatuan("Roll"); }
     else if (val === "ONT") { setMatNamaPilihan("ZTE"); setMatNama("ZTE"); setMatSatuan("Unit"); }
     else { setMatNamaPilihan(""); setMatNama(""); setMatSatuan("Roll"); }
@@ -2179,23 +3042,21 @@ function DashboardAdmin({ session, onLogout }) {
     if (matKategori === "Kabel") setMatNama(`${val} M`);
     else if (matKategori === "ONT") setMatNama(val);
   };
-  // Kalau kategori ONT, jumlah kolom input SN mengikuti Qty yang diketik (maks 300 sekali input).
-  // Kolom SN cuma BERTAMBAH mengikuti Qty, tidak pernah otomatis mengurangi/menghapus entri yang
-  // sudah ada (penting waktu mode Edit supaya SN lama yang sudah tersimpan tidak hilang).
-  const matJumlahSnDibutuhkan = matKategori === "ONT" ? Math.max(0, Math.min(300, Number(matQty) || 0)) : 0;
-  useEffect(() => {
+  // Jumlah/qty saat TAMBAH material ONT baru -> otomatis siapkan kolom SN sejumlah itu (opsional per unit)
+  const handleMatJumlahChange = (val) => {
+    setMatJumlah(val);
+    if (matKategori !== "ONT" || matEditId) return;
+    const n = Math.max(0, Math.min(200, Number(val) || 0));
     setMatSnOntList(prev => {
-      if (prev.length >= matJumlahSnDibutuhkan) return prev;
-      const arr = [...prev];
-      while (arr.length < matJumlahSnDibutuhkan) arr.push("");
+      const arr = prev.slice(0, n);
+      while (arr.length < n) arr.push("");
       return arr;
     });
-  }, [matJumlahSnDibutuhkan]);
+  };
   const updateMatSnOntAt = (idx, val) => setMatSnOntList(prev => prev.map((v, i) => i === idx ? val : v));
   const validateMaterial = () => {
     const errs = {};
     if (!matNama.trim()) errs.nama = matKategori === "Kabel" ? "Jenis kabel wajib dipilih/diisi" : matKategori === "ONT" ? "Merek/jenis ONT wajib dipilih/diisi" : "Nama/jenis material wajib diisi";
-    if (matQty !== "" && Number(matQty) < 0) errs.qty = "Qty tidak boleh minus";
     setMatFormErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -2205,10 +3066,12 @@ function DashboardAdmin({ session, onLogout }) {
     setMatSubmitting(true);
     const url = matEditId ? `${MATERIAL_API}/material/${matEditId}` : `${MATERIAL_API}/material`;
     const method = matEditId ? "PUT" : "POST";
-    const bodyData = { kategori: matKategori, nama: matNama, satuan: matSatuan, stock_awal: matQty === "" ? 0 : Number(matQty) };
-    if (matKategori === "ONT") {
-      const snBersih = matSnOntList.map(s => s.trim()).filter(Boolean);
-      if (snBersih.length > 0) bodyData.sn_list = snBersih;
+    const bodyData = { kategori: matKategori, nama: matNama, satuan: matSatuan };
+    if (!matEditId) {
+      // Qty/stok awal HANYA diisi saat menambah jenis material baru — untuk material yang
+      // sudah ada, penambahan stok lewat panel "Tambah Stok" di mode Edit (bukan di sini).
+      bodyData.stock_awal = Math.max(0, Number(matJumlah) || 0);
+      if (matKategori === "ONT") bodyData.sn_list = matSnOntList;
     }
     try {
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
@@ -2222,8 +3085,7 @@ function DashboardAdmin({ session, onLogout }) {
   };
   const pemicuEditMaterial = (m) => {
     setMatEditId(m._id); setMatKategori(m.kategori); setMatNama(m.nama); setMatSatuan(m.satuan);
-    setMatQty(String(m.stock_awal ?? 0));
-    setMatSnOntList(m.kategori === "ONT" && Array.isArray(m.sn_list) ? [...m.sn_list] : []);
+    setMatJumlah(""); setMatSnOntList([]);
     if (m.kategori === "Kabel") {
       const angka = String(m.nama || "").replace(/\s*M$/i, "").trim();
       setMatNamaPilihan(KABEL_METER_PRESETS.map(String).includes(angka) ? angka : "Lainnya");
@@ -2233,6 +3095,7 @@ function DashboardAdmin({ session, onLogout }) {
       setMatNamaPilihan("");
     }
     setMatFormErrors({});
+    resetFormAddStok();
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const hapusMaterial = async () => {
@@ -2244,6 +3107,42 @@ function DashboardAdmin({ session, onLogout }) {
       else notify(resData.message || "Gagal menghapus material", "error");
     } catch { notify("Gagal terhubung ke server", "error"); }
     finally { setMatDeleteTarget(null); }
+  };
+
+  // ---- Tambah Stok (restock) untuk material yang SUDAH ADA — dipakai di panel Edit tab
+  // Master Material, menggantikan tab "Stok Masuk/Kembali" yang lama. Selalu tipe "Penambahan";
+  // untuk kategori ONT ikut menambah SN baru (opsional per unit) ke sn_list material tsb.
+  const resetFormAddStok = () => {
+    setAddStokJumlah(""); setAddStokSnList([]); setAddStokKeterangan(""); setAddStokError("");
+  };
+  const jumlahSnOntTambahStok = (matEditId && matKategori === "ONT") ? Math.max(0, Math.min(200, Number(addStokJumlah) || 0)) : 0;
+  const handleAddStokJumlahChange = (val) => {
+    setAddStokJumlah(val);
+    const n = (matKategori === "ONT") ? Math.max(0, Math.min(200, Number(val) || 0)) : 0;
+    setAddStokSnList(prev => {
+      const arr = prev.slice(0, n);
+      while (arr.length < n) arr.push("");
+      return arr;
+    });
+  };
+  const updateAddStokSnAt = (idx, val) => setAddStokSnList(prev => prev.map((v, i) => i === idx ? val : v));
+  const handleSubmitAddStok = async (e) => {
+    e.preventDefault();
+    if (!matEditId) return;
+    if (!addStokJumlah || Number(addStokJumlah) <= 0) { setAddStokError("Jumlah harus lebih dari 0"); return; }
+    setAddStokError("");
+    setAddStokSubmitting(true);
+    const bodyData = { material_id: matEditId, tipe: "Penambahan", jumlah: addStokJumlah, keterangan: addStokKeterangan };
+    if (jumlahSnOntTambahStok > 0) bodyData.sn_list = addStokSnList;
+    try {
+      const res = await fetch(`${MATERIAL_API}/material/stok`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
+      const resData = await res.json().catch(() => ({}));
+      if (res.status === 201) {
+        notify(resData.message || "Stok berhasil ditambahkan");
+        resetFormAddStok(); muatSemuaData(true);
+      } else notify(resData.message || "Gagal menambah stok", "error");
+    } catch { notify("Gagal terhubung ke server", "error"); }
+    finally { setAddStokSubmitting(false); }
   };
 
   const resetFormPemakaian = () => {
@@ -2277,27 +3176,70 @@ function DashboardAdmin({ session, onLogout }) {
   };
   // Daftar SN ONT yang sudah terdaftar di Master Material (kategori ONT), dipakai sebagai
   // saran/autocomplete di field SN ONT — tetap boleh diisi manual/bebas.
-  // PENTING: difilter berdasarkan Merek Modem yang sedang dipilih di form Pemakaian, supaya
-  // SN merek lain (ex: Nokia) tidak ikut nongol saat pemakaian yang diinput merek lain (ex: Pejas).
   const snOntSuggestions = useMemo(() => {
-    const target = String(pmkMerekModem || "").trim().toLowerCase();
-    if (!target) return [];
     const set = new Set();
-    materialList.forEach(m => {
-      if (m.kategori === "ONT" && String(m.nama || "").trim().toLowerCase() === target && Array.isArray(m.sn_list)) {
-        m.sn_list.forEach(sn => sn && set.add(sn));
-      }
-    });
+    materialList.forEach(m => { if (m.kategori === "ONT" && Array.isArray(m.sn_list)) m.sn_list.forEach(sn => sn && set.add(sn)); });
     return [...set];
-  }, [materialList, pmkMerekModem]);
+  }, [materialList]);
   const kabelMaterialOptions = useMemo(() => materialList.filter(m => m.kategori === "Kabel"), [materialList]);
-  // Data master ONT untuk merek yang sedang dipilih di form Pemakaian (dipakai buat peringatan
-  // kalau merek itu belum pernah didaftarkan / stoknya masih 0 di Master Material).
-  const pmkMerekMaterial = useMemo(() => {
-    const target = String(pmkMerekModem || "").trim().toLowerCase();
-    if (!target) return null;
-    return materialList.find(m => m.kategori === "ONT" && String(m.nama || "").trim().toLowerCase() === target) || null;
-  }, [materialList, pmkMerekModem]);
+
+  // Daftar SN ONT untuk tabel di halaman Laporan — gabungkan sn_list tiap Material ONT dengan
+  // status pemakaian terakhir (kalau SN itu sudah pernah dipakai teknisi), biar Owner gampang lihat
+  // mana SN yang masih tersedia di gudang vs sudah Terpakai/Idle di lapangan.
+  const daftarSnOnt = useMemo(() => {
+    const rows = [];
+    materialList.filter(m => m.kategori === "ONT").forEach(m => {
+      (m.sn_list || []).forEach(sn => {
+        const pemakaian = pemakaianList.find(p => p.sn_ont === sn);
+        rows.push({
+          sn,
+          material_nama: m.nama,
+          status: pemakaian ? pemakaian.status : "Tersedia",
+          nama_team: pemakaian ? pemakaian.nama_team : "",
+          tanggal: pemakaian ? pemakaian.tanggal_pengambilan : null,
+        });
+      });
+    });
+    return rows;
+  }, [materialList, pemakaianList]);
+  const [searchSnOnt, setSearchSnOnt] = useState("");
+  const filteredSnOnt = useMemo(() => {
+    const q = searchSnOnt.trim().toLowerCase();
+    if (!q) return daftarSnOnt;
+    return daftarSnOnt.filter(r => r.sn.toLowerCase().includes(q) || r.material_nama.toLowerCase().includes(q) || (r.nama_team || "").toLowerCase().includes(q));
+  }, [daftarSnOnt, searchSnOnt]);
+  useEffect(() => { setPageSnOnt(1); }, [searchSnOnt, daftarSnOnt.length]);
+  const totalPagesSnOnt = Math.max(1, Math.ceil(filteredSnOnt.length / pageSizeSnOnt));
+  const pagedSnOnt = useMemo(() => {
+    const start = (pageSnOnt - 1) * pageSizeSnOnt;
+    return filteredSnOnt.slice(start, start + pageSizeSnOnt);
+  }, [filteredSnOnt, pageSnOnt, pageSizeSnOnt]);
+
+  // Pagination untuk "Rekap per Material" & "Rekap per Teknisi/Team" di halaman Laporan.
+  useEffect(() => { setPagePerMaterial(1); }, [materialReport.perMaterial.length]);
+  useEffect(() => { setPagePerTeam(1); }, [materialReport.perTeam.length]);
+  const totalPagesPerMaterial = Math.max(1, Math.ceil(materialReport.perMaterial.length / pageSizePerMaterial));
+  const pagedPerMaterial = useMemo(() => {
+    const start = (pagePerMaterial - 1) * pageSizePerMaterial;
+    return materialReport.perMaterial.slice(start, start + pageSizePerMaterial);
+  }, [materialReport.perMaterial, pagePerMaterial, pageSizePerMaterial]);
+  const totalPagesPerTeam = Math.max(1, Math.ceil(materialReport.perTeam.length / pageSizePerTeam));
+  const pagedPerTeam = useMemo(() => {
+    const start = (pagePerTeam - 1) * pageSizePerTeam;
+    return materialReport.perTeam.slice(start, start + pageSizePerTeam);
+  }, [materialReport.perTeam, pagePerTeam, pageSizePerTeam]);
+
+  // Ringkasan pivot per kategori (Kabel / ONT / Lainnya) untuk card di halaman Laporan.
+  const materialPivotByKategori = useMemo(() => {
+    const map = {};
+    materialReport.perMaterial.forEach(r => {
+      if (!map[r.kategori]) map[r.kategori] = { kategori: r.kategori, jumlahJenis: 0, stockAwal: 0, terpakai: 0, idle: 0, ditambah: 0, dikembalikan: 0, stockTerkini: 0 };
+      const g = map[r.kategori];
+      g.jumlahJenis += 1; g.stockAwal += r.stock_awal; g.terpakai += r.total_terpakai; g.idle += r.total_idle_belum_terpakai;
+      g.ditambah += r.total_ditambah; g.dikembalikan += r.total_dikembalikan; g.stockTerkini += r.stock_terkini;
+    });
+    return Object.values(map);
+  }, [materialReport.perMaterial]);
 
   const validatePemakaian = () => {
     const errs = {};
@@ -2472,41 +3414,6 @@ function DashboardAdmin({ session, onLogout }) {
     if (currentMenu === "material" && materialSubTab === "Laporan") muatReportMaterial();
   }, [currentMenu, materialSubTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Warna/aksen khas per kategori — dipakai bareng di badge tabel Rekap per Material,
-  // card pivot ringkasan, dan tabel SN ONT, supaya Owner gampang bedain sekilas pandang.
-  const KATEGORI_TONE = {
-    Kabel: { bg: "#EFF6FF", fg: "#1D4ED8", border: "#BFDBFE", grad: "linear-gradient(135deg,#3B82F6,#1D4ED8)" },
-    ONT: { bg: "#F5F3FF", fg: "#6D28D9", border: "#DDD6FE", grad: "linear-gradient(135deg,#8B5CF6,#6D28D9)" },
-    Lainnya: { bg: "#F3F4F6", fg: "#374151", border: "#E5E7EB", grad: "linear-gradient(135deg,#6B7280,#374151)" },
-  };
-  const kategoriTone = (k) => KATEGORI_TONE[k] || KATEGORI_TONE.Lainnya;
-
-  // Card pivot ringkas per kategori (Kabel / ONT / Lainnya): jumlah jenis, stok awal,
-  // terpakai, dan sisa stok terkini — dijumlah dari materialReport.perMaterial yang sedang aktif.
-  const materialKategoriSummary = useMemo(() => {
-    const kategoriUrut = ["Kabel", "ONT", "Lainnya"];
-    return kategoriUrut.map(kategori => {
-      const rows = materialReport.perMaterial.filter(r => r.kategori === kategori);
-      return {
-        kategori,
-        jumlahJenis: rows.length,
-        stockAwal: rows.reduce((a, r) => a + (r.stock_awal || 0), 0),
-        terpakai: rows.reduce((a, r) => a + (r.total_terpakai || 0), 0),
-        stockTerkini: rows.reduce((a, r) => a + (r.stock_terkini || 0), 0),
-        satuanContoh: rows[0]?.satuan || (kategori === "ONT" ? "Unit" : kategori === "Kabel" ? "Roll" : ""),
-      };
-    }).filter(c => c.jumlahJenis > 0);
-  }, [materialReport.perMaterial]);
-
-  // Daftar SN ONT per jenis material ONT — untuk tabel "Daftar SN ONT" di Laporan,
-  // supaya Owner bisa lihat rapi SN mana saja yang sudah terdaftar per merek/jenis ONT.
-  const ontSnGroups = useMemo(() => {
-    return materialList
-      .filter(m => m.kategori === "ONT")
-      .map(m => ({ material_id: m._id, nama: m.nama, stock: m.stock, stock_awal: m.stock_awal, sn_list: Array.isArray(m.sn_list) ? m.sn_list : [] }))
-      .sort((a, b) => a.nama.localeCompare(b.nama));
-  }, [materialList]);
-
   const filteredMaterial = useMemo(() => {
     const q = searchMaterial.trim().toLowerCase();
     if (!q) return materialList;
@@ -2525,7 +3432,6 @@ function DashboardAdmin({ session, onLogout }) {
   }, [pemakaianList, searchPemakaian, pemakaianStatusFilter]);
   const totalPagesPemakaian = Math.max(1, Math.ceil(filteredPemakaian.length / PAGE_SIZE_PMK));
   const pagedPemakaian = filteredPemakaian.slice((pagePemakaian - 1) * PAGE_SIZE_PMK, pagePemakaian * PAGE_SIZE_PMK);
-
 
   // ==================== KARYAWAN: ubah status Aktif / Non Aktif (khusus hrd & owner) ====================
   // Klik badge status HANYA membuka dialog konfirmasi (setStatusUbahTarget); proses ubah status
@@ -2645,6 +3551,15 @@ function DashboardAdmin({ session, onLogout }) {
         onCancel={() => setTrkDeleteTarget(null)}
       />
       <ConfirmModal
+        open={!!trkCatatTarget}
+        title="Catat sebagai uang masuk?"
+        description={trkCatatTarget ? `Status "${trkCatatTarget.region} - ${trkCatatTarget.woType}" akan berubah jadi "Done Invoice" dan ${fmtRupiah(trkCatatTarget.nilaiAsianet ?? trkCatatTarget.amount ?? 0)} akan otomatis tercatat sebagai transaksi Masuk di halaman Keuangan.` : ""}
+        confirmLabel="Ya, Catat ke Keuangan"
+        danger={false}
+        onConfirm={catatTrackingKeKeuangan}
+        onCancel={() => setTrkCatatTarget(null)}
+      />
+      <ConfirmModal
         open={!!invDeleteTarget}
         title="Hapus invoice?"
         description={invDeleteTarget ? `Invoice "${invDeleteTarget.nomor}" untuk "${invDeleteTarget.bill_nama}" akan dihapus permanen.` : ""}
@@ -2691,6 +3606,24 @@ function DashboardAdmin({ session, onLogout }) {
         open={importModalOpen}
         onClose={() => setImportModalOpen(false)}
         apiUrl={API}
+        authHeaders={authHeaders}
+        onSuccess={() => muatSemuaData(true)}
+        notify={notify}
+      />
+      <ImportPemakaianModal
+        open={importPemakaianModalOpen}
+        onClose={() => setImportPemakaianModalOpen(false)}
+        materialList={materialList}
+        apiUrl={MATERIAL_API}
+        authHeaders={authHeaders}
+        onSuccess={() => muatSemuaData(true)}
+        notify={notify}
+      />
+      <ImportMaterialModal
+        open={importMaterialModalOpen}
+        onClose={() => setImportMaterialModalOpen(false)}
+        materialList={materialList}
+        apiUrl={MATERIAL_API}
         authHeaders={authHeaders}
         onSuccess={() => muatSemuaData(true)}
         notify={notify}
@@ -3006,7 +3939,7 @@ function DashboardAdmin({ session, onLogout }) {
                     <button onClick={() => setImportModalOpen(true)}
                       className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-white shadow-sm shrink-0"
                       style={{ background: "var(--green)" }}>
-                      <IconFileExcel className="w-3.5 h-3.5" /> Import Excel
+                      <IconFileExcel className="w-3.5 h-3.5" /> Upload To Excel
                     </button>
                   </div>
 
@@ -3964,6 +4897,18 @@ function DashboardAdmin({ session, onLogout }) {
                                         {t.status === "BAST Final" && (
                                           <button onClick={() => pemicuBuatInvoiceDariTracking(t)} className="p-1.5 rounded-lg border hover:bg-green-50" style={{ borderColor: "var(--border)", color: "var(--green)" }} title="Buat Invoice"><IconPlus className="w-3.5 h-3.5" /></button>
                                         )}
+                                        {t.status === "Proses Finance" && (
+                                          <button onClick={() => setTrkCatatTarget(t)} disabled={trkCatatSubmitting === t._id}
+                                            className="p-1.5 rounded-lg border hover:bg-blue-50 disabled:opacity-50" style={{ borderColor: "var(--border)", color: "#1D4ED8" }}
+                                            title="Tandai Done Invoice & catat uang masuk ke Keuangan">
+                                            <IconWallet className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                        {t.status === "Done Invoice" && (
+                                          <span className="p-1.5 rounded-lg border flex items-center" style={{ borderColor: "var(--border)", color: "#1D4ED8" }} title="Sudah tercatat sebagai uang masuk di Keuangan">
+                                            <IconCheck className="w-3.5 h-3.5" />
+                                          </span>
+                                        )}
                                         <button onClick={() => pemicuEditTracking(t)} className="p-1.5 rounded-lg border hover:bg-blue-50" style={{ borderColor: "var(--border)", color: "var(--brand-dark)" }} title="Edit"><IconEdit className="w-3.5 h-3.5" /></button>
                                         <button onClick={() => setTrkDeleteTarget(t)} className="p-1.5 rounded-lg border hover:bg-red-50" style={{ borderColor: "var(--border)", color: "var(--red)" }} title="Hapus"><IconTrash className="w-3.5 h-3.5" /></button>
                                       </div>
@@ -4206,12 +5151,12 @@ function DashboardAdmin({ session, onLogout }) {
                   <div>
                     <h1 className="text-xl font-bold font-display" style={{ color: "var(--ink)" }}>Pemakaian Material oleh Teknisi</h1>
                     <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>
-                      Master jenis material (kategori, qty & SN), log pemakaian per teknisi, dan laporan rekap
+                      Master jenis material, log pemakaian per teknisi, stok masuk/dikembalikan, dan laporan rekap
                       {!canManageMaterial(session.role) && " (mode lihat saja)"}
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 max-w-xl">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-w-2xl">
                     {[
                       { key: "Master", label: "Master Material" },
                       { key: "Pemakaian", label: "Pemakaian Teknisi" },
@@ -4225,7 +5170,7 @@ function DashboardAdmin({ session, onLogout }) {
                     ))}
                   </div>
 
-                  {/* Daftar saran SN ONT (dari Master Material + histori) — dipakai bareng oleh tab Pemakaian */}
+                  {/* Daftar saran SN ONT (dari Master Material + histori) — dipakai bareng oleh tab Pemakaian & Stok */}
                   <datalist id="sn-ont-datalist">
                     {snOntSuggestions.map(sn => <option key={sn} value={sn} />)}
                   </datalist>
@@ -4303,32 +5248,28 @@ function DashboardAdmin({ session, onLogout }) {
                               )}
                             </div>
 
-                            <div>
-                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>
-                                Qty {matKategori === "ONT" ? "(jumlah unit)" : matKategori === "Kabel" ? `(jumlah ${matSatuan.toLowerCase()})` : ""}
-                              </label>
-                              <input type="number" min="0" placeholder="0" value={matQty} onChange={e => setMatQty(e.target.value)}
-                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: matFormErrors.qty ? "var(--red)" : "var(--border)" }} />
-                              {matFormErrors.qty && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{matFormErrors.qty}</p>}
-                              <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>
-                                {matEditId
-                                  ? "Ubah angka ini untuk restock (dinaikkan) atau koreksi (diturunkan) — stok terkini otomatis ikut menyesuaikan selisihnya."
-                                  : "Qty ini otomatis jadi stok awal material begitu disimpan."}
-                              </p>
-                            </div>
-
-                            {matKategori === "ONT" && matJumlahSnDibutuhkan > 0 && (
-                              <div className="space-y-2 p-3 rounded-xl" style={{ background: "#F5F3FF", border: "1px solid #DDD6FE" }}>
-                                <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "#6D28D9" }}>
-                                  SN ONT ({matJumlahSnDibutuhkan} unit, opsional)
+                            {!matEditId && (
+                              <div>
+                                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>
+                                  {matKategori === "ONT" ? "Qty / Jumlah Unit (Stok Awal)" : "Jumlah / Qty (Stok Awal)"}
                                 </label>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <input type="number" min="0" placeholder="0" value={matJumlah} onChange={e => handleMatJumlahChange(e.target.value)}
+                                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                                <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>
+                                  {matKategori === "ONT" ? "Isi jumlah unit ONT yang mau didaftarkan, kolom SN akan otomatis muncul di bawah." : "Stok awal material ini saat pertama didaftarkan."}
+                                </p>
+                              </div>
+                            )}
+
+                            {!matEditId && matKategori === "ONT" && matSnOntList.length > 0 && (
+                              <div className="space-y-2">
+                                <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT ({matSnOntList.length} unit, opsional per unit)</label>
+                                <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
                                   {matSnOntList.map((sn, idx) => (
-                                    <input key={idx} type="text" list="sn-ont-datalist" placeholder={`SN unit #${idx + 1}`} value={sn} onChange={e => updateMatSnOntAt(idx, e.target.value)}
-                                      className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono bg-white" style={{ borderColor: "#DDD6FE" }} />
+                                    <input key={idx} type="text" list="sn-ont-datalist" placeholder={`SN ONT unit #${idx + 1}`} value={sn} onChange={e => updateMatSnOntAt(idx, e.target.value)}
+                                      className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
                                   ))}
                                 </div>
-                                <p className="text-[10px]" style={{ color: "#7C3AED" }}>Boleh dikosongkan per unit — diisi sesuai SN fisik yang tersedia.</p>
                               </div>
                             )}
 
@@ -4341,16 +5282,63 @@ function DashboardAdmin({ session, onLogout }) {
                           </form>
                         </div>
                       )}
+
+                      {canManageMaterial(session.role) && matEditId && (
+                        <div className="bg-white p-5 rounded-2xl border h-fit lg:sticky lg:top-6" style={{ borderColor: "var(--border)" }}>
+                          <h2 className="text-base font-bold font-display" style={{ color: "var(--ink)" }}>Tambah Stok</h2>
+                          <p className="text-xs mt-0.5 mb-4" style={{ color: "var(--ink-soft)" }}>Restock "{matNama}" — stok terkini akan bertambah sesuai jumlah di bawah</p>
+                          <form onSubmit={handleSubmitAddStok} className="space-y-3.5 text-xs">
+                            <div>
+                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>
+                                {matKategori === "ONT" ? "Qty / Jumlah Unit Tambahan" : "Jumlah Tambahan"}
+                              </label>
+                              <input type="number" min="1" placeholder="0" value={addStokJumlah} onChange={e => handleAddStokJumlahChange(e.target.value)}
+                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: addStokError ? "var(--red)" : "var(--border)" }} />
+                              {addStokError && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{addStokError}</p>}
+                            </div>
+                            {jumlahSnOntTambahStok > 0 && (
+                              <div className="space-y-2">
+                                <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT ({jumlahSnOntTambahStok} unit, opsional)</label>
+                                <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
+                                  {addStokSnList.map((sn, idx) => (
+                                    <input key={idx} type="text" list="sn-ont-datalist" placeholder={`SN ONT unit #${idx + 1}`} value={sn} onChange={e => updateAddStokSnAt(idx, e.target.value)}
+                                      className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            <div>
+                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Keterangan</label>
+                              <textarea rows="2" placeholder="Catatan opsional, contoh: restock dari gudang pusat" value={addStokKeterangan} onChange={e => setAddStokKeterangan(e.target.value)}
+                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium resize-none" style={{ borderColor: "var(--border)" }}></textarea>
+                            </div>
+                            <div className="pt-1">
+                              <button type="submit" disabled={addStokSubmitting} className="w-full text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60" style={{ background: "var(--green)" }}>
+                                {addStokSubmitting ? "Memproses..." : "Tambah Stok"}
+                              </button>
+                            </div>
+                          </form>
+                        </div>
+                      )}
                       <div className={canManageMaterial(session.role) ? "elev-card lg:col-span-2 bg-white rounded-2xl border overflow-hidden" : "elev-card lg:col-span-3 bg-white rounded-2xl border overflow-hidden"} style={{ borderColor: "var(--border)" }}>
                         <div className="p-4 border-b flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between" style={{ borderColor: "var(--border)" }}>
                           <div>
                             <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Master Data Material</h3>
                             <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{filteredMaterial.length} dari {materialList.length} jenis material</p>
                           </div>
-                          <div className="relative">
-                            <IconSearch className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input value={searchMaterial} onChange={e => setSearchMaterial(e.target.value)} placeholder="Cari nama / kategori"
-                              className="pl-8 pr-3 py-2 border rounded-xl text-xs font-medium outline-none w-full sm:w-52" style={{ borderColor: "var(--border)" }} />
+                          <div className="flex items-center gap-2">
+                            <div className="relative">
+                              <IconSearch className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                              <input value={searchMaterial} onChange={e => setSearchMaterial(e.target.value)} placeholder="Cari nama / kategori"
+                                className="pl-8 pr-3 py-2 border rounded-xl text-xs font-medium outline-none w-full sm:w-52" style={{ borderColor: "var(--border)" }} />
+                            </div>
+                            {canManageMaterial(session.role) && (
+                              <button onClick={() => setImportMaterialModalOpen(true)}
+                                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white shadow-sm shrink-0"
+                                style={{ background: "var(--green)" }}>
+                                <IconFileExcel className="w-3.5 h-3.5" /> Upload To Excel
+                              </button>
+                            )}
                           </div>
                         </div>
                         <div className="overflow-x-auto">
@@ -4371,12 +5359,12 @@ function DashboardAdmin({ session, onLogout }) {
                               ) : pagedMaterial.map(m => (
                                 <tr key={m._id} className="hover:bg-gray-50/60 transition">
                                   <td className="p-3.5">
-                                    <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide"
-                                      style={{ background: kategoriTone(m.kategori).bg, color: kategoriTone(m.kategori).fg, border: `1px solid ${kategoriTone(m.kategori).border}` }}>
-                                      {m.kategori}
-                                    </span>
+                                    <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide" style={{ background: kategoriMaterialTone(m.kategori).bg, color: kategoriMaterialTone(m.kategori).fg }}>{m.kategori}</span>
                                   </td>
-                                  <td className="p-3.5 font-bold" style={{ color: "var(--ink)" }}>{m.nama}</td>
+                                  <td className="p-3.5 font-bold" style={{ color: "var(--ink)" }}>
+                                    {m.nama}
+                                    {m.kategori === "ONT" && <span className="block font-normal font-mono text-[10px] mt-0.5" style={{ color: "#6D28D9" }}>{(m.sn_list || []).length} SN terdaftar</span>}
+                                  </td>
                                   <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{m.satuan}</td>
                                   <td className="p-3.5 text-right font-mono" style={{ color: "var(--ink-soft)" }}>{m.stock_awal}</td>
                                   <td className="p-3.5 text-right font-mono font-bold" style={{ color: m.stock <= 0 ? "var(--red)" : "var(--ink)" }}>{m.stock}</td>
@@ -4405,12 +5393,6 @@ function DashboardAdmin({ session, onLogout }) {
                         <div className="bg-white p-5 rounded-2xl border h-fit lg:sticky lg:top-6" style={{ borderColor: "var(--border)" }}>
                           <h2 className="text-base font-bold font-display" style={{ color: "var(--ink)" }}>{pmkEditId ? "Edit Log Pemakaian" : "Tambah Log Pemakaian"}</h2>
                           <p className="text-xs mt-0.5 mb-4" style={{ color: "var(--ink-soft)" }}>{pmkEditId ? "Edit 1 baris log terpilih" : "Bisa input beberapa unit ONT & beberapa jenis kabel sekaligus"}</p>
-                          {kabelMaterialOptions.length === 0 && (
-                            <div className="mb-3.5 p-3 rounded-xl border text-[11px] font-semibold flex items-start gap-2" style={{ borderColor: "var(--amber)", background: "#FFFBEB", color: "#92400E" }}>
-                              <IconAlert className="w-4 h-4 shrink-0 mt-0.5" />
-                              <span>Belum ada data stok kabel di Master Material. Mohon input stok terlebih dahulu di tab "Master Material" sebelum mencatat pemakaian teknisi.</span>
-                            </div>
-                          )}
                           <form onSubmit={handleSubmitPemakaian} className="space-y-3.5 text-xs">
                             <div>
                               <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Tanggal Pengambilan</label>
@@ -4458,16 +5440,6 @@ function DashboardAdmin({ session, onLogout }) {
                                 <input type="text" placeholder="Merek modem lain" value={pmkMerekModem} onChange={e => setPmkMerekModem(e.target.value)}
                                   className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium mt-2" style={{ borderColor: "var(--border)" }} />
                               )}
-                              {pmkMerekModem && !pmkMerekMaterial && (
-                                <p className="text-[10px] font-semibold mt-1 flex items-center gap-1" style={{ color: "#B45309" }}>
-                                  <IconAlert className="w-3 h-3 shrink-0" /> ONT "{pmkMerekModem}" belum terdaftar di Master Material. Mohon input stok/SN-nya dulu (Kategori ONT) sebelum mencatat pemakaian.
-                                </p>
-                              )}
-                              {pmkMerekModem && pmkMerekMaterial && pmkMerekMaterial.stock <= 0 && (
-                                <p className="text-[10px] font-semibold mt-1 flex items-center gap-1" style={{ color: "#B45309" }}>
-                                  <IconAlert className="w-3 h-3 shrink-0" /> Stok ONT "{pmkMerekModem}" masih 0. Mohon input stok terlebih dahulu di Master Material.
-                                </p>
-                              )}
                             </div>
 
                             {pmkEditId ? (
@@ -4484,11 +5456,6 @@ function DashboardAdmin({ session, onLogout }) {
                                     {kabelMaterialOptions.map(m => <option key={m._id} value={m._id}>{m.nama} (stok: {m.stock})</option>)}
                                   </select>
                                   {pmkFormErrors.kabel_id && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{pmkFormErrors.kabel_id}</p>}
-                                  {pmkKabelId && materialMap[pmkKabelId] && materialMap[pmkKabelId].stock <= 0 && (
-                                    <p className="text-[10px] font-semibold mt-1 flex items-center gap-1" style={{ color: "#B45309" }}>
-                                      <IconAlert className="w-3 h-3 shrink-0" /> Stok "{materialMap[pmkKabelId].nama}" masih 0. Mohon input stok terlebih dahulu di Master Material.
-                                    </p>
-                                  )}
                                 </div>
                               </>
                             ) : (
@@ -4515,29 +5482,17 @@ function DashboardAdmin({ session, onLogout }) {
                                     </button>
                                   </div>
                                   {pmkKabelRows.map((row, idx) => (
-                                    <div key={idx}>
-                                      <div className="flex gap-2 items-start">
-                                        <select value={row.kabel_id} onChange={e => updatePmkKabelRow(idx, "kabel_id", e.target.value)} className="flex-1 p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
-                                          <option value="">— Pilih jenis kabel —</option>
-                                          {kabelMaterialOptions.map(m => <option key={m._id} value={m._id}>{m.nama} (stok: {m.stock})</option>)}
-                                        </select>
-                                        <input type="number" min="1" value={row.jumlah} onChange={e => updatePmkKabelRow(idx, "jumlah", e.target.value)}
-                                          className="w-16 p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
-                                        {pmkKabelRows.length > 1 && (
-                                          <button type="button" onClick={() => removePmkKabelRow(idx)} className="p-2.5 rounded-xl border hover:bg-red-50" style={{ borderColor: "var(--border)", color: "var(--red)" }}>
-                                            <IconX className="w-3.5 h-3.5" />
-                                          </button>
-                                        )}
-                                      </div>
-                                      {row.kabel_id && materialMap[row.kabel_id] && materialMap[row.kabel_id].stock <= 0 && (
-                                        <p className="text-[10px] font-semibold mt-1 flex items-center gap-1" style={{ color: "#B45309" }}>
-                                          <IconAlert className="w-3 h-3 shrink-0" /> Stok "{materialMap[row.kabel_id].nama}" masih 0. Mohon input stok terlebih dahulu di Master Material.
-                                        </p>
-                                      )}
-                                      {row.kabel_id && materialMap[row.kabel_id] && materialMap[row.kabel_id].stock > 0 && Number(row.jumlah) > materialMap[row.kabel_id].stock && (
-                                        <p className="text-[10px] font-semibold mt-1 flex items-center gap-1" style={{ color: "#B45309" }}>
-                                          <IconAlert className="w-3 h-3 shrink-0" /> Jumlah melebihi sisa stok ({materialMap[row.kabel_id].stock}).
-                                        </p>
+                                    <div key={idx} className="flex gap-2 items-start">
+                                      <select value={row.kabel_id} onChange={e => updatePmkKabelRow(idx, "kabel_id", e.target.value)} className="flex-1 p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
+                                        <option value="">— Pilih jenis kabel —</option>
+                                        {kabelMaterialOptions.map(m => <option key={m._id} value={m._id}>{m.nama} (stok: {m.stock})</option>)}
+                                      </select>
+                                      <input type="number" min="1" value={row.jumlah} onChange={e => updatePmkKabelRow(idx, "jumlah", e.target.value)}
+                                        className="w-16 p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                                      {pmkKabelRows.length > 1 && (
+                                        <button type="button" onClick={() => removePmkKabelRow(idx)} className="p-2.5 rounded-xl border hover:bg-red-50" style={{ borderColor: "var(--border)", color: "var(--red)" }}>
+                                          <IconX className="w-3.5 h-3.5" />
+                                        </button>
                                       )}
                                     </div>
                                   ))}
@@ -4584,6 +5539,13 @@ function DashboardAdmin({ session, onLogout }) {
                               <option value="Terpakai">Terpakai</option>
                               <option value="Idle">Idle</option>
                             </select>
+                            {canManageMaterial(session.role) && (
+                              <button onClick={() => setImportPemakaianModalOpen(true)}
+                                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white shadow-sm shrink-0"
+                                style={{ background: "var(--green)" }}>
+                                <IconFileExcel className="w-3.5 h-3.5" /> Upload To Excel
+                              </button>
+                            )}
                           </div>
                         </div>
                         <div className="overflow-x-auto">
@@ -4666,35 +5628,23 @@ function DashboardAdmin({ session, onLogout }) {
                         </button>
                       </div>
 
-                      {/* ---- CARD PIVOT RINGKASAN PER KATEGORI (Kabel vs ONT vs Lainnya) ---- */}
-                      {materialKategoriSummary.length > 0 && (
+                      {materialPivotByKategori.length > 0 && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {materialKategoriSummary.map(c => {
-                            const tone = kategoriTone(c.kategori);
+                          {materialPivotByKategori.map(g => {
+                            const tone = kategoriMaterialTone(g.kategori);
                             return (
-                              <div key={c.kategori} className="elev-card rounded-2xl border overflow-hidden" style={{ borderColor: tone.border, background: tone.bg }}>
-                                <div className="p-4 flex items-start justify-between">
-                                  <div>
-                                    <p className="text-[11px] font-black uppercase tracking-wider" style={{ color: tone.fg }}>{c.kategori}</p>
-                                    <p className="text-2xl font-bold font-display mt-1" style={{ color: tone.fg }}>{c.jumlahJenis} <span className="text-xs font-medium" style={{ color: tone.fg, opacity: 0.75 }}>jenis</span></p>
-                                  </div>
-                                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: tone.grad, color: "#fff" }}>
-                                    {c.kategori === "ONT" ? <IconCable className="w-5 h-5" /> : <IconBox className="w-5 h-5" />}
-                                  </div>
+                              <div key={g.kategori} className="elev-card bg-white p-4 rounded-2xl border" style={{ borderColor: "var(--border)", borderTop: `3px solid ${tone.fg}` }}>
+                                <div className="flex items-center justify-between mb-3">
+                                  <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide" style={{ background: tone.bg, color: tone.fg }}>{g.kategori}</span>
+                                  <span className="text-[10px] font-semibold" style={{ color: "var(--ink-soft)" }}>{g.jumlahJenis} jenis</span>
                                 </div>
-                                <div className="grid grid-cols-3 divide-x text-center" style={{ borderTop: `1px solid ${tone.border}`, borderColor: tone.border }}>
-                                  <div className="p-3">
-                                    <p className="text-[9px] font-bold uppercase tracking-wide" style={{ color: tone.fg, opacity: 0.7 }}>Stok Awal</p>
-                                    <p className="text-sm font-bold font-mono mt-0.5" style={{ color: tone.fg }}>{c.stockAwal}</p>
-                                  </div>
-                                  <div className="p-3">
-                                    <p className="text-[9px] font-bold uppercase tracking-wide" style={{ color: tone.fg, opacity: 0.7 }}>Terpakai</p>
-                                    <p className="text-sm font-bold font-mono mt-0.5" style={{ color: tone.fg }}>{c.terpakai}</p>
-                                  </div>
-                                  <div className="p-3">
-                                    <p className="text-[9px] font-bold uppercase tracking-wide" style={{ color: tone.fg, opacity: 0.7 }}>Sisa Stok</p>
-                                    <p className="text-sm font-bold font-mono mt-0.5" style={{ color: tone.fg }}>{c.stockTerkini}</p>
-                                  </div>
+                                <div className="grid grid-cols-2 gap-y-2 text-xs">
+                                  <div><p style={{ color: "var(--ink-soft)" }}>Stok Awal</p><p className="font-mono font-bold" style={{ color: "var(--ink)" }}>{g.stockAwal}</p></div>
+                                  <div><p style={{ color: "var(--ink-soft)" }}>Stok Terkini</p><p className="font-mono font-bold" style={{ color: tone.fg }}>{g.stockTerkini}</p></div>
+                                  <div><p style={{ color: "var(--ink-soft)" }}>Terpakai</p><p className="font-mono font-bold" style={{ color: "var(--red)" }}>-{g.terpakai}</p></div>
+                                  <div><p style={{ color: "var(--ink-soft)" }}>Idle</p><p className="font-mono font-bold" style={{ color: "var(--amber)" }}>{g.idle}</p></div>
+                                  <div><p style={{ color: "var(--ink-soft)" }}>Ditambah</p><p className="font-mono font-bold" style={{ color: "var(--green)" }}>+{g.ditambah}</p></div>
+                                  <div><p style={{ color: "var(--ink-soft)" }}>Dikembalikan</p><p className="font-mono font-bold" style={{ color: "var(--green)" }}>+{g.dikembalikan}</p></div>
                                 </div>
                               </div>
                             );
@@ -4711,6 +5661,7 @@ function DashboardAdmin({ session, onLogout }) {
                           <table className="w-full text-left border-collapse text-xs min-w-[860px]">
                             <thead>
                               <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                                <th className="p-4 w-12">No</th>
                                 <th className="p-4">Material</th>
                                 <th className="p-4 text-right">Stok Awal</th>
                                 <th className="p-4 text-right">Terpakai</th>
@@ -4722,15 +5673,14 @@ function DashboardAdmin({ session, onLogout }) {
                             </thead>
                             <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                               {materialReport.perMaterial.length === 0 ? (
-                                <tr><td colSpan="7"><EmptyState title="Belum ada data laporan" subtitle="Klik Tampilkan Laporan untuk memuat rekap." icon={<IconReport className="w-5 h-5" />} /></td></tr>
-                              ) : materialReport.perMaterial.map(r => (
+                                <tr><td colSpan="8"><EmptyState title="Belum ada data laporan" subtitle="Klik Tampilkan Laporan untuk memuat rekap." icon={<IconReport className="w-5 h-5" />} /></td></tr>
+                              ) : pagedPerMaterial.map((r, i) => (
                                 <tr key={r.material_id} className="hover:bg-gray-50/60 transition">
+                                  <td className="p-3.5 font-mono" style={{ color: "var(--ink-soft)" }}>{(pagePerMaterial - 1) * pageSizePerMaterial + i + 1}</td>
                                   <td className="p-3.5">
                                     <p className="font-bold" style={{ color: "var(--ink)" }}>{r.nama}</p>
-                                    <span className="inline-flex items-center gap-1 mt-0.5 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide"
-                                      style={{ background: kategoriTone(r.kategori).bg, color: kategoriTone(r.kategori).fg, border: `1px solid ${kategoriTone(r.kategori).border}` }}>
-                                      {r.kategori} · {r.satuan}
-                                    </span>
+                                    <span className="inline-block mt-1 px-2 py-0.5 rounded-full font-black text-[9px] uppercase tracking-wide" style={{ background: kategoriMaterialTone(r.kategori).bg, color: kategoriMaterialTone(r.kategori).fg }}>{r.kategori}</span>
+                                    <span className="text-[10px] ml-1.5" style={{ color: "var(--ink-soft)" }}>{r.satuan}</span>
                                   </td>
                                   <td className="p-3.5 text-right font-mono" style={{ color: "var(--ink-soft)" }}>{r.stock_awal}</td>
                                   <td className="p-3.5 text-right font-mono font-bold" style={{ color: "var(--red)" }}>-{r.total_terpakai}</td>
@@ -4743,47 +5693,10 @@ function DashboardAdmin({ session, onLogout }) {
                             </tbody>
                           </table>
                         </div>
+                        <Pagination page={pagePerMaterial} setPage={setPagePerMaterial} totalPages={totalPagesPerMaterial} totalItems={materialReport.perMaterial.length}
+                          pageSize={pageSizePerMaterial} pageSizeOptions={[5, 10, 20, 50, 100]}
+                          onPageSizeChange={(n) => { setPageSizePerMaterial(n); setPagePerMaterial(1); }} />
                       </div>
-
-                      {/* ---- DAFTAR SN ONT PER JENIS — supaya Owner bisa cek SN mana saja yang terdaftar ---- */}
-                      {ontSnGroups.length > 0 && (
-                        <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "#DDD6FE" }}>
-                          <div className="p-4 border-b flex items-center gap-2.5" style={{ borderColor: "#DDD6FE", background: "#F5F3FF" }}>
-                            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg,#8B5CF6,#6D28D9)", color: "#fff" }}>
-                              <IconCable className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-bold" style={{ color: "#6D28D9" }}>Daftar SN ONT</h3>
-                              <p className="text-[11px]" style={{ color: "#7C3AED" }}>Nomor seri ONT yang sudah terdaftar, dikelompokkan per jenis/merek</p>
-                            </div>
-                          </div>
-                          <div className="divide-y" style={{ borderColor: "#EDE9FE" }}>
-                            {ontSnGroups.map(g => (
-                              <div key={g.material_id} className="p-4">
-                                <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
-                                  <p className="font-bold text-xs" style={{ color: "var(--ink)" }}>{g.nama}</p>
-                                  <div className="flex items-center gap-3 text-[10px] font-semibold">
-                                    <span style={{ color: "#6D28D9" }}>{g.sn_list.length} SN tercatat</span>
-                                    <span style={{ color: "var(--ink-soft)" }}>Stok terkini: <b style={{ color: g.stock <= 0 ? "var(--red)" : "var(--ink)" }}>{g.stock}</b> Unit</span>
-                                  </div>
-                                </div>
-                                {g.sn_list.length === 0 ? (
-                                  <p className="text-[11px] italic" style={{ color: "var(--ink-soft)" }}>Belum ada SN yang dicatat untuk jenis ini.</p>
-                                ) : (
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {g.sn_list.map((sn, idx) => (
-                                      <span key={idx} className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-semibold"
-                                        style={{ background: "#F5F3FF", color: "#6D28D9", border: "1px solid #DDD6FE" }}>
-                                        {sn}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
 
                       <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
                         <div className="p-4 border-b" style={{ borderColor: "var(--border)" }}>
@@ -4794,15 +5707,17 @@ function DashboardAdmin({ session, onLogout }) {
                           <table className="w-full text-left border-collapse text-xs min-w-[420px]">
                             <thead>
                               <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                                <th className="p-4 w-12">No</th>
                                 <th className="p-4">Team / Teknisi</th>
                                 <th className="p-4 text-right">Total Unit Terpakai</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                               {materialReport.perTeam.length === 0 ? (
-                                <tr><td colSpan="2"><EmptyState title="Belum ada data" subtitle="Rekap per team akan tampil setelah laporan dimuat." icon={<IconUsers className="w-5 h-5" />} /></td></tr>
-                              ) : materialReport.perTeam.map((t, i) => (
+                                <tr><td colSpan="3"><EmptyState title="Belum ada data" subtitle="Rekap per team akan tampil setelah laporan dimuat." icon={<IconUsers className="w-5 h-5" />} /></td></tr>
+                              ) : pagedPerTeam.map((t, i) => (
                                 <tr key={i} className="hover:bg-gray-50/60 transition">
+                                  <td className="p-3.5 font-mono" style={{ color: "var(--ink-soft)" }}>{(pagePerTeam - 1) * pageSizePerTeam + i + 1}</td>
                                   <td className="p-3.5 font-bold" style={{ color: "var(--ink)" }}>{t.nama_team}</td>
                                   <td className="p-3.5 text-right font-mono font-bold" style={{ color: "var(--ink)" }}>{t.total_unit_terpakai}</td>
                                 </tr>
@@ -4810,6 +5725,57 @@ function DashboardAdmin({ session, onLogout }) {
                             </tbody>
                           </table>
                         </div>
+                        <Pagination page={pagePerTeam} setPage={setPagePerTeam} totalPages={totalPagesPerTeam} totalItems={materialReport.perTeam.length}
+                          pageSize={pageSizePerTeam} pageSizeOptions={[5, 10, 20, 50, 100]}
+                          onPageSizeChange={(n) => { setPageSizePerTeam(n); setPagePerTeam(1); }} />
+                      </div>
+
+                      <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                        <div className="p-4 border-b flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between" style={{ borderColor: "var(--border)" }}>
+                          <div>
+                            <h3 className="text-sm font-bold flex items-center gap-2" style={{ color: "var(--ink)" }}>
+                              <span className="px-2 py-0.5 rounded-full font-black text-[9px] uppercase tracking-wide" style={{ background: "#EDE9FE", color: "#6D28D9" }}>ONT</span>
+                              Daftar SN ONT
+                            </h3>
+                            <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{filteredSnOnt.length} dari {daftarSnOnt.length} SN terdaftar — tersedia di gudang, idle, atau sudah terpakai</p>
+                          </div>
+                          <div className="relative">
+                            <IconSearch className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input value={searchSnOnt} onChange={e => setSearchSnOnt(e.target.value)} placeholder="Cari SN / merek / team"
+                              className="pl-8 pr-3 py-2 border rounded-xl text-xs font-medium outline-none w-full sm:w-56" style={{ borderColor: "var(--border)" }} />
+                          </div>
+                        </div>
+                        <div className="overflow-x-auto max-h-[420px]">
+                          <table className="w-full text-left border-collapse text-xs min-w-[560px]">
+                            <thead className="sticky top-0">
+                              <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                                <th className="p-4 w-12">No</th>
+                                <th className="p-4">SN ONT</th>
+                                <th className="p-4">Merek / Jenis</th>
+                                <th className="p-4 text-center">Status</th>
+                                <th className="p-4">Dipakai Oleh</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
+                              {filteredSnOnt.length === 0 ? (
+                                <tr><td colSpan="5"><EmptyState title="Belum ada SN ONT terdaftar" subtitle="Tambahkan lewat form Tambah Jenis Material / Tambah Stok kategori ONT." icon={<IconBox className="w-5 h-5" />} /></td></tr>
+                              ) : pagedSnOnt.map((r, i) => (
+                                <tr key={`${r.sn}-${i}`} className="hover:bg-gray-50/60 transition">
+                                  <td className="p-3.5 font-mono" style={{ color: "var(--ink-soft)" }}>{(pageSnOnt - 1) * pageSizeSnOnt + i + 1}</td>
+                                  <td className="p-3.5 font-mono font-bold" style={{ color: "var(--ink)" }}>{r.sn}</td>
+                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{r.material_nama}</td>
+                                  <td className="p-3.5 text-center">
+                                    <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide" style={{ background: snStatusTone(r.status).bg, color: snStatusTone(r.status).fg }}>{r.status}</span>
+                                  </td>
+                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{r.nama_team || "—"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <Pagination page={pageSnOnt} setPage={setPageSnOnt} totalPages={totalPagesSnOnt} totalItems={filteredSnOnt.length}
+                          pageSize={pageSizeSnOnt} pageSizeOptions={[5, 10, 20, 50, 100]}
+                          onPageSizeChange={(n) => { setPageSizeSnOnt(n); setPageSnOnt(1); }} />
                       </div>
                     </div>
                   )}

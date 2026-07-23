@@ -17,7 +17,9 @@ const trackingBastSchema = new mongoose.Schema({
     required: true,
     // "Proses Finance" = dokumen sudah BAST Final DAN sudah dibuatkan Invoice-nya,
     // sedang berjalan di modul Keuangan (Invoice) sampai lunas dibayar.
-    enum: ['Waiting Submit', 'Waiting BAST Final', 'BAST Final', 'Proses Finance'],
+    // "Done Invoice" = dananya sudah dicatat sebagai transaksi Masuk di modul Keuangan
+    // (lihat PUT /tracking/:id/catat-keuangan di routes/tracking.js) — tahap akhir, selesai.
+    enum: ['Waiting Submit', 'Waiting BAST Final', 'BAST Final', 'Proses Finance', 'Done Invoice'],
     default: 'Waiting Submit'
   },
   tanggal: { type: Date, default: null },                         // Tgl Tiba (Waiting Submit) / Tgl Submit (2 status lainnya)

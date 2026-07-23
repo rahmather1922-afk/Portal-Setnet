@@ -14,9 +14,10 @@ const materialSchema = new mongoose.Schema({
   stock_awal: { type: Number, required: true, min: 0, default: 0 },
   stock: { type: Number, required: true, min: 0, default: 0 },
   // Daftar SN ONT yang sudah "dikenal"/terdaftar untuk jenis material ini (khusus kategori ONT).
-  // Diisi opsional saat Tambah Jenis Material, dan bertambah otomatis tiap kali ada SN baru
-  // dicatat lewat STOK MASUK (Penambahan). Dipakai sebagai daftar pilihan (dropdown/autocomplete)
-  // SN ONT di form Pemakaian Teknisi.
+  // Diisi opsional saat Tambah Jenis Material (sesuai qty yang diinput), dan bertambah lagi tiap
+  // kali ada penambahan stok (restock) lewat panel "Tambah Stok" di halaman Master Material.
+  // Dipakai sebagai daftar pilihan (dropdown/autocomplete) SN ONT di form Pemakaian Teknisi &
+  // tabel "Daftar SN ONT" di halaman Laporan.
   sn_list: { type: [String], default: [] },
   keterangan: { type: String, default: '' },
   dibuat_oleh: { type: String, default: '' },

@@ -40,120 +40,50 @@ router.get('/material', VIEW_ROLES, async (req, res) => {
   }
 });
 
-// Helper: bersihkan daftar SN ONT dari input user -> trim, buang kosong, buang duplikat
-// (case-insensitive tapi simpan casing asli entri pertama yang muncul).
-function bersihkanSnList(input) {
-  if (!Array.isArray(input)) return [];
-  const seen = new Set();
-  const hasil = [];
-  input.forEach(sn => {
-    const v = String(sn || '').trim();
-    if (!v) return;
-    const key = v.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    hasil.push(v);
-  });
-  return hasil;
-}
-
-// Helper: escape karakter spesial regex, dipakai buat pencarian nama material case-insensitive
-// yang AMAN (supaya nama yang mengandung karakter regex seperti "." tidak error/salah match).
-function escapeRegex(str) {
-  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// --- TAMBAH JENIS MATERIAL BARU (ex: Kabel "100 M" qty 15 roll, atau ONT "ZTE" qty 10 unit
-//     sekaligus daftar SN-nya). Dibuat langsung dari halaman Master Material — TIDAK ada lagi
-//     halaman "Stok Masuk/Kembali" terpisah, jadi qty di sini otomatis jadi stok awal & stok
-//     terkini material saat pertama dibuat.
-//     KALAU jenis material (kategori + nama, case-insensitive) SUDAH ADA -> jangan buat baris baru,
-//     cukup TAMBAHKAN qty ke stock_awal & stock yang sudah ada (dan gabung sn_list kalau ONT),
-//     supaya daftar Master Material tetap rapi 1 baris per jenis (ex: input "80 M" qty 3, lalu
-//     input "80 M" qty 5 lagi -> otomatis jadi 1 baris "80 M" dengan stok 8, bukan 2 baris). ---
+// --- TAMBAH JENIS MATERIAL BARU (ex: Kabel "100 M", stok awal 15) ---
 router.post('/material', MANAGE_ROLES, async (req, res) => {
   try {
     const { kategori, nama, satuan, stock_awal, keterangan, sn_list } = req.body;
     if (!nama) {
       return res.status(400).json({ message: 'Nama/jenis material wajib diisi!' });
     }
-    const stokAwalNum = Math.max(0, Number(stock_awal) || 0);
-    const dibuat_oleh = req.header('x-user-id') || '';
     const kategoriFinal = kategori || 'Kabel';
-    const namaTrim = String(nama).trim();
+    const stokAwalNum = Number(stock_awal) || 0;
+    const dibuat_oleh = req.header('x-user-id') || '';
 
-    const existing = await Material.findOne({
-      kategori: kategoriFinal,
-      nama: { $regex: `^${escapeRegex(namaTrim)}$`, $options: 'i' }
-    });
-
-    if (existing) {
-      existing.stock_awal += stokAwalNum;
-      existing.stock += stokAwalNum;
-      if (kategoriFinal === 'ONT' && Array.isArray(sn_list) && sn_list.length > 0) {
-        existing.sn_list = bersihkanSnList([...(existing.sn_list || []), ...sn_list]);
-      }
-      if (satuan) existing.satuan = satuan;
-      if (keterangan) existing.keterangan = keterangan;
-      await existing.save();
-      return res.status(200).json({
-        message: `"${existing.nama}" sudah ada di Master Material, stok otomatis ditambahkan +${stokAwalNum}. Total sekarang: ${existing.stock} ${existing.satuan}.`,
-        data: existing,
-        merged: true
-      });
-    }
+    // Khusus kategori ONT: qty (stock_awal) diisi user lewat form Tambah Jenis Material,
+    // dan tiap unit boleh langsung dicatat SN-nya (opsional per unit, boleh dikosongkan).
+    const snListBersih = kategoriFinal === 'ONT' && Array.isArray(sn_list)
+      ? [...new Set(sn_list.map(sn => String(sn || '').trim()).filter(Boolean))]
+      : [];
 
     const materialBaru = new Material({
       kategori: kategoriFinal,
-      nama: namaTrim,
+      nama,
       satuan: satuan || 'Roll',
       stock_awal: stokAwalNum,
-      stock: stokAwalNum, // saat pertama dibuat, stok terkini = stok awal (qty yang diinput)
-      sn_list: kategoriFinal === 'ONT' ? bersihkanSnList(sn_list) : [],
+      stock: stokAwalNum, // saat pertama dibuat, stok terkini = stok awal
+      sn_list: snListBersih,
       keterangan: keterangan || '',
       dibuat_oleh
     });
     await materialBaru.save();
-    res.status(201).json({ message: 'Material berhasil ditambahkan', data: materialBaru, merged: false });
+    res.status(201).json({ message: 'Material berhasil ditambahkan', data: materialBaru });
   } catch (error) {
     res.status(500).json({ message: 'Gagal menambahkan material', error: error.message });
   }
 });
 
-
-// --- EDIT MATERIAL (nama/kategori/satuan/keterangan/SN ONT). Qty di form Edit dipetakan ke
-//     stock_awal SEKALIGUS menyesuaikan stock terkini sebesar selisihnya (qty dinaikkan ->
-//     stok terkini ikut bertambah = restock; qty diturunkan -> stok terkini ikut berkurang =
-//     koreksi), supaya halaman "Stok Masuk/Kembali" yang sudah dihapus tidak dibutuhkan lagi
-//     untuk restock material yang sudah ada. Stok tidak boleh sampai minus. ---
+// --- EDIT MATERIAL (nama/kategori/satuan/keterangan). Untuk edit stok_awal juga boleh
+//     lewat sini (mis. koreksi input awal), TAPI tidak otomatis mengubah stock terkini. ---
 router.put('/material/:id', MANAGE_ROLES, async (req, res) => {
   try {
-    const existing = await Material.findById(req.params.id);
-    if (!existing) return res.status(404).json({ message: 'Material tidak ditemukan' });
-
-    const { kategori, nama, satuan, stock_awal, keterangan, sn_list } = req.body;
+    const { kategori, nama, satuan, stock_awal, keterangan } = req.body;
     const updateData = { kategori, nama, satuan, keterangan };
-
-    if (stock_awal !== undefined && stock_awal !== null && stock_awal !== '') {
-      const stokAwalBaru = Math.max(0, Number(stock_awal) || 0);
-      const delta = stokAwalBaru - existing.stock_awal;
-      updateData.stock_awal = stokAwalBaru;
-      const stockBaru = existing.stock + delta;
-      if (stockBaru < 0) {
-        return res.status(400).json({
-          message: `Qty tidak bisa diturunkan sebanyak itu. Sisa stok terkini "${existing.nama}" saat ini: ${existing.stock} ${existing.satuan}.`
-        });
-      }
-      updateData.stock = stockBaru;
-    }
-
-    const kategoriFinal = kategori || existing.kategori;
-    if (kategoriFinal === 'ONT' && Array.isArray(sn_list)) {
-      // Gabungkan SN lama + SN baru (unik), supaya SN yang sudah dicatat sebelumnya tidak hilang.
-      updateData.sn_list = bersihkanSnList([...(existing.sn_list || []), ...sn_list]);
-    }
+    if (stock_awal !== undefined && stock_awal !== null) updateData.stock_awal = Number(stock_awal);
 
     const diupdate = await Material.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
+    if (!diupdate) return res.status(404).json({ message: 'Material tidak ditemukan' });
     res.status(200).json({ message: 'Material berhasil diperbarui', data: diupdate });
   } catch (error) {
     res.status(500).json({ message: 'Gagal memperbarui material', error: error.message });
@@ -170,17 +100,6 @@ router.delete('/material/:id', MANAGE_ROLES, async (req, res) => {
     res.status(500).json({ message: 'Gagal menghapus material', error: error.message });
   }
 });
-
-// Helper: cari master Material kategori ONT yang namanya cocok (case-insensitive) dengan
-// merek_modem yang diketik di form Pemakaian. Return null kalau merek itu belum terdaftar
-// sebagai jenis material ONT — dalam kondisi ini stok ONT memang TIDAK bisa otomatis
-// dikurangi (karena tidak tahu mau kurangi stok yang mana), makanya frontend juga sudah
-// kasih peringatan "ONT belum terdaftar di Master Material" saat kondisi ini terjadi.
-async function cariMaterialOnt(merekModem) {
-  const target = String(merekModem || '').trim();
-  if (!target) return null;
-  return Material.findOne({ kategori: 'ONT', nama: { $regex: `^${escapeRegex(target)}$`, $options: 'i' } });
-}
 
 // ==================== LOG PEMAKAIAN PER TEKNISI — tabel utama Excel (kolom A:G) ====================
 
@@ -222,23 +141,8 @@ router.post('/pemakaian-material', MANAGE_ROLES, async (req, res) => {
     const kabel = await Material.findById(kabel_id);
     if (!kabel) return res.status(404).json({ message: 'Jenis kabel tidak ditemukan di master material' });
 
-    // Cari master ONT yang cocok dgn merek_modem (kalau ada) — dipakai buat kurangi stok ONT juga,
-    // bukan cuma stok kabel. Kalau merek belum terdaftar di Master Material, ont jadi null dan
-    // stok ONT tidak dikurangi (tidak ada yang bisa dikurangi).
-    const ont = await cariMaterialOnt(merek_modem);
-
     if (statusFinal === 'Terpakai') {
-      if (ont && String(ont._id) !== String(kabel_id)) {
-        await ubahStok(ont._id, -1);
-        try {
-          await ubahStok(kabel_id, -1);
-        } catch (kabelError) {
-          await ubahStok(ont._id, +1); // rollback stok ONT kalau potong stok kabel gagal (ex: stok kabel kurang)
-          throw kabelError;
-        }
-      } else {
-        await ubahStok(kabel_id, -1);
-      }
+      await ubahStok(kabel_id, -1);
     }
 
     const dibuat_oleh = req.header('x-user-id') || '';
@@ -247,7 +151,6 @@ router.post('/pemakaian-material', MANAGE_ROLES, async (req, res) => {
       teknisi_id: teknisi_id || '',
       nama_team,
       merek_modem: merek_modem || '',
-      ont_id: ont ? ont._id : null,
       sn_ont: sn_ont || '',
       kabel_id,
       kabel_nama: kabel.nama,
@@ -304,16 +207,12 @@ router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
 
     const statusFinal = ['Terpakai', 'Idle'].includes(status) ? status : 'Idle';
 
-    // Cari master ONT yang cocok dgn merek_modem (satu merek berlaku utk semua unit di batch ini).
-    // Kalau merek belum terdaftar di Master Material, ont jadi null dan stok ONT tidak dikurangi.
-    const ont = await cariMaterialOnt(merek_modem);
-
     // Total kebutuhan per jenis kabel (kalau 1 jenis kabel dipakai di beberapa baris).
     const totalPerKabel = {};
     rows.forEach(r => { totalPerKabel[r.kabel_id] = (totalPerKabel[r.kabel_id] || 0) + r.jumlah; });
 
-    // Kalau langsung "Terpakai", cek dulu stok semua jenis kabel & stok ONT (kalau ada) CUKUP
-    // sebelum motong apapun, supaya tidak ada potongan stok "setengah jalan" kalau salah satu kurang.
+    // Kalau langsung "Terpakai", cek dulu stok semua jenis kabel CUKUP sebelum motong apapun,
+    // supaya tidak ada potongan stok "setengah jalan" kalau salah satu kurang.
     if (statusFinal === 'Terpakai') {
       for (const id of Object.keys(totalPerKabel)) {
         const m = materialsMap[id];
@@ -322,11 +221,6 @@ router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
             message: `Stok tidak cukup. Sisa stok "${m.nama}" saat ini: ${m.stock} ${m.satuan}, dibutuhkan ${totalPerKabel[id]}.`
           });
         }
-      }
-      if (ont && ont.stock < totalUnit) {
-        return res.status(400).json({
-          message: `Stok tidak cukup. Sisa stok ONT "${ont.nama}" saat ini: ${ont.stock} ${ont.satuan}, dibutuhkan ${totalUnit}.`
-        });
       }
     }
 
@@ -342,10 +236,6 @@ router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
     const dibuatDocs = [];
     try {
       if (statusFinal === 'Terpakai') {
-        if (ont && totalUnit > 0) {
-          await ubahStok(ont._id, -totalUnit);
-          stokTerpotong.push({ id: ont._id, jumlah: totalUnit });
-        }
         for (const id of Object.keys(totalPerKabel)) {
           await ubahStok(id, -totalPerKabel[id]);
           stokTerpotong.push({ id, jumlah: totalPerKabel[id] });
@@ -360,7 +250,6 @@ router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
           teknisi_id: teknisi_id || '',
           nama_team,
           merek_modem: merek_modem || '',
-          ont_id: ont ? ont._id : null,
           sn_ont: snList[i] || '',
           kabel_id: kabelId,
           kabel_nama: kabelDoc.nama,
@@ -407,25 +296,17 @@ router.put('/pemakaian-material/:id', MANAGE_ROLES, async (req, res) => {
     const kabelIdBaru = kabel_id || String(log.kabel_id);
     const statusBaru = ['Terpakai', 'Idle'].includes(status) ? status : log.status;
     const kabelBerubah = kabelIdBaru !== String(log.kabel_id);
-    const merekBaru = merek_modem !== undefined ? merek_modem : log.merek_modem;
 
     // Balikkan dulu efek stok dari kondisi LAMA, baru terapkan efek stok yang BARU.
     if (log.status === 'Terpakai') {
-      await ubahStok(log.kabel_id, +1); // kembalikan stok kabel lama
-      if (log.ont_id) await ubahStok(log.ont_id, +1); // kembalikan stok ONT lama (kalau ada)
+      await ubahStok(log.kabel_id, +1); // kembalikan stok lama
     }
     let kabelBaruDoc = null;
     if (statusBaru === 'Terpakai') {
-      kabelBaruDoc = await ubahStok(kabelIdBaru, -1); // potong stok kabel baru
+      kabelBaruDoc = await ubahStok(kabelIdBaru, -1); // potong stok baru
     } else if (kabelBerubah) {
       kabelBaruDoc = await Material.findById(kabelIdBaru);
       if (!kabelBaruDoc) return res.status(404).json({ message: 'Jenis kabel tidak ditemukan di master material' });
-    }
-
-    // Cari master ONT sesuai merek terbaru & potong stoknya kalau status akhirnya "Terpakai".
-    const ontBaru = await cariMaterialOnt(merekBaru);
-    if (statusBaru === 'Terpakai' && ontBaru) {
-      await ubahStok(ontBaru._id, -1);
     }
 
     if (tanggal_pengambilan) log.tanggal_pengambilan = new Date(tanggal_pengambilan);
@@ -440,7 +321,6 @@ router.put('/pemakaian-material/:id', MANAGE_ROLES, async (req, res) => {
     log.status = statusBaru;
     log.kabel_id = kabelIdBaru;
     log.kabel_nama = kabelBaruDoc ? kabelBaruDoc.nama : log.kabel_nama;
-    log.ont_id = ontBaru ? ontBaru._id : null;
 
     await log.save();
     res.status(200).json({ message: 'Log pemakaian material berhasil diperbarui', data: log });
@@ -457,7 +337,6 @@ router.delete('/pemakaian-material/:id', MANAGE_ROLES, async (req, res) => {
 
     if (log.status === 'Terpakai') {
       await ubahStok(log.kabel_id, +1);
-      if (log.ont_id) await ubahStok(log.ont_id, +1);
     }
     await PemakaianMaterial.findByIdAndDelete(req.params.id);
     res.status(200).json({ message: 'Log pemakaian material berhasil dihapus & stok disesuaikan kembali' });
@@ -471,7 +350,7 @@ router.delete('/pemakaian-material/:id', MANAGE_ROLES, async (req, res) => {
 // --- CATAT PENAMBAHAN (restock) ATAU PENGEMBALIAN (sisa kabel balik dari teknisi) ---
 router.post('/material/stok', MANAGE_ROLES, async (req, res) => {
   try {
-    const { material_id, tipe, jumlah, teknisi_id, teknisi_nama, keterangan, tanggal } = req.body;
+    const { material_id, tipe, jumlah, teknisi_id, teknisi_nama, keterangan, tanggal, sn_list } = req.body;
     if (!material_id || !tipe || !jumlah) {
       return res.status(400).json({ message: 'Material, tipe, dan jumlah wajib diisi!' });
     }
@@ -487,6 +366,16 @@ router.post('/material/stok', MANAGE_ROLES, async (req, res) => {
     }
 
     const material = await ubahStok(material_id, +jumlahNum);
+
+    // Kalau material kategori ONT & tipe Penambahan (restock), gabungkan SN baru (opsional,
+    // dikirim frontend sesuai jumlah yang diinput) ke daftar sn_list material yang bersangkutan.
+    if (tipe === 'Penambahan' && material.kategori === 'ONT' && Array.isArray(sn_list)) {
+      const snBaru = sn_list.map(sn => String(sn || '').trim()).filter(Boolean);
+      if (snBaru.length > 0) {
+        material.sn_list = [...new Set([...(material.sn_list || []), ...snBaru])];
+        await material.save();
+      }
+    }
 
     const dibuat_oleh = req.header('x-user-id') || '';
     const logBaru = new MaterialStokLog({
@@ -540,11 +429,7 @@ router.get('/material/report', VIEW_ROLES, async (req, res) => {
     const semuaStokLog = await MaterialStokLog.find();
 
     const perMaterial = semuaMaterial.map(m => {
-      // Kabel dihitung dari kabel_id, ONT dihitung dari ont_id (link terpisah karena 1 baris
-      // Pemakaian punya kabel & ONT sekaligus) — supaya rekap Terpakai/Idle akurat utk 2-2 nya.
-      const logMaterialIni = semuaPemakaian.filter(l =>
-        m.kategori === 'ONT' ? String(l.ont_id) === String(m._id) : String(l.kabel_id) === String(m._id)
-      );
+      const logMaterialIni = semuaPemakaian.filter(l => String(l.kabel_id) === String(m._id));
       const totalTerpakai = logMaterialIni.filter(l => l.status === 'Terpakai').length;
       const totalIdle = logMaterialIni.filter(l => l.status === 'Idle').length;
       const totalDitambah = semuaStokLog
