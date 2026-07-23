@@ -1,5 +1,5 @@
 const BASE_URL = '';
-const API_BASE = `${BASE_URL}/api`;
+const API_BASE = '/api';
 
 // Pilihan untuk form pengajuan Kasbon
 const KASBON_REGION_OPTIONS = ["Jakbar", "Jakut", "Jakpus", "Jaksel", "Jaktim", "Bekasi", "Bogor", "Depok", "Bekasi Timur", "Tangerang", "Tangkot", "Bali"];

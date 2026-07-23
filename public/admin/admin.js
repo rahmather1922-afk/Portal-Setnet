@@ -715,7 +715,7 @@ const InvoicePrintView = ({ invoice }) => {
 
 /* ---------------------------------- LOGIN SCREEN ---------------------------------- */
 const BASE_URL = '';
-const AUTH_API = `${BASE_URL}/api/absen/login`;
+const AUTH_API = '/api/absen/login';
 
 const LoginScreen = ({ onLoginSuccess }) => {
   const [karyawanId, setKaryawanId] = useState("");
@@ -790,10 +790,10 @@ const LoginScreen = ({ onLoginSuccess }) => {
 };
 
 /* ---------------------------------- MAIN APP ---------------------------------- */
-const API = `${BASE_URL}/api/admin`;
-const FIN_API = `${BASE_URL}/api/finance`;
-const TRACK_API = `${BASE_URL}/api`;
-const MATERIAL_API = `${BASE_URL}/api`;
+const API = '/api/admin';
+const FIN_API = '/api/finance';
+const TRACK_API = '/api';
+const MATERIAL_API = '/api';
 // Preset pilihan dropdown Master Material & Pemakaian Teknisi — bisa ditambah/kurangi sesuai kebutuhan.
 const KABEL_METER_PRESETS = [50, 80, 100, 150, 200, 250];
 const ONT_MEREK_PRESETS = ["ZTE", "Huawei", "Nokia", "Pejas"];
