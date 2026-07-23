@@ -1,4 +1,4 @@
-const BASE_URL = 'https://absensi-backend-production-0c63.up.railway.app';
+const BASE_URL = '';
 const API_BASE = `${BASE_URL}/api`;
 
 // Pilihan untuk form pengajuan Kasbon

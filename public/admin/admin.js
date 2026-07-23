@@ -714,7 +714,7 @@ const InvoicePrintView = ({ invoice }) => {
 };
 
 /* ---------------------------------- LOGIN SCREEN ---------------------------------- */
-const BASE_URL = "https://absensi-backend-production-0c63.up.railway.app";
+const BASE_URL = '';
 const AUTH_API = `${BASE_URL}/api/absen/login`;
 
 const LoginScreen = ({ onLoginSuccess }) => {
