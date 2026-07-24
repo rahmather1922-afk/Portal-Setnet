@@ -202,6 +202,11 @@ const snStatusTone = (s) => ({
   "Idle": { bg: "var(--amber-soft)", fg: "var(--amber)" },
   "Terpakai": { bg: "var(--red-soft)", fg: "var(--red)" },
 }[s] || { bg: "var(--canvas)", fg: "var(--ink-soft)" });
+// --- Warna badge Penggunaan (IB/MT) — biar Owner gampang bedain sekilas di tabel/laporan ---
+const penggunaanTone = (p) => ({
+  "IB": { bg: "#DBEAFE", fg: "#1D4ED8" },
+  "MT": { bg: "#FFEDD5", fg: "#C2410C" },
+}[p] || { bg: "var(--canvas)", fg: "var(--ink-soft)" });
 
 const toCsv = (rows, headers) => {
   const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -1042,6 +1047,7 @@ const ImportMaterialModal = ({ open, onClose, materialList, apiUrl, authHeaders,
       // ---- Sheet Data: kolom kerja + dropdown ----
       const wsData = wb.addWorksheet("Data");
       wsData.columns = [
+        { header: "Penggunaan", key: "penggunaan", width: 12 },
         { header: "Kategori", key: "kategori", width: 12 },
         { header: "Nama", key: "nama", width: 18 },
         { header: "Satuan", key: "satuan", width: 10 },
@@ -1049,14 +1055,24 @@ const ImportMaterialModal = ({ open, onClose, materialList, apiUrl, authHeaders,
         { header: "Keterangan", key: "keterangan", width: 26 },
         { header: "SN ONT (pisahkan koma)", key: "sn_ont", width: 40 },
       ];
-      wsData.addRow({ kategori: "Kabel", nama: "100 M", satuan: "Roll", stock_awal: 10, keterangan: "", sn_ont: "" });
-      wsData.addRow({ kategori: "ONT", nama: "ZTE", satuan: "Unit", stock_awal: 5, keterangan: "", sn_ont: "SN00001, SN00002, SN00003, SN00004, SN00005" });
+      wsData.addRow({ penggunaan: "IB", kategori: "Kabel", nama: "100 M", satuan: "Roll", stock_awal: 10, keterangan: "", sn_ont: "" });
+      wsData.addRow({ penggunaan: "MT", kategori: "ONT", nama: "ZTE", satuan: "Unit", stock_awal: 5, keterangan: "", sn_ont: "SN00001, SN00002, SN00003, SN00004, SN00005" });
       wsData.getRow(1).font = { bold: true };
 
       const LAST_ROW = 300; // sediakan dropdown sampai baris 300 supaya cukup untuk input massal
       for (let r = 2; r <= LAST_ROW; r++) {
-        // Kolom A "Kategori" — dropdown TEGAS, hanya boleh salah satu dari 3 pilihan.
+        // Kolom A "Penggunaan" — dropdown TEGAS, hanya boleh IB atau MT.
         wsData.getCell(`A${r}`).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          formulae: ['"IB,MT"'],
+          showErrorMessage: true,
+          errorStyle: "stop",
+          errorTitle: "Penggunaan tidak valid",
+          error: "Pilih salah satu dari daftar: IB atau MT.",
+        };
+        // Kolom B "Kategori" — dropdown TEGAS, hanya boleh salah satu dari 3 pilihan.
+        wsData.getCell(`B${r}`).dataValidation = {
           type: "list",
           allowBlank: true,
           formulae: ['"Kabel,ONT,Lainnya"'],
@@ -1065,13 +1081,13 @@ const ImportMaterialModal = ({ open, onClose, materialList, apiUrl, authHeaders,
           errorTitle: "Kategori tidak valid",
           error: "Pilih salah satu dari daftar: Kabel, ONT, atau Lainnya.",
         };
-        // Kolom B "Nama" — dropdown MENGIKUTI Kategori yang dipilih di kolom A pada baris yang sama
+        // Kolom C "Nama" — dropdown MENGIKUTI Kategori yang dipilih di kolom B pada baris yang sama
         // (pakai INDIRECT ke named range Kabel/ONT/Lainnya). Tidak strict-block supaya kategori
         // "Lainnya" tetap bisa diisi manual bebas.
-        wsData.getCell(`B${r}`).dataValidation = {
+        wsData.getCell(`C${r}`).dataValidation = {
           type: "list",
           allowBlank: true,
-          formulae: [`INDIRECT($A${r})`],
+          formulae: [`INDIRECT($B${r})`],
           showErrorMessage: false,
         };
       }
@@ -1081,14 +1097,16 @@ const ImportMaterialModal = ({ open, onClose, materialList, apiUrl, authHeaders,
       wsPanduan.columns = [{ width: 90 }];
       const catatan = [
         "CARA PAKAI DROPDOWN:",
-        "1. Klik sel di kolom Kategori (kolom A), pilih salah satu dari dropdown: Kabel / ONT / Lainnya.",
-        "2. Klik sel di kolom Nama (kolom B) pada baris yang sama, lalu klik tanda panah dropdown —",
-        "   pilihan yang muncul otomatis menyesuaikan Kategori yang sudah dipilih di kolom A.",
-        "3. Khusus Kategori \"Lainnya\", kolom Nama tidak punya daftar tetap — ketik manual namanya.",
+        "1. Klik sel di kolom Penggunaan (kolom A), pilih salah satu dari dropdown: IB (Instalasi Baru) / MT (Maintenance).",
+        "2. Klik sel di kolom Kategori (kolom B), pilih salah satu dari dropdown: Kabel / ONT / Lainnya.",
+        "3. Klik sel di kolom Nama (kolom C) pada baris yang sama, lalu klik tanda panah dropdown —",
+        "   pilihan yang muncul otomatis menyesuaikan Kategori yang sudah dipilih di kolom B.",
+        "4. Khusus Kategori \"Lainnya\", kolom Nama tidak punya daftar tetap — ketik manual namanya.",
         "",
         "Catatan lain:",
+        "- Penggunaan kosong dianggap \"IB\". Material dgn Nama+Kategori sama tapi beda Penggunaan (IB/MT) dianggap 2 material TERPISAH dgn stok masing-masing.",
         "- Kategori kosong dianggap \"Kabel\".",
-        "- Nama wajib diisi & sebaiknya unik per kategori (baris dgn Kategori+Nama yg sudah ada di Master Material akan ditandai bermasalah saat divalidasi).",
+        "- Nama wajib diisi & sebaiknya unik per Kategori+Penggunaan (baris yg kombinasinya sudah ada di Master Material akan ditandai bermasalah saat divalidasi).",
         "- Satuan boleh dikosongkan, otomatis: Kabel=Roll, ONT=Unit, Lainnya=Pcs.",
         "- Stok Awal wajib angka >= 0 (kosong dianggap 0), otomatis jadi Stok Terkini saat material baru dibuat.",
         "- Kolom \"SN ONT (pisahkan koma)\" HANYA berlaku untuk Kategori=ONT, isi SN dipisah koma/titik-koma/baris baru, boleh dikosongkan atau diisi sebagian (tidak wajib sejumlah Stok Awal).",
@@ -1096,7 +1114,7 @@ const ImportMaterialModal = ({ open, onClose, materialList, apiUrl, authHeaders,
       ];
       catatan.forEach((line, i) => { wsPanduan.getCell(`A${i + 1}`).value = line; });
       wsPanduan.getCell("A1").font = { bold: true };
-      wsPanduan.getCell("A7").font = { bold: true };
+      wsPanduan.getCell("A8").font = { bold: true };
 
       const buffer = await wb.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: "application/octet-stream" });
@@ -1132,12 +1150,16 @@ const ImportMaterialModal = ({ open, onClose, materialList, apiUrl, authHeaders,
         const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
 
         const existingSet = new Set(
-          materialList.map(m => `${String(m.kategori).trim().toLowerCase()}|${String(m.nama).trim().toLowerCase()}`)
+          materialList.map(m => `${String(m.penggunaan || "IB").trim().toLowerCase()}|${String(m.kategori).trim().toLowerCase()}|${String(m.nama).trim().toLowerCase()}`)
         );
         const seenInFile = new Set();
 
         const hasil = rows.map((row, idx) => {
           const errors = [];
+
+          let penggunaan = String(row["Penggunaan"] || "").trim().toUpperCase();
+          if (!penggunaan) penggunaan = "IB";
+          if (!["IB", "MT"].includes(penggunaan)) errors.push(`Penggunaan "${penggunaan}" harus salah satu dari IB/MT`);
 
           let kategori = String(row["Kategori"] || "").trim();
           if (!kategori) kategori = "Kabel";
@@ -1146,9 +1168,9 @@ const ImportMaterialModal = ({ open, onClose, materialList, apiUrl, authHeaders,
           const nama = String(row["Nama"] || "").trim();
           if (!nama) errors.push("Nama wajib diisi");
 
-          const kunci = `${kategori.trim().toLowerCase()}|${nama.trim().toLowerCase()}`;
-          if (nama && existingSet.has(kunci)) errors.push(`"${nama}" (${kategori}) sudah ada di Master Material`);
-          if (nama && seenInFile.has(kunci)) errors.push(`"${nama}" (${kategori}) duplikat di dalam file ini`);
+          const kunci = `${penggunaan.trim().toLowerCase()}|${kategori.trim().toLowerCase()}|${nama.trim().toLowerCase()}`;
+          if (nama && existingSet.has(kunci)) errors.push(`"${nama}" (${kategori}/${penggunaan}) sudah ada di Master Material`);
+          if (nama && seenInFile.has(kunci)) errors.push(`"${nama}" (${kategori}/${penggunaan}) duplikat di dalam file ini`);
           if (nama) seenInFile.add(kunci);
 
           let satuan = String(row["Satuan"] || "").trim();
@@ -1610,6 +1632,10 @@ const ONT_MEREK_PRESETS = ["ZTE", "Huawei", "Nokia", "Pejas"];
 const PROJECT_PRESETS = ["AMT", "FS", "LinkNet", "Hifi"];
 const REGION_PRESETS = ["Jakbar", "Jakut", "Jakpus", "Jaksel", "Jaktim", "Bekasi", "Bogor", "Depok", "Bekasi Timur", "Tangerang", "Tangkot", "Bali"];
 const VENDOR_PRESETS = ["Quantum", "Satu Visi", "BBB"];
+// Penggunaan material: IB (Instalasi Baru) atau MT (Maintenance) — dipakai di Master Material
+// (menentukan bucket stok) & di Pemakaian Teknisi (menentukan jenis kabel apa saja yg muncul).
+const PENGGUNAAN_PRESETS = ["IB", "MT"];
+const PENGGUNAAN_LABEL = { IB: "IB (Instalasi Baru)", MT: "MT (Maintenance)" };
 
 function DashboardAdmin({ session, onLogout }) {
   // Header identitas role dikirim ke backend agar endpoint bisa memfilter akses per role.
@@ -1743,6 +1769,7 @@ function DashboardAdmin({ session, onLogout }) {
 
   // form: master material
   const [matEditId, setMatEditId] = useState(null);
+  const [matPenggunaan, setMatPenggunaan] = useState("IB"); // IB / MT — bucket stok terpisah per jenis penggunaan
   const [matKategori, setMatKategori] = useState("Kabel");
   const [matNama, setMatNama] = useState("50 M");
   const [matNamaPilihan, setMatNamaPilihan] = useState("50"); // dropdown preset (angka kabel / merek ONT / "Lainnya")
@@ -1753,6 +1780,7 @@ function DashboardAdmin({ session, onLogout }) {
   const [matSubmitting, setMatSubmitting] = useState(false);
   const [matDeleteTarget, setMatDeleteTarget] = useState(null);
   const [searchMaterial, setSearchMaterial] = useState("");
+  const [materialPenggunaanFilter, setMaterialPenggunaanFilter] = useState("semua");
   const [pageMaterial, setPageMaterial] = useState(1);
   const PAGE_SIZE_MAT = 8;
 
@@ -1778,6 +1806,8 @@ function DashboardAdmin({ session, onLogout }) {
   const [pmkKabelRows, setPmkKabelRows] = useState([{ kabel_id: "", jumlah: 1 }]); // dipakai saat mode TAMBAH (batch)
   const [pmkStatus, setPmkStatus] = useState("Idle");
   const [pmkReturnCatatan, setPmkReturnCatatan] = useState("");
+  const [pmkCatatanReport, setPmkCatatanReport] = useState(""); // catatan report teknisi, bebas per baris, maks 5000 karakter
+  const [pmkPenggunaan, setPmkPenggunaan] = useState("IB"); // IB / MT — menentukan pilihan Jenis Kabel yang muncul
   const [pmkProject, setPmkProject] = useState("");
   const [pmkRegion, setPmkRegion] = useState("");
   const [pmkVendor, setPmkVendor] = useState("");
@@ -1786,7 +1816,16 @@ function DashboardAdmin({ session, onLogout }) {
   const [pmkDeleteTarget, setPmkDeleteTarget] = useState(null);
   const [searchPemakaian, setSearchPemakaian] = useState("");
   const [pemakaianStatusFilter, setPemakaianStatusFilter] = useState("semua");
+  const [pemakaianPenggunaanFilter, setPemakaianPenggunaanFilter] = useState("semua");
   const [pagePemakaian, setPagePemakaian] = useState(1);
+  const [expandedPmkBatches, setExpandedPmkBatches] = useState(() => new Set());
+  const togglePmkBatch = (key) => {
+    setExpandedPmkBatches(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
   const PAGE_SIZE_PMK = 8;
 
   // filter laporan
@@ -3023,7 +3062,7 @@ function DashboardAdmin({ session, onLogout }) {
     return map;
   }, [materialList]);
   const resetFormMaterial = () => {
-    setMatEditId(null); setMatKategori("Kabel"); setMatNamaPilihan("50"); setMatNama("50 M"); setMatSatuan("Roll");
+    setMatEditId(null); setMatPenggunaan("IB"); setMatKategori("Kabel"); setMatNamaPilihan("50"); setMatNama("50 M"); setMatSatuan("Roll");
     setMatJumlah(""); setMatSnOntList([]); setMatFormErrors({});
     resetFormAddStok();
   };
@@ -3066,7 +3105,7 @@ function DashboardAdmin({ session, onLogout }) {
     setMatSubmitting(true);
     const url = matEditId ? `${MATERIAL_API}/material/${matEditId}` : `${MATERIAL_API}/material`;
     const method = matEditId ? "PUT" : "POST";
-    const bodyData = { kategori: matKategori, nama: matNama, satuan: matSatuan };
+    const bodyData = { kategori: matKategori, penggunaan: matPenggunaan, nama: matNama, satuan: matSatuan };
     if (!matEditId) {
       // Qty/stok awal HANYA diisi saat menambah jenis material baru — untuk material yang
       // sudah ada, penambahan stok lewat panel "Tambah Stok" di mode Edit (bukan di sini).
@@ -3084,7 +3123,7 @@ function DashboardAdmin({ session, onLogout }) {
     finally { setMatSubmitting(false); }
   };
   const pemicuEditMaterial = (m) => {
-    setMatEditId(m._id); setMatKategori(m.kategori); setMatNama(m.nama); setMatSatuan(m.satuan);
+    setMatEditId(m._id); setMatPenggunaan(m.penggunaan || "IB"); setMatKategori(m.kategori); setMatNama(m.nama); setMatSatuan(m.satuan);
     setMatJumlah(""); setMatSnOntList([]);
     if (m.kategori === "Kabel") {
       const angka = String(m.nama || "").replace(/\s*M$/i, "").trim();
@@ -3149,9 +3188,16 @@ function DashboardAdmin({ session, onLogout }) {
     setPmkEditId(null); setPmkTanggal(new Date().toISOString().slice(0, 10)); setPmkTeknisiId(""); setPmkNamaTeam("");
     setPmkMerekPilihan("ZTE"); setPmkMerekModem("ZTE"); setPmkSnOnt(""); setPmkKabelId("");
     setPmkJumlahOnt(1); setPmkSnOntList([""]); setPmkKabelRows([{ kabel_id: "", jumlah: 1 }]);
-    setPmkStatus("Idle"); setPmkReturnCatatan("");
+    setPmkStatus("Idle"); setPmkReturnCatatan(""); setPmkCatatanReport(""); setPmkPenggunaan("IB");
     setPmkProject(""); setPmkRegion(""); setPmkVendor("");
     setPmkFormErrors({});
+  };
+  // Ganti Penggunaan (IB/MT) di form Pemakaian Teknisi -> reset pilihan kabel karena daftar
+  // Jenis Kabel yang muncul mengikuti Penggunaan yang aktif (bucket stoknya beda).
+  const handlePmkPenggunaanChange = (val) => {
+    setPmkPenggunaan(val);
+    setPmkKabelId("");
+    setPmkKabelRows([{ kabel_id: "", jumlah: 1 }]);
   };
   const handlePmkMerekChange = (val) => {
     setPmkMerekPilihan(val);
@@ -3181,7 +3227,9 @@ function DashboardAdmin({ session, onLogout }) {
     materialList.forEach(m => { if (m.kategori === "ONT" && Array.isArray(m.sn_list)) m.sn_list.forEach(sn => sn && set.add(sn)); });
     return [...set];
   }, [materialList]);
-  const kabelMaterialOptions = useMemo(() => materialList.filter(m => m.kategori === "Kabel"), [materialList]);
+  // Hanya tampilkan Jenis Kabel yang penggunaan-nya (IB/MT) SAMA dengan yang dipilih di form —
+  // supaya pemakaian teknisi selalu memotong stok dari bucket IB/MT yang benar.
+  const kabelMaterialOptions = useMemo(() => materialList.filter(m => m.kategori === "Kabel" && m.penggunaan === pmkPenggunaan), [materialList, pmkPenggunaan]);
 
   // Daftar SN ONT untuk tabel di halaman Laporan — gabungkan sn_list tiap Material ONT dengan
   // status pemakaian terakhir (kalau SN itu sudah pernah dipakai teknisi), biar Owner gampang lihat
@@ -3244,6 +3292,7 @@ function DashboardAdmin({ session, onLogout }) {
   const validatePemakaian = () => {
     const errs = {};
     if (!pmkNamaTeam.trim()) errs.nama_team = "Nama team wajib diisi";
+    if (!pmkPenggunaan) errs.penggunaan = "Penggunaan (IB/MT) wajib dipilih";
     if (!pmkKabelId) errs.kabel_id = "Jenis kabel wajib dipilih";
     if (!pmkProject) errs.project = "Project wajib dipilih";
     if (!pmkRegion) errs.region = "Region wajib dipilih";
@@ -3254,6 +3303,7 @@ function DashboardAdmin({ session, onLogout }) {
   const validatePemakaianBatch = () => {
     const errs = {};
     if (!pmkNamaTeam.trim()) errs.nama_team = "Nama team wajib diisi";
+    if (!pmkPenggunaan) errs.penggunaan = "Penggunaan (IB/MT) wajib dipilih";
     if (!pmkProject) errs.project = "Project wajib dipilih";
     if (!pmkRegion) errs.region = "Region wajib dipilih";
     if (!pmkVendor) errs.vendor = "Vendor wajib dipilih";
@@ -3279,7 +3329,8 @@ function DashboardAdmin({ session, onLogout }) {
         const bodyData = {
           tanggal_pengambilan: pmkTanggal, teknisi_id: pmkTeknisiId, nama_team: pmkNamaTeam,
           merek_modem: pmkMerekModem, sn_ont: pmkSnOnt, kabel_id: pmkKabelId, status: pmkStatus, return_catatan: pmkReturnCatatan,
-          project: pmkProject, region: pmkRegion, vendor: pmkVendor,
+          catatan_report: pmkCatatanReport,
+          penggunaan: pmkPenggunaan, project: pmkProject, region: pmkRegion, vendor: pmkVendor,
         };
         const res = await fetch(`${MATERIAL_API}/pemakaian-material/${pmkEditId}`, { method: "PUT", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
         const resData = await res.json().catch(() => ({}));
@@ -3291,7 +3342,8 @@ function DashboardAdmin({ session, onLogout }) {
         const bodyData = {
           tanggal_pengambilan: pmkTanggal, teknisi_id: pmkTeknisiId, nama_team: pmkNamaTeam,
           merek_modem: pmkMerekModem, status: pmkStatus, return_catatan: pmkReturnCatatan,
-          project: pmkProject, region: pmkRegion, vendor: pmkVendor,
+          catatan_report: pmkCatatanReport,
+          penggunaan: pmkPenggunaan, project: pmkProject, region: pmkRegion, vendor: pmkVendor,
           ont_list: pmkSnOntList,
           kabel_list: pmkKabelRows.filter(r => r.kabel_id).map(r => ({ kabel_id: r.kabel_id, jumlah: Math.max(1, Number(r.jumlah) || 1) })),
         };
@@ -3308,6 +3360,8 @@ function DashboardAdmin({ session, onLogout }) {
     setPmkTeknisiId(l.teknisi_id || ""); setPmkNamaTeam(l.nama_team);
     setPmkMerekModem(l.merek_modem || ""); setPmkMerekPilihan(ONT_MEREK_PRESETS.includes(l.merek_modem) ? l.merek_modem : (l.merek_modem ? "Lainnya" : "ZTE"));
     setPmkSnOnt(l.sn_ont || ""); setPmkKabelId(String(l.kabel_id)); setPmkStatus(l.status); setPmkReturnCatatan(l.return_catatan || "");
+    setPmkCatatanReport(l.catatan_report || "");
+    setPmkPenggunaan(l.penggunaan || "IB");
     setPmkProject(l.project || ""); setPmkRegion(l.region || ""); setPmkVendor(l.vendor || "");
     setPmkFormErrors({});
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -3356,11 +3410,11 @@ function DashboardAdmin({ session, onLogout }) {
 
     // --- Sheet 1: Ringkasan Material (persis tabel Kabel | Stok Awal | Idle | Terpakai di Excel asli) ---
     const ringkasanRows = materialReport.perMaterial.map(r => ({
-      Kategori: r.kategori, Material: r.nama, Satuan: r.satuan,
+      Penggunaan: r.penggunaan || "IB", Kategori: r.kategori, Material: r.nama, Satuan: r.satuan,
       "Stok Awal": r.stock_awal, Idle: r.total_idle_belum_terpakai, Terpakai: r.total_terpakai,
       Ditambah: r.total_ditambah, Dikembalikan: r.total_dikembalikan, "Stok Terkini": r.stock_terkini,
     }));
-    const totalRow = { Kategori: "TOTAL", Material: "", Satuan: "",
+    const totalRow = { Penggunaan: "", Kategori: "TOTAL", Material: "", Satuan: "",
       "Stok Awal": ringkasanRows.reduce((a, r) => a + r["Stok Awal"], 0),
       Idle: ringkasanRows.reduce((a, r) => a + r.Idle, 0),
       Terpakai: ringkasanRows.reduce((a, r) => a + r.Terpakai, 0),
@@ -3369,27 +3423,48 @@ function DashboardAdmin({ session, onLogout }) {
       "Stok Terkini": ringkasanRows.reduce((a, r) => a + r["Stok Terkini"], 0),
     };
     const wsRingkasan = XLSX.utils.json_to_sheet([...ringkasanRows, totalRow]);
-    wsRingkasan["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 13 }, { wch: 12 }];
+    wsRingkasan["!cols"] = [{ wch: 11 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 13 }, { wch: 12 }];
     XLSX.utils.book_append_sheet(wb, wsRingkasan, "Ringkasan Material");
 
     // --- Sheet 2: Log Pemakaian (detail mentah, sesuai filter tanggal aktif di form Laporan) ---
     const wsLog = XLSX.utils.json_to_sheet(logTerfilter.map(p => ({
       Tanggal: new Date(p.tanggal_pengambilan).toLocaleDateString("id-ID"),
-      Team: p.nama_team, Project: p.project || "-", Region: p.region || "-", Vendor: p.vendor || "-",
+      Team: p.nama_team, Penggunaan: p.penggunaan || "IB", Project: p.project || "-", Region: p.region || "-", Vendor: p.vendor || "-",
       "Merek Modem": p.merek_modem || "-", "SN ONT": p.sn_ont || "-",
       Kabel: p.kabel_nama, Status: p.status, Return: p.return_catatan || "-",
     })));
-    wsLog["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 16 }, { wch: 9 }, { wch: 10 }, { wch: 20 }];
+    wsLog["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 11 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 16 }, { wch: 9 }, { wch: 10 }, { wch: 20 }];
     XLSX.utils.book_append_sheet(wb, wsLog, "Log Pemakaian");
 
-    // --- Sheet 3: Pivot Team x Kabel (jumlah unit berstatus "Terpakai") ---
+    // --- Sheet 3: Rekap Team x Penggunaan (IB vs MT) — biar Owner langsung lihat komposisi
+    // pekerjaan Instalasi Baru vs Maintenance per team, tanpa perlu hitung manual. ---
+    const teamPenggunaanSet = [...new Set(logTerfilter.filter(p => p.status === "Terpakai").map(p => p.nama_team))].sort();
+    const rekapTeamPenggunaan = teamPenggunaanSet.map(tm => {
+      const logTeamIni = logTerfilter.filter(p => p.status === "Terpakai" && p.nama_team === tm);
+      const ib = logTeamIni.filter(p => (p.penggunaan || "IB") === "IB").length;
+      const mt = logTeamIni.filter(p => p.penggunaan === "MT").length;
+      return { "Team / Teknisi": tm, "Unit IB": ib, "Unit MT": mt, "Total Unit": ib + mt };
+    });
+    const totalTeamPenggunaan = {
+      "Team / Teknisi": "TOTAL",
+      "Unit IB": rekapTeamPenggunaan.reduce((a, r) => a + r["Unit IB"], 0),
+      "Unit MT": rekapTeamPenggunaan.reduce((a, r) => a + r["Unit MT"], 0),
+      "Total Unit": rekapTeamPenggunaan.reduce((a, r) => a + r["Total Unit"], 0),
+    };
+    const wsRekapPenggunaan = XLSX.utils.json_to_sheet([...rekapTeamPenggunaan, totalTeamPenggunaan]);
+    wsRekapPenggunaan["!cols"] = [{ wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, wsRekapPenggunaan, "Rekap Team x IB-MT");
+
+    // --- Sheet 4: Pivot Team x Kabel (jumlah unit berstatus "Terpakai") — nama kolom diberi
+    // suffix (IB)/(MT) supaya kabel dgn nama sama tapi beda Penggunaan tidak tercampur. ---
     const teamSet = [...new Set(logTerfilter.filter(p => p.status === "Terpakai").map(p => p.nama_team))].sort();
-    const kabelSet = [...new Set(materialList.map(m => m.nama))];
+    const kabelSet = [...new Set(materialList.map(m => `${m.nama} (${m.penggunaan || "IB"})`))];
     const pivot = {};
     teamSet.forEach(tm => { pivot[tm] = {}; kabelSet.forEach(k => pivot[tm][k] = 0); });
     logTerfilter.filter(p => p.status === "Terpakai").forEach(p => {
       if (!pivot[p.nama_team]) pivot[p.nama_team] = {};
-      pivot[p.nama_team][p.kabel_nama] = (pivot[p.nama_team][p.kabel_nama] || 0) + 1;
+      const kunciKabel = `${p.kabel_nama} (${p.penggunaan || "IB"})`;
+      pivot[p.nama_team][kunciKabel] = (pivot[p.nama_team][kunciKabel] || 0) + 1;
     });
     const pivotRows = teamSet.map(tm => {
       const row = { "Team / Teknisi": tm };
@@ -3407,7 +3482,7 @@ function DashboardAdmin({ session, onLogout }) {
 
     const namaFile = `Laporan-Material-SATNET-${new Date().toISOString().slice(0, 10)}.xlsx`;
     XLSX.writeFile(wb, namaFile);
-    notify("Laporan Excel material berhasil diunduh (Ringkasan, Log, Pivot)");
+    notify("Laporan Excel material berhasil diunduh (Ringkasan, Log, Rekap IB-MT, Pivot)");
   };
 
   useEffect(() => {
@@ -3416,9 +3491,12 @@ function DashboardAdmin({ session, onLogout }) {
 
   const filteredMaterial = useMemo(() => {
     const q = searchMaterial.trim().toLowerCase();
-    if (!q) return materialList;
-    return materialList.filter(m => m.nama.toLowerCase().includes(q) || m.kategori.toLowerCase().includes(q));
-  }, [materialList, searchMaterial]);
+    return materialList.filter(m => {
+      const matchQ = !q || m.nama.toLowerCase().includes(q) || m.kategori.toLowerCase().includes(q);
+      const matchPenggunaan = materialPenggunaanFilter === "semua" || m.penggunaan === materialPenggunaanFilter;
+      return matchQ && matchPenggunaan;
+    });
+  }, [materialList, searchMaterial, materialPenggunaanFilter]);
   const totalPagesMaterial = Math.max(1, Math.ceil(filteredMaterial.length / PAGE_SIZE_MAT));
   const pagedMaterial = filteredMaterial.slice((pageMaterial - 1) * PAGE_SIZE_MAT, pageMaterial * PAGE_SIZE_MAT);
 
@@ -3427,11 +3505,38 @@ function DashboardAdmin({ session, onLogout }) {
     return pemakaianList.filter(l => {
       const matchQ = !q || l.nama_team.toLowerCase().includes(q) || (l.sn_ont || "").toLowerCase().includes(q) || (l.merek_modem || "").toLowerCase().includes(q);
       const matchStatus = pemakaianStatusFilter === "semua" || l.status === pemakaianStatusFilter;
-      return matchQ && matchStatus;
+      const matchPenggunaan = pemakaianPenggunaanFilter === "semua" || l.penggunaan === pemakaianPenggunaanFilter;
+      return matchQ && matchStatus && matchPenggunaan;
     });
-  }, [pemakaianList, searchPemakaian, pemakaianStatusFilter]);
-  const totalPagesPemakaian = Math.max(1, Math.ceil(filteredPemakaian.length / PAGE_SIZE_PMK));
-  const pagedPemakaian = filteredPemakaian.slice((pagePemakaian - 1) * PAGE_SIZE_PMK, pagePemakaian * PAGE_SIZE_PMK);
+  }, [pemakaianList, searchPemakaian, pemakaianStatusFilter, pemakaianPenggunaanFilter]);
+
+  // Gabungkan baris-baris yang lahir dari SATU KALI submit form "Tambah Log Pemakaian"
+  // (banyak unit ONT / banyak jenis kabel sekaligus) jadi 1 baris ringkasan di tabel,
+  // pakai batch_id dari backend. Data lama tanpa batch_id (atau hasil edit satuan)
+  // otomatis jadi grup isi 1 baris sendiri (fallback ke _id).
+  const groupedPemakaian = useMemo(() => {
+    const map = new Map();
+    filteredPemakaian.forEach(l => {
+      const key = l.batch_id || l._id;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(l);
+    });
+    return Array.from(map.entries()).map(([key, rows]) => {
+      const first = rows[0];
+      const snList = rows.map(r => r.sn_ont).filter(Boolean);
+      const kabelHitung = new Map();
+      rows.forEach(r => kabelHitung.set(r.kabel_nama, (kabelHitung.get(r.kabel_nama) || 0) + 1));
+      const kabelRingkas = Array.from(kabelHitung.entries()).map(([nama, qty]) => (qty > 1 ? `${nama} ×${qty}` : nama)).join(", ");
+      return {
+        key, rows, jumlahUnit: rows.length, snList, kabelRingkas,
+        tanggal_pengambilan: first.tanggal_pengambilan, nama_team: first.nama_team,
+        penggunaan: first.penggunaan, project: first.project, region: first.region, vendor: first.vendor,
+        merek_modem: first.merek_modem, status: first.status, return_catatan: first.return_catatan, catatan_report: first.catatan_report,
+      };
+    });
+  }, [filteredPemakaian]);
+  const totalPagesPemakaian = Math.max(1, Math.ceil(groupedPemakaian.length / PAGE_SIZE_PMK));
+  const pagedPemakaian = groupedPemakaian.slice((pagePemakaian - 1) * PAGE_SIZE_PMK, pagePemakaian * PAGE_SIZE_PMK);
 
   // ==================== KARYAWAN: ubah status Aktif / Non Aktif (khusus hrd & owner) ====================
   // Klik badge status HANYA membuka dialog konfirmasi (setStatusUbahTarget); proses ubah status
@@ -5184,6 +5289,13 @@ function DashboardAdmin({ session, onLogout }) {
                           <p className="text-xs mt-0.5 mb-4" style={{ color: "var(--ink-soft)" }}>{matEditId ? "Perbarui data material terpilih" : "Contoh: Kabel 100 M, Kabel 150 M, ONT ZTE"}</p>
                           <form onSubmit={handleSubmitMaterial} className="space-y-3.5 text-xs">
                             <div>
+                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Penggunaan</label>
+                              <select value={matPenggunaan} onChange={e => setMatPenggunaan(e.target.value)} disabled={!!matEditId} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white disabled:opacity-60" style={{ borderColor: "var(--border)" }}>
+                                {PENGGUNAAN_PRESETS.map(p => <option key={p} value={p}>{PENGGUNAAN_LABEL[p]}</option>)}
+                              </select>
+                              <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Stok material IB &amp; MT terpisah sendiri-sendiri, walau nama/jenisnya sama.</p>
+                            </div>
+                            <div>
                               <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Kategori</label>
                               <select value={matKategori} onChange={e => handleMatKategoriChange(e.target.value)} disabled={!!matEditId} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white disabled:opacity-60" style={{ borderColor: "var(--border)" }}>
                                 <option value="Kabel">Kabel</option>
@@ -5332,6 +5444,10 @@ function DashboardAdmin({ session, onLogout }) {
                               <input value={searchMaterial} onChange={e => setSearchMaterial(e.target.value)} placeholder="Cari nama / kategori"
                                 className="pl-8 pr-3 py-2 border rounded-xl text-xs font-medium outline-none w-full sm:w-52" style={{ borderColor: "var(--border)" }} />
                             </div>
+                            <select value={materialPenggunaanFilter} onChange={e => setMaterialPenggunaanFilter(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
+                              <option value="semua">Semua Penggunaan</option>
+                              {PENGGUNAAN_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
                             {canManageMaterial(session.role) && (
                               <button onClick={() => setImportMaterialModalOpen(true)}
                                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white shadow-sm shrink-0"
@@ -5342,9 +5458,10 @@ function DashboardAdmin({ session, onLogout }) {
                           </div>
                         </div>
                         <div className="overflow-x-auto">
-                          <table className="w-full text-left border-collapse text-xs min-w-[720px]">
+                          <table className="w-full text-left border-collapse text-xs min-w-[820px]">
                             <thead>
                               <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                                <th className="p-4">Penggunaan</th>
                                 <th className="p-4">Kategori</th>
                                 <th className="p-4">Nama</th>
                                 <th className="p-4">Satuan</th>
@@ -5355,9 +5472,12 @@ function DashboardAdmin({ session, onLogout }) {
                             </thead>
                             <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                               {pagedMaterial.length === 0 ? (
-                                <tr><td colSpan={canManageMaterial(session.role) ? 6 : 5}><EmptyState title="Belum ada material" subtitle="Tambahkan jenis material pertama lewat formulir di samping." icon={<IconBox className="w-5 h-5" />} /></td></tr>
+                                <tr><td colSpan={canManageMaterial(session.role) ? 7 : 6}><EmptyState title="Belum ada material" subtitle="Tambahkan jenis material pertama lewat formulir di samping." icon={<IconBox className="w-5 h-5" />} /></td></tr>
                               ) : pagedMaterial.map(m => (
                                 <tr key={m._id} className="hover:bg-gray-50/60 transition">
+                                  <td className="p-3.5">
+                                    <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide" style={{ background: penggunaanTone(m.penggunaan).bg, color: penggunaanTone(m.penggunaan).fg }}>{m.penggunaan || "IB"}</span>
+                                  </td>
                                   <td className="p-3.5">
                                     <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide" style={{ background: kategoriMaterialTone(m.kategori).bg, color: kategoriMaterialTone(m.kategori).fg }}>{m.kategori}</span>
                                   </td>
@@ -5403,6 +5523,14 @@ function DashboardAdmin({ session, onLogout }) {
                               <input type="text" placeholder="Nama team" value={pmkNamaTeam} onChange={e => setPmkNamaTeam(e.target.value)}
                                 className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: pmkFormErrors.nama_team ? "var(--red)" : "var(--border)" }} />
                               {pmkFormErrors.nama_team && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{pmkFormErrors.nama_team}</p>}
+                            </div>
+                            <div>
+                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Penggunaan</label>
+                              <select value={pmkPenggunaan} onChange={e => handlePmkPenggunaanChange(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: pmkFormErrors.penggunaan ? "var(--red)" : "var(--border)" }}>
+                                {PENGGUNAAN_PRESETS.map(p => <option key={p} value={p}>{PENGGUNAAN_LABEL[p]}</option>)}
+                              </select>
+                              <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Menentukan Jenis Kabel apa saja yang tersedia di bawah (stok IB &amp; MT terpisah).</p>
+                              {pmkFormErrors.penggunaan && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{pmkFormErrors.penggunaan}</p>}
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                               <div>
@@ -5509,8 +5637,16 @@ function DashboardAdmin({ session, onLogout }) {
                               </select>
                             </div>
                             <div>
-                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Catatan Return</label>
+                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Return</label>
                               <input type="text" placeholder="Contoh: 100 M DI IKR" value={pmkReturnCatatan} onChange={e => setPmkReturnCatatan(e.target.value)}
+                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                            </div>
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Report</label>
+                                <span className="text-[10px] font-medium" style={{ color: "var(--ink-soft)" }}>{pmkCatatanReport.length}/5000</span>
+                              </div>
+                              <textarea rows={5} maxLength={5000} placeholder="Catatan/report bebas dari teknisi, isi apa saja sesuai kondisi di lapangan..." value={pmkCatatanReport} onChange={e => setPmkCatatanReport(e.target.value)}
                                 className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
                             </div>
                             <div className="pt-1 flex gap-2">
@@ -5526,7 +5662,7 @@ function DashboardAdmin({ session, onLogout }) {
                         <div className="p-4 border-b flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between" style={{ borderColor: "var(--border)" }}>
                           <div>
                             <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Log Pemakaian per Teknisi</h3>
-                            <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{filteredPemakaian.length} dari {pemakaianList.length} baris</p>
+                            <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{groupedPemakaian.length} entri log ({filteredPemakaian.length} unit) dari {pemakaianList.length} total baris</p>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <div className="relative">
@@ -5539,6 +5675,10 @@ function DashboardAdmin({ session, onLogout }) {
                               <option value="Terpakai">Terpakai</option>
                               <option value="Idle">Idle</option>
                             </select>
+                            <select value={pemakaianPenggunaanFilter} onChange={e => setPemakaianPenggunaanFilter(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
+                              <option value="semua">Semua Penggunaan</option>
+                              {PENGGUNAAN_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
                             {canManageMaterial(session.role) && (
                               <button onClick={() => setImportPemakaianModalOpen(true)}
                                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white shadow-sm shrink-0"
@@ -5549,11 +5689,13 @@ function DashboardAdmin({ session, onLogout }) {
                           </div>
                         </div>
                         <div className="overflow-x-auto">
-                          <table className="w-full text-left border-collapse text-xs min-w-[1080px]">
+                          <table className="w-full text-left border-collapse text-xs min-w-[1180px]">
                             <thead>
                               <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                                <th className="p-4 w-10 text-center">No</th>
                                 <th className="p-4">Tanggal</th>
                                 <th className="p-4">Team</th>
+                                <th className="p-4">Penggunaan</th>
                                 <th className="p-4">Project</th>
                                 <th className="p-4">Region</th>
                                 <th className="p-4">Vendor</th>
@@ -5566,38 +5708,88 @@ function DashboardAdmin({ session, onLogout }) {
                             </thead>
                             <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                               {pagedPemakaian.length === 0 ? (
-                                <tr><td colSpan={canManageMaterial(session.role) ? 10 : 9}><EmptyState title="Belum ada log pemakaian" subtitle="Tambahkan baris pertama lewat formulir di samping." icon={<IconCable className="w-5 h-5" />} /></td></tr>
-                              ) : pagedPemakaian.map(l => (
-                                <tr key={l._id} className="hover:bg-gray-50/60 transition">
-                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{new Date(l.tanggal_pengambilan).toLocaleDateString("id-ID")}</td>
-                                  <td className="p-3.5 font-bold" style={{ color: "var(--ink)" }}>{l.nama_team}</td>
-                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{l.project || "—"}</td>
-                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{l.region || "—"}</td>
-                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{l.vendor || "—"}</td>
-                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>
-                                    <p>{l.merek_modem || "—"}</p>
-                                    <p className="font-mono text-[10px]">{l.sn_ont || "—"}</p>
-                                  </td>
-                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{l.kabel_nama}</td>
-                                  <td className="p-3.5 text-center">
-                                    <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide"
-                                      style={{ background: l.status === "Terpakai" ? "var(--green-soft)" : "var(--amber-soft)", color: l.status === "Terpakai" ? "var(--green)" : "var(--amber)" }}>{l.status}</span>
-                                  </td>
-                                  <td className="p-3.5 truncate max-w-[140px]" style={{ color: "var(--ink-soft)" }}>{l.return_catatan || "—"}</td>
-                                  {canManageMaterial(session.role) && (
-                                    <td className="p-3.5">
-                                      <div className="flex items-center justify-center gap-1.5">
-                                        <button onClick={() => pemicuEditPemakaian(l)} className="p-1.5 rounded-lg border hover:bg-blue-50" style={{ borderColor: "var(--border)", color: "var(--brand-dark)" }} title="Edit"><IconEdit className="w-3.5 h-3.5" /></button>
-                                        <button onClick={() => setPmkDeleteTarget(l)} className="p-1.5 rounded-lg border hover:bg-red-50" style={{ borderColor: "var(--border)", color: "var(--red)" }} title="Hapus"><IconTrash className="w-3.5 h-3.5" /></button>
-                                      </div>
-                                    </td>
-                                  )}
-                                </tr>
-                              ))}
+                                <tr><td colSpan={canManageMaterial(session.role) ? 12 : 11}><EmptyState title="Belum ada log pemakaian" subtitle="Tambahkan baris pertama lewat formulir di samping." icon={<IconCable className="w-5 h-5" />} /></td></tr>
+                              ) : pagedPemakaian.map((g, idx) => {
+                                const nomor = (pagePemakaian - 1) * PAGE_SIZE_PMK + idx + 1;
+                                const isGroup = g.jumlahUnit > 1;
+                                const isExpanded = expandedPmkBatches.has(g.key);
+                                return (
+                                  <React.Fragment key={g.key}>
+                                    <tr className="hover:bg-gray-50/60 transition">
+                                      <td className="p-3.5 text-center font-mono" style={{ color: "var(--ink-soft)" }}>{nomor}</td>
+                                      <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{new Date(g.tanggal_pengambilan).toLocaleDateString("id-ID")}</td>
+                                      <td className="p-3.5 font-bold" style={{ color: "var(--ink)" }}>{g.nama_team}</td>
+                                      <td className="p-3.5">
+                                        <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide" style={{ background: penggunaanTone(g.penggunaan).bg, color: penggunaanTone(g.penggunaan).fg }}>{g.penggunaan || "IB"}</span>
+                                      </td>
+                                      <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{g.project || "—"}</td>
+                                      <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{g.region || "—"}</td>
+                                      <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{g.vendor || "—"}</td>
+                                      <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>
+                                        <p>{g.merek_modem || "—"}</p>
+                                        <p className="font-mono text-[10px]">{g.snList.length > 0 ? g.snList.join(", ") : "—"}</p>
+                                      </td>
+                                      <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>
+                                        {g.kabelRingkas}
+                                        {isGroup && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-black" style={{ background: "var(--canvas)", color: "var(--ink-soft)" }}>{g.jumlahUnit} unit</span>}
+                                      </td>
+                                      <td className="p-3.5 text-center">
+                                        <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide"
+                                          style={{ background: g.status === "Terpakai" ? "var(--green-soft)" : "var(--amber-soft)", color: g.status === "Terpakai" ? "var(--green)" : "var(--amber)" }}>{g.status}</span>
+                                      </td>
+                                      <td className="p-3.5 truncate max-w-[140px]" style={{ color: "var(--ink-soft)" }}>
+                                        <p>{g.return_catatan || "—"}</p>
+                                        {g.catatan_report && (
+                                          <p className="italic text-[10px] truncate" title={g.catatan_report} style={{ color: "var(--ink-soft)" }}>{g.catatan_report}</p>
+                                        )}
+                                      </td>
+                                      {canManageMaterial(session.role) && (
+                                        <td className="p-3.5">
+                                          <div className="flex items-center justify-center gap-1.5">
+                                            {isGroup ? (
+                                              <button onClick={() => togglePmkBatch(g.key)} className="p-1.5 rounded-lg border hover:bg-gray-50 flex items-center gap-1" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }} title={isExpanded ? "Tutup rincian" : "Lihat rincian per unit"}>
+                                                <IconChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                                              </button>
+                                            ) : (
+                                              <>
+                                                <button onClick={() => pemicuEditPemakaian(g.rows[0])} className="p-1.5 rounded-lg border hover:bg-blue-50" style={{ borderColor: "var(--border)", color: "var(--brand-dark)" }} title="Edit"><IconEdit className="w-3.5 h-3.5" /></button>
+                                                <button onClick={() => setPmkDeleteTarget(g.rows[0])} className="p-1.5 rounded-lg border hover:bg-red-50" style={{ borderColor: "var(--border)", color: "var(--red)" }} title="Hapus"><IconTrash className="w-3.5 h-3.5" /></button>
+                                              </>
+                                            )}
+                                          </div>
+                                        </td>
+                                      )}
+                                    </tr>
+                                    {isGroup && isExpanded && g.rows.map((l, i) => (
+                                      <tr key={l._id} style={{ background: "var(--canvas)" }}>
+                                        <td className="p-2.5"></td>
+                                        <td className="p-2.5 text-[11px]" style={{ color: "var(--ink-soft)" }} colSpan={2}>Unit #{i + 1}</td>
+                                        <td className="p-2.5" colSpan={3}></td>
+                                        <td className="p-2.5"></td>
+                                        <td className="p-2.5" style={{ color: "var(--ink-soft)" }}>
+                                          <p className="text-[11px]">{l.merek_modem || "—"}</p>
+                                          <p className="font-mono text-[10px]">{l.sn_ont || "—"}</p>
+                                        </td>
+                                        <td className="p-2.5 text-[11px]" style={{ color: "var(--ink-soft)" }}>{l.kabel_nama}</td>
+                                        <td className="p-2.5"></td>
+                                        <td className="p-2.5"></td>
+                                        {canManageMaterial(session.role) && (
+                                          <td className="p-2.5">
+                                            <div className="flex items-center justify-center gap-1.5">
+                                              <button onClick={() => pemicuEditPemakaian(l)} className="p-1.5 rounded-lg border hover:bg-blue-50" style={{ borderColor: "var(--border)", color: "var(--brand-dark)" }} title="Edit"><IconEdit className="w-3.5 h-3.5" /></button>
+                                              <button onClick={() => setPmkDeleteTarget(l)} className="p-1.5 rounded-lg border hover:bg-red-50" style={{ borderColor: "var(--border)", color: "var(--red)" }} title="Hapus"><IconTrash className="w-3.5 h-3.5" /></button>
+                                            </div>
+                                          </td>
+                                        )}
+                                      </tr>
+                                    ))}
+                                  </React.Fragment>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
-                        <Pagination page={pagePemakaian} setPage={setPagePemakaian} totalPages={totalPagesPemakaian} totalItems={filteredPemakaian.length} pageSize={PAGE_SIZE_PMK} />
+                        <Pagination page={pagePemakaian} setPage={setPagePemakaian} totalPages={totalPagesPemakaian} totalItems={groupedPemakaian.length} pageSize={PAGE_SIZE_PMK} />
                       </div>
                     </div>
                   )}
@@ -5618,7 +5810,7 @@ function DashboardAdmin({ session, onLogout }) {
                           {reportLoading ? "Memuat..." : "Tampilkan Laporan"}
                         </button>
                         <button onClick={() => downloadCsv("laporan-material.csv", toCsv(materialReport.perMaterial, [
-                          { label: "Kategori", get: r => r.kategori }, { label: "Nama", get: r => r.nama }, { label: "Satuan", get: r => r.satuan },
+                          { label: "Penggunaan", get: r => r.penggunaan }, { label: "Kategori", get: r => r.kategori }, { label: "Nama", get: r => r.nama }, { label: "Satuan", get: r => r.satuan },
                           { label: "Stok Awal", get: r => r.stock_awal }, { label: "Total Terpakai", get: r => r.total_terpakai },
                           { label: "Total Idle", get: r => r.total_idle_belum_terpakai }, { label: "Total Ditambah", get: r => r.total_ditambah },
                           { label: "Total Dikembalikan", get: r => r.total_dikembalikan }, { label: "Stok Terkini", get: r => r.stock_terkini },
@@ -5680,6 +5872,7 @@ function DashboardAdmin({ session, onLogout }) {
                                   <td className="p-3.5">
                                     <p className="font-bold" style={{ color: "var(--ink)" }}>{r.nama}</p>
                                     <span className="inline-block mt-1 px-2 py-0.5 rounded-full font-black text-[9px] uppercase tracking-wide" style={{ background: kategoriMaterialTone(r.kategori).bg, color: kategoriMaterialTone(r.kategori).fg }}>{r.kategori}</span>
+                                    <span className="inline-block mt-1 ml-1 px-2 py-0.5 rounded-full font-black text-[9px] uppercase tracking-wide" style={{ background: penggunaanTone(r.penggunaan).bg, color: penggunaanTone(r.penggunaan).fg }}>{r.penggunaan || "IB"}</span>
                                     <span className="text-[10px] ml-1.5" style={{ color: "var(--ink-soft)" }}>{r.satuan}</span>
                                   </td>
                                   <td className="p-3.5 text-right font-mono" style={{ color: "var(--ink-soft)" }}>{r.stock_awal}</td>
@@ -5701,27 +5894,48 @@ function DashboardAdmin({ session, onLogout }) {
                       <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
                         <div className="p-4 border-b" style={{ borderColor: "var(--border)" }}>
                           <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Rekap per Teknisi/Team</h3>
-                          <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>Total unit ONT + kabel berstatus "Terpakai"</p>
+                          <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>Total unit ONT + kabel berstatus "Terpakai", dipecah per Penggunaan (IB / MT)</p>
                         </div>
                         <div className="overflow-x-auto">
-                          <table className="w-full text-left border-collapse text-xs min-w-[420px]">
+                          <table className="w-full text-left border-collapse text-xs min-w-[620px]">
                             <thead>
                               <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
                                 <th className="p-4 w-12">No</th>
                                 <th className="p-4">Team / Teknisi</th>
-                                <th className="p-4 text-right">Total Unit Terpakai</th>
+                                <th className="p-4 text-right">Unit IB</th>
+                                <th className="p-4 text-right">Unit MT</th>
+                                <th className="p-4 text-right">Total Terpakai</th>
+                                <th className="p-4 w-32">Komposisi</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                               {materialReport.perTeam.length === 0 ? (
-                                <tr><td colSpan="3"><EmptyState title="Belum ada data" subtitle="Rekap per team akan tampil setelah laporan dimuat." icon={<IconUsers className="w-5 h-5" />} /></td></tr>
-                              ) : pagedPerTeam.map((t, i) => (
-                                <tr key={i} className="hover:bg-gray-50/60 transition">
-                                  <td className="p-3.5 font-mono" style={{ color: "var(--ink-soft)" }}>{(pagePerTeam - 1) * pageSizePerTeam + i + 1}</td>
-                                  <td className="p-3.5 font-bold" style={{ color: "var(--ink)" }}>{t.nama_team}</td>
-                                  <td className="p-3.5 text-right font-mono font-bold" style={{ color: "var(--ink)" }}>{t.total_unit_terpakai}</td>
-                                </tr>
-                              ))}
+                                <tr><td colSpan="6"><EmptyState title="Belum ada data" subtitle="Rekap per team akan tampil setelah laporan dimuat." icon={<IconUsers className="w-5 h-5" />} /></td></tr>
+                              ) : pagedPerTeam.map((t, i) => {
+                                const totalIb = t.total_unit_ib || 0;
+                                const totalMt = t.total_unit_mt || 0;
+                                const totalAll = t.total_unit_terpakai || (totalIb + totalMt) || 0;
+                                const pctIb = totalAll > 0 ? Math.round((totalIb / totalAll) * 100) : 0;
+                                return (
+                                  <tr key={i} className="hover:bg-gray-50/60 transition">
+                                    <td className="p-3.5 font-mono" style={{ color: "var(--ink-soft)" }}>{(pagePerTeam - 1) * pageSizePerTeam + i + 1}</td>
+                                    <td className="p-3.5 font-bold" style={{ color: "var(--ink)" }}>{t.nama_team}</td>
+                                    <td className="p-3.5 text-right">
+                                      <span className="px-2 py-0.5 rounded-full font-black text-[10px]" style={{ background: penggunaanTone("IB").bg, color: penggunaanTone("IB").fg }}>{totalIb}</span>
+                                    </td>
+                                    <td className="p-3.5 text-right">
+                                      <span className="px-2 py-0.5 rounded-full font-black text-[10px]" style={{ background: penggunaanTone("MT").bg, color: penggunaanTone("MT").fg }}>{totalMt}</span>
+                                    </td>
+                                    <td className="p-3.5 text-right font-mono font-bold" style={{ color: "var(--ink)" }}>{totalAll}</td>
+                                    <td className="p-3.5">
+                                      <div className="w-full h-2.5 rounded-full overflow-hidden flex" style={{ background: "var(--canvas)" }} title={`IB ${totalIb} / MT ${totalMt}`}>
+                                        <div style={{ width: `${pctIb}%`, background: penggunaanTone("IB").fg }}></div>
+                                        <div style={{ width: `${100 - pctIb}%`, background: penggunaanTone("MT").fg }}></div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>

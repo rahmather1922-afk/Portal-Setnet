@@ -31,6 +31,17 @@ const pemakaianMaterialSchema = new mongoose.Schema({
   // model MaterialStokLog (tipe "Pengembalian") supaya angkanya rapi & bisa direkap.
   return_catatan: { type: String, default: '' },
 
+  // catatan_report — kolom catatan/report BEBAS dari teknisi/admin, isinya beda-beda tiap
+  // baris (bukan template baku), jadi disimpan sebagai teks polos apa adanya. Dibatasi 5000
+  // karakter supaya cukup untuk laporan lapangan yang panjang tapi tetap wajar.
+  catatan_report: { type: String, default: '', maxlength: 5000 },
+
+  // Penggunaan (IB/MT) — snapshot dari bucket stok Material yang dipakai baris ini
+  // (lihat models/Material.js). Menentukan Kabel mana yang boleh dipilih di form
+  // (harus penggunaan-nya SAMA dengan yang dipilih di sini), dan dipakai untuk pecah
+  // rekap "per Teknisi/Team" jadi Unit IB vs Unit MT di /material/report.
+  penggunaan: { type: String, enum: ['IB', 'MT'], default: 'IB' },
+
   // Tambahan klasifikasi pekerjaan — diisi lewat dropdown di form Pemakaian Teknisi.
   project: { type: String, enum: ['AMT', 'FS', 'LinkNet', ''], default: '' },
   region: {
@@ -41,6 +52,13 @@ const pemakaianMaterialSchema = new mongoose.Schema({
   vendor: { type: String, enum: ['Quantum', 'Satu Visi', 'BBB', ''], default: '' },
 
   dibuat_oleh: { type: String, default: '' }, // karyawan_id admin/gudang yang input baris ini
+
+  // batch_id — dokumen-dokumen yang dibuat dari SATU KALI submit form "Tambah Log Pemakaian"
+  // (bisa beberapa unit ONT / beberapa jenis kabel sekaligus) berbagi batch_id yang sama.
+  // Dipakai FE untuk menggabungkan tampilan jadi 1 baris ringkasan di tabel "Log Pemakaian
+  // per Teknisi", walau di database tetap tersimpan sebagai dokumen terpisah per unit
+  // (supaya potong-stok & edit/hapus per unit tetap akurat). Kosong untuk data lama.
+  batch_id: { type: String, default: '', index: true },
 
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
