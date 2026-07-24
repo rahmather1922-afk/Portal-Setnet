@@ -149,36 +149,41 @@ router.post('/absen', async (req, res) => {
     }
 
     let keterangan = "Normal";
-    // Pengecekan status terlambat hanya dihitung saat karyawan melakukan "Absen Masuk"
-    if (status === "Masuk") {
-      // PENTING: pakai jam WIB eksplisit (bukan jam lokal server) supaya perhitungan
-      // telat tidak kebalik/ngaco kalau server hosting berjalan di timezone UTC.
-      const { jam, menit } = getJamMenitWIB();
-
-      // Mengonversi waktu saat ini menjadi akumulasi total hitungan menit dari jam 00:00 dini hari (WIB)
-      const totalMenitSekarang = (jam * 60) + menit;
-      let batasMenitMasuk = 0;
-      // Aturan Waktu Shift Masuk Kerja
-      if (shift === "Shift 1") {
-        batasMenitMasuk = 7 * 60;   // Batas Jam 07:00 Pagi = 420 Menit
-      } else if (shift === "Shift 2") {
-        batasMenitMasuk = 15 * 60;  // Batas Jam 15:00 Sore = 900 Menit
-      } else if (shift === "Non-Shift") {
-        batasMenitMasuk = 9 * 60;   // Batas Jam 09:00 Pagi = 540 Menit
-      }
-      // Jika waktu absen saat ini melewati batas menit shift yang ditentukan
-      if (totalMenitSekarang > batasMenitMasuk) {
-        const selisihMenit = totalMenitSekarang - batasMenitMasuk;
-        const jamTelat = Math.floor(selisihMenit / 60);
-        const menitTelat = selisihMenit % 60;
-
-        if (jamTelat > 0) {
-          keterangan = `Terlambat (${jamTelat} Jam ${menitTelat} Menit)`;
-        } else {
-          keterangan = `Terlambat (${menitTelat} Menit)`;
-        }
-      }
-    }
+    // --- SEMENTARA DINONAKTIFKAN: perhitungan terlambat berdasarkan shift ---
+    // Absen sekarang tidak dibatasi jam berapapun, statusnya tetap "Masuk" dan
+    // keterangan selalu "Normal" (tidak ada status Terlambat). Nanti kalau mau
+    // dipakai lagi, tinggal uncomment blok di bawah ini.
+    //
+    // // Pengecekan status terlambat hanya dihitung saat karyawan melakukan "Absen Masuk"
+    // if (status === "Masuk") {
+    //   // PENTING: pakai jam WIB eksplisit (bukan jam lokal server) supaya perhitungan
+    //   // telat tidak kebalik/ngaco kalau server hosting berjalan di timezone UTC.
+    //   const { jam, menit } = getJamMenitWIB();
+    //
+    //   // Mengonversi waktu saat ini menjadi akumulasi total hitungan menit dari jam 00:00 dini hari (WIB)
+    //   const totalMenitSekarang = (jam * 60) + menit;
+    //   let batasMenitMasuk = 0;
+    //   // Aturan Waktu Shift Masuk Kerja
+    //   if (shift === "Shift 1") {
+    //     batasMenitMasuk = 7 * 60;   // Batas Jam 07:00 Pagi = 420 Menit
+    //   } else if (shift === "Shift 2") {
+    //     batasMenitMasuk = 15 * 60;  // Batas Jam 15:00 Sore = 900 Menit
+    //   } else if (shift === "Non-Shift") {
+    //     batasMenitMasuk = 9 * 60;   // Batas Jam 09:00 Pagi = 540 Menit
+    //   }
+    //   // Jika waktu absen saat ini melewati batas menit shift yang ditentukan
+    //   if (totalMenitSekarang > batasMenitMasuk) {
+    //     const selisihMenit = totalMenitSekarang - batasMenitMasuk;
+    //     const jamTelat = Math.floor(selisihMenit / 60);
+    //     const menitTelat = selisihMenit % 60;
+    //
+    //     if (jamTelat > 0) {
+    //       keterangan = `Terlambat (${jamTelat} Jam ${menitTelat} Menit)`;
+    //     } else {
+    //       keterangan = `Terlambat (${menitTelat} Menit)`;
+    //     }
+    //   }
+    // }
 
     // Upload foto (base64 dataURL dari kamera HP) ke Cloudinary DULU, sebelum disimpan ke MongoDB.
     // Cloudinary bisa langsung menerima string base64 sebagai sumber file (tidak perlu multer/multipart

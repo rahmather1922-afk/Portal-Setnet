@@ -1,8 +1,5 @@
 const mongoose = require('mongoose');
 
-// Schema Invoice / Penagihan
-// Dipakai oleh modul "Invoice" di Portal Admin (admin.js), diakses lewat
-// endpoint /api/finance/invoice (satu router dengan modul Keuangan).
 const invoiceItemSchema = new mongoose.Schema({
   deskripsi: { type: String, required: true },
   qty: { type: Number, required: true, min: 0, default: 1 },
@@ -27,7 +24,7 @@ const invoiceSchema = new mongoose.Schema({
     validate: v => Array.isArray(v) && v.length > 0
   },
 
-  // Komponen tambahan perhitungan total (mengikuti hitungTotalInvoice di frontend)
+  
   pinalty: { type: Number, default: 0, min: 0 },
   less_deposit: { type: Number, default: 0, min: 0 },
   denda_setelah_ppn: { type: Number, default: 0, min: 0 },

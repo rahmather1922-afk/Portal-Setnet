@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-// Schema Rekap Riwayat Absensi
+
 const absensiSchema = new mongoose.Schema({
   karyawan_id: { type: String, required: true },
   nama: { type: String, required: true },

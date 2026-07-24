@@ -573,10 +573,15 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
                     <p class="text-[10px] text-gray-500">
                         {statusHariIni.sudahPulang
                             ? 'Anda sudah Absen Masuk dan Absen Pulang hari ini. Sampai jumpa besok!'
-                            : `Shift terkunci di "${statusHariIni.shift}". Tinggal klik Absen Pulang saat selesai kerja.`}
+                            : 'Tinggal klik Absen Pulang saat selesai kerja.'}
                     </p>
                 </div>
             )}
+
+            {/* --- SEMENTARA DISEMBUNYIKAN: UI pilih jadwal shift ---
+                Fitur shift dinonaktifkan dulu, jadi user tidak perlu pilih apa-apa.
+                selectedShift otomatis terisi 'Non-Shift' (lihat React.useState di atas).
+                Nanti kalau mau diaktifkan lagi, tinggal uncomment blok di bawah ini.
 
             <div class="mb-5 text-left bg-gray-50 p-3 rounded-xl border border-gray-150">
                 <label class="block text-xs font-bold text-gray-600 uppercase mb-2 tracking-wide text-center">PILIH JADWAL SHIFT ANDA HARI INI:</label>
@@ -595,6 +600,7 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
                     <p class="text-[10px] text-gray-400 mt-2 text-center">🔒 Shift terkunci karena sudah Absen Masuk hari ini.</p>
                 )}
             </div>
+            */}
 
             <div class="grid grid-cols-2 gap-3">
                 <button onClick={() => handleAbsen('Masuk')} disabled={masukTerkunci} class="bg-green-600 hover:bg-green-700 text-white font-extrabold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-300 disabled:cursor-not-allowed text-sm">
@@ -733,7 +739,9 @@ function AppAbsensi() {
     const [pesan, setPesan] = React.useState('');
     const [loading, setLoading] = React.useState(false);
 
-    const [selectedShift, setSelectedShift] = React.useState('Shift 1');
+    // Sementara UI pilih shift disembunyikan (fitur shift dinonaktifkan dulu),
+    // jadi selalu kirim 'Non-Shift' otomatis tanpa user perlu pilih apa-apa.
+    const [selectedShift, setSelectedShift] = React.useState('Non-Shift');
     const videoRef = React.useRef(null);
     const streamRef = React.useRef(null);
 
