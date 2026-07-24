@@ -14,7 +14,12 @@ const pemakaianMaterialSchema = new mongoose.Schema({
   teknisi_id: { type: String, default: '' },
   nama_team: { type: String, required: true, trim: true },
 
-  merek_modem: { type: String, default: '' },   // kolom C, ex: NOKIA, ZTE
+  merek_modem: { type: String, default: '' },   // kolom C, ex: NOKIA, ZTE (snapshot teks bebas)
+  // ont_material_id — link OPSIONAL ke master Material (kategori ONT, bucket Penggunaan yg sama)
+  // kalau merek_modem yang diketik/dipilih cocok dengan salah satu Material ONT terdaftar.
+  // Kosong/null kalau merek_modem diisi manual ("Lainnya") & tidak match Material manapun —
+  // dalam kondisi itu stok ONT TIDAK ikut terpotong (hanya kabel yang wajib & selalu terpotong).
+  ont_material_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Material', default: null },
   sn_ont: { type: String, default: '' },         // kolom D, serial number ONT
 
   // kolom E "KABEL" — link ke master Material (kategori Kabel) + snapshot nama-nya

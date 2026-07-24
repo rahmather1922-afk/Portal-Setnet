@@ -25,6 +25,15 @@ async function ubahStok(materialId, delta) {
   return material;
 }
 
+// Helper: cari Material kategori ONT yang nama-nya cocok dengan teks Merek Modem yang
+// diketik/dipilih user, DI BUCKET Penggunaan (IB/MT) yang sama dengan baris log-nya.
+// Return null kalau kosong/tidak match apapun (mis. user isi merek custom lewat "Lainnya")
+// — dalam kondisi itu stok ONT sengaja TIDAK dipotong, cuma stok kabel yang jalan.
+async function cariOntMaterial(merekModem, penggunaan) {
+  if (!merekModem) return null;
+  return Material.findOne({ kategori: 'ONT', penggunaan, nama: merekModem });
+}
+
 // ==================== MASTER DATA MATERIAL (CRUD) — tabel "MATRIAL MASUK" di Excel ====================
 
 // --- DAFTAR SELURUH MATERIAL (filter opsional ?kategori=Kabel) ---
@@ -140,7 +149,7 @@ router.post('/pemakaian-material', MANAGE_ROLES, async (req, res) => {
   try {
     const {
       tanggal_pengambilan, teknisi_id, nama_team, merek_modem, sn_ont,
-      kabel_id, status, return_catatan, penggunaan, project, region, vendor
+      kabel_id, status, return_catatan, catatan_report, penggunaan, project, region, vendor
     } = req.body;
 
     if (!nama_team || !kabel_id) {
@@ -162,29 +171,50 @@ router.post('/pemakaian-material', MANAGE_ROLES, async (req, res) => {
       });
     }
 
-    if (statusFinal === 'Terpakai') {
-      await ubahStok(kabel_id, -1);
-    }
+    // Merek Modem opsional link ke Material kategori ONT (bucket Penggunaan sama) -> kalau
+    // ketemu & status langsung "Terpakai", stok ONT-nya ikut terpotong 1 seperti kabel.
+    const ontMaterial = await cariOntMaterial(merek_modem, penggunaanFinal);
 
-    const dibuat_oleh = req.header('x-user-id') || '';
-    const logBaru = new PemakaianMaterial({
-      tanggal_pengambilan: tanggal_pengambilan ? new Date(tanggal_pengambilan) : new Date(),
-      teknisi_id: teknisi_id || '',
-      nama_team,
-      merek_modem: merek_modem || '',
-      sn_ont: sn_ont || '',
-      kabel_id,
-      kabel_nama: kabel.nama,
-      status: statusFinal,
-      return_catatan: return_catatan || '',
-      penggunaan: penggunaanFinal,
-      project: project || '',
-      region: region || '',
-      vendor: vendor || '',
-      dibuat_oleh
-    });
-    await logBaru.save();
-    res.status(201).json({ message: 'Log pemakaian material berhasil disimpan', data: logBaru });
+    let kabelStokDipotong = false;
+    let ontStokDipotong = false;
+    try {
+      if (statusFinal === 'Terpakai') {
+        await ubahStok(kabel_id, -1);
+        kabelStokDipotong = true;
+        if (ontMaterial) {
+          await ubahStok(ontMaterial._id, -1);
+          ontStokDipotong = true;
+        }
+      }
+
+      const dibuat_oleh = req.header('x-user-id') || '';
+      const logBaru = new PemakaianMaterial({
+        tanggal_pengambilan: tanggal_pengambilan ? new Date(tanggal_pengambilan) : new Date(),
+        teknisi_id: teknisi_id || '',
+        nama_team,
+        merek_modem: merek_modem || '',
+        ont_material_id: ontMaterial ? ontMaterial._id : null,
+        sn_ont: sn_ont || '',
+        kabel_id,
+        kabel_nama: kabel.nama,
+        status: statusFinal,
+        return_catatan: return_catatan || '',
+        catatan_report: catatan_report || '',
+        penggunaan: penggunaanFinal,
+        project: project || '',
+        region: region || '',
+        vendor: vendor || '',
+        dibuat_oleh
+      });
+      await logBaru.save();
+      res.status(201).json({ message: 'Log pemakaian material berhasil disimpan', data: logBaru });
+    } catch (innerError) {
+      // Rollback best-effort kalau kabel sudah terpotong tapi ONT gagal (atau save dokumen gagal),
+      // supaya stok tidak nyangkut "kepotong sebagian" saat terjadi error di tengah proses.
+      if (kabelStokDipotong) await ubahStok(kabel_id, +1).catch(() => {});
+      if (ontStokDipotong) await ubahStok(ontMaterial._id, +1).catch(() => {});
+      throw innerError;
+    }
   } catch (error) {
     res.status(500).json({ message: 'Gagal menyimpan log pemakaian material', error: error.message });
   }
@@ -199,7 +229,7 @@ router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
   try {
     const {
       tanggal_pengambilan, teknisi_id, nama_team, merek_modem,
-      status, return_catatan, penggunaan, project, region, vendor,
+      status, return_catatan, catatan_report, penggunaan, project, region, vendor,
       ont_list, kabel_list
     } = req.body;
 
@@ -238,12 +268,16 @@ router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
 
     const statusFinal = ['Terpakai', 'Idle'].includes(status) ? status : 'Idle';
 
+    // Merek Modem berlaku 1 untuk seluruh batch -> kalau cocok Material kategori ONT
+    // (bucket Penggunaan sama), stok ONT-nya ikut terpotong sebanyak totalUnit.
+    const ontMaterial = await cariOntMaterial(merek_modem, penggunaanFinal);
+
     // Total kebutuhan per jenis kabel (kalau 1 jenis kabel dipakai di beberapa baris).
     const totalPerKabel = {};
     rows.forEach(r => { totalPerKabel[r.kabel_id] = (totalPerKabel[r.kabel_id] || 0) + r.jumlah; });
 
-    // Kalau langsung "Terpakai", cek dulu stok semua jenis kabel CUKUP sebelum motong apapun,
-    // supaya tidak ada potongan stok "setengah jalan" kalau salah satu kurang.
+    // Kalau langsung "Terpakai", cek dulu stok semua jenis kabel (+ ONT kalau ada) CUKUP
+    // sebelum motong apapun, supaya tidak ada potongan stok "setengah jalan" kalau kurang.
     if (statusFinal === 'Terpakai') {
       for (const id of Object.keys(totalPerKabel)) {
         const m = materialsMap[id];
@@ -252,6 +286,11 @@ router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
             message: `Stok tidak cukup. Sisa stok "${m.nama}" saat ini: ${m.stock} ${m.satuan}, dibutuhkan ${totalPerKabel[id]}.`
           });
         }
+      }
+      if (ontMaterial && ontMaterial.stock < totalUnit) {
+        return res.status(400).json({
+          message: `Stok tidak cukup. Sisa stok Merek Modem "${ontMaterial.nama}" saat ini: ${ontMaterial.stock} ${ontMaterial.satuan}, dibutuhkan ${totalUnit}.`
+        });
       }
     }
 
@@ -275,6 +314,10 @@ router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
           await ubahStok(id, -totalPerKabel[id]);
           stokTerpotong.push({ id, jumlah: totalPerKabel[id] });
         }
+        if (ontMaterial) {
+          await ubahStok(ontMaterial._id, -totalUnit);
+          stokTerpotong.push({ id: ontMaterial._id, jumlah: totalUnit });
+        }
       }
 
       for (let i = 0; i < totalUnit; i++) {
@@ -285,11 +328,13 @@ router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
           teknisi_id: teknisi_id || '',
           nama_team,
           merek_modem: merek_modem || '',
+          ont_material_id: ontMaterial ? ontMaterial._id : null,
           sn_ont: snList[i] || '',
           kabel_id: kabelId,
           kabel_nama: kabelDoc.nama,
           status: statusFinal,
           return_catatan: return_catatan || '',
+          catatan_report: catatan_report || '',
           penggunaan: penggunaanFinal,
           project: project || '',
           region: region || '',
@@ -327,7 +372,7 @@ router.put('/pemakaian-material/:id', MANAGE_ROLES, async (req, res) => {
 
     const {
       tanggal_pengambilan, teknisi_id, nama_team, merek_modem, sn_ont,
-      kabel_id, status, return_catatan, penggunaan, project, region, vendor
+      kabel_id, status, return_catatan, catatan_report, penggunaan, project, region, vendor
     } = req.body;
 
     if (penggunaan && !['IB', 'MT'].includes(penggunaan)) {
@@ -338,6 +383,7 @@ router.put('/pemakaian-material/:id', MANAGE_ROLES, async (req, res) => {
     const kabelIdBaru = kabel_id || String(log.kabel_id);
     const statusBaru = ['Terpakai', 'Idle'].includes(status) ? status : log.status;
     const kabelBerubah = kabelIdBaru !== String(log.kabel_id);
+    const merekModemBaru = merek_modem !== undefined ? merek_modem : log.merek_modem;
 
     // Validasi kabel yang dipilih (baru atau tetap yang lama) memang dari bucket
     // Penggunaan yang sama — dicek DULU sebelum stok siapapun disentuh.
@@ -348,17 +394,22 @@ router.put('/pemakaian-material/:id', MANAGE_ROLES, async (req, res) => {
         message: `Jenis kabel "${kabelCek.nama}" ada di bucket Penggunaan "${kabelCek.penggunaan || 'IB'}", tidak cocok dengan Penggunaan "${penggunaanFinal}" yang dipilih.`
       });
     }
+    // Merek Modem baru (kalau ada perubahan teks/penggunaan) -> cari ulang match Material ONT-nya.
+    const ontMaterialBaru = await cariOntMaterial(merekModemBaru, penggunaanFinal);
 
     // Balikkan dulu efek stok dari kondisi LAMA, baru terapkan efek stok yang BARU.
     if (log.status === 'Terpakai') {
-      await ubahStok(log.kabel_id, +1); // kembalikan stok lama
+      await ubahStok(log.kabel_id, +1); // kembalikan stok kabel lama
+      if (log.ont_material_id) await ubahStok(log.ont_material_id, +1); // kembalikan stok modem lama
     }
     let kabelBaruDoc = null;
     if (statusBaru === 'Terpakai') {
-      kabelBaruDoc = await ubahStok(kabelIdBaru, -1); // potong stok baru
+      kabelBaruDoc = await ubahStok(kabelIdBaru, -1); // potong stok kabel baru
+      if (ontMaterialBaru) await ubahStok(ontMaterialBaru._id, -1); // potong stok modem baru
     } else if (kabelBerubah) {
       kabelBaruDoc = kabelCek;
     }
+    log.ont_material_id = ontMaterialBaru ? ontMaterialBaru._id : null;
 
     if (tanggal_pengambilan) log.tanggal_pengambilan = new Date(tanggal_pengambilan);
     if (teknisi_id !== undefined) log.teknisi_id = teknisi_id;
@@ -366,6 +417,7 @@ router.put('/pemakaian-material/:id', MANAGE_ROLES, async (req, res) => {
     if (merek_modem !== undefined) log.merek_modem = merek_modem;
     if (sn_ont !== undefined) log.sn_ont = sn_ont;
     if (return_catatan !== undefined) log.return_catatan = return_catatan;
+    if (catatan_report !== undefined) log.catatan_report = catatan_report;
     log.penggunaan = penggunaanFinal;
     if (project !== undefined) log.project = project;
     if (region !== undefined) log.region = region;
@@ -389,6 +441,7 @@ router.delete('/pemakaian-material/:id', MANAGE_ROLES, async (req, res) => {
 
     if (log.status === 'Terpakai') {
       await ubahStok(log.kabel_id, +1);
+      if (log.ont_material_id) await ubahStok(log.ont_material_id, +1);
     }
     await PemakaianMaterial.findByIdAndDelete(req.params.id);
     res.status(200).json({ message: 'Log pemakaian material berhasil dihapus & stok disesuaikan kembali' });
@@ -481,7 +534,11 @@ router.get('/material/report', VIEW_ROLES, async (req, res) => {
     const semuaStokLog = await MaterialStokLog.find();
 
     const perMaterial = semuaMaterial.map(m => {
-      const logMaterialIni = semuaPemakaian.filter(l => String(l.kabel_id) === String(m._id));
+      // Cocokkan baris log yg pakai material ini sbg Kabel (kabel_id) ATAU sbg Merek Modem
+      // (ont_material_id) — supaya kategori ONT juga kehitung terpakai/idle-nya, bukan cuma Kabel.
+      const logMaterialIni = semuaPemakaian.filter(l =>
+        String(l.kabel_id) === String(m._id) || (l.ont_material_id && String(l.ont_material_id) === String(m._id))
+      );
       const totalTerpakai = logMaterialIni.filter(l => l.status === 'Terpakai').length;
       const totalIdle = logMaterialIni.filter(l => l.status === 'Idle').length;
       const totalDitambah = semuaStokLog

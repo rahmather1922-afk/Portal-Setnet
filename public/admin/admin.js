@@ -350,6 +350,48 @@ const PhotoModal = ({ data, onClose }) => {
   );
 };
 
+// Modal detail "Report" utk 1 baris/grup Log Pemakaian Material — menampilkan catatan_report
+// (bebas dari teknisi/admin) & return_catatan (kolom RETURN bebas-teks) secara penuh, karena
+// di tabel ringkasan keduanya terpotong (truncate) supaya kolom tetap rapi.
+const PmkReportModal = ({ data, onClose }) => {
+  if (!data) return null;
+  const isGroup = data.jumlahUnit > 1;
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.6)" }} onClick={onClose}>
+      <div className="modal-in bg-white rounded-2xl p-5 w-full max-w-md max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between mb-3 gap-3">
+          <div>
+            <p className="font-bold font-display text-sm" style={{ color: "var(--ink)" }}>{data.nama_team}</p>
+            <p className="text-[11px] mt-0.5" style={{ color: "var(--ink-soft)" }}>
+              {new Date(data.tanggal_pengambilan).toLocaleDateString("id-ID")} · {data.penggunaan || "IB"}{isGroup ? ` · ${data.jumlahUnit} unit` : ""}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 shrink-0"><IconX className="w-4 h-4" style={{ color: "var(--ink-soft)" }} /></button>
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="p-2.5 rounded-xl" style={{ background: "var(--canvas)" }}>
+            <p className="text-[9px] font-bold uppercase tracking-wide" style={{ color: "var(--ink-soft)" }}>Modem / SN</p>
+            <p className="text-xs font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{data.merek_modem || "—"}</p>
+            {data.snList && data.snList.length > 0 && <p className="font-mono text-[10px] mt-0.5" style={{ color: "var(--ink-soft)" }}>{data.snList.join(", ")}</p>}
+          </div>
+          <div className="p-2.5 rounded-xl" style={{ background: "var(--canvas)" }}>
+            <p className="text-[9px] font-bold uppercase tracking-wide" style={{ color: "var(--ink-soft)" }}>Kabel</p>
+            <p className="text-xs font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{data.kabelRingkas || "—"}</p>
+          </div>
+        </div>
+        <div className="mb-3">
+          <p className="text-[9px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--ink-soft)" }}>Return</p>
+          <p className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: "var(--ink)" }}>{data.return_catatan || "—"}</p>
+        </div>
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--ink-soft)" }}>Catatan Report</p>
+          <p className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: "var(--ink)" }}>{data.catatan_report || "Belum ada catatan report untuk baris ini."}</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ---------------------------------- IMPORT KARYAWAN DARI EXCEL ---------------------------------- */
 // Path file template Excel di server. Taruh file "Template_Import_Karyawan.xlsx"
 // di folder public backend kamu pada path ini (sama polanya dengan AVATAR_DEFAULT_SRC di atas).
@@ -1626,9 +1668,12 @@ const API = "/api/admin";
 const FIN_API = "/api/finance";
 const TRACK_API = "/api";
 const MATERIAL_API = "/api"; 
+// Limit Kasbon awal yang otomatis diisikan tiap karyawan BARU didaftarkan (lihat handleSubmitKaryawan).
+// Cuma nilai default awal — tiap karyawan tetap bisa disesuaikan manual kapan saja lewat menu Salary.
+const DEFAULT_LIMIT_KASBON_BARU = 300000;
 // Preset pilihan dropdown Master Material & Pemakaian Teknisi — bisa ditambah/kurangi sesuai kebutuhan.
 const KABEL_METER_PRESETS = [50, 80, 100, 150, 200, 250];
-const ONT_MEREK_PRESETS = ["ZTE", "Huawei", "Nokia", "Pejas"];
+const ONT_MEREK_PRESETS = ["ZTE", "Huawei", "Nokia", "Tejas"];
 const PROJECT_PRESETS = ["AMT", "FS", "LinkNet", "Hifi"];
 const REGION_PRESETS = ["Jakbar", "Jakut", "Jakpus", "Jaksel", "Jaktim", "Bekasi", "Bogor", "Depok", "Bekasi Timur", "Tangerang", "Tangkot", "Bali"];
 const VENDOR_PRESETS = ["Quantum", "Satu Visi", "BBB"];
@@ -1797,8 +1842,8 @@ function DashboardAdmin({ session, onLogout }) {
   const [pmkTanggal, setPmkTanggal] = useState(() => new Date().toISOString().slice(0, 10));
   const [pmkTeknisiId, setPmkTeknisiId] = useState("");
   const [pmkNamaTeam, setPmkNamaTeam] = useState("");
-  const [pmkMerekModem, setPmkMerekModem] = useState("ZTE");
-  const [pmkMerekPilihan, setPmkMerekPilihan] = useState("ZTE"); // dropdown preset merek modem, "Lainnya" -> custom
+  const [pmkMerekModem, setPmkMerekModem] = useState("");
+  const [pmkMerekPilihan, setPmkMerekPilihan] = useState(""); // pilihan dropdown merek modem (dari master Material kategori ONT), "Lainnya" -> custom
   const [pmkSnOnt, setPmkSnOnt] = useState(""); // dipakai saat mode EDIT (1 baris)
   const [pmkKabelId, setPmkKabelId] = useState(""); // dipakai saat mode EDIT (1 baris)
   const [pmkJumlahOnt, setPmkJumlahOnt] = useState(1); // dipakai saat mode TAMBAH (batch)
@@ -1813,6 +1858,7 @@ function DashboardAdmin({ session, onLogout }) {
   const [pmkVendor, setPmkVendor] = useState("");
   const [pmkFormErrors, setPmkFormErrors] = useState({});
   const [pmkSubmitting, setPmkSubmitting] = useState(false);
+  const [pmkReportTarget, setPmkReportTarget] = useState(null); // baris/grup yg modal report-nya sedang dibuka
   const [pmkDeleteTarget, setPmkDeleteTarget] = useState(null);
   const [searchPemakaian, setSearchPemakaian] = useState("");
   const [pemakaianStatusFilter, setPemakaianStatusFilter] = useState("semua");
@@ -1946,6 +1992,17 @@ function DashboardAdmin({ session, onLogout }) {
       const resData = await res.json().catch(() => ({}));
       if (res.status === 200 || res.status === 201) {
         notify(isEditing ? "Data karyawan berhasil diperbarui" : "Anggota baru berhasil terdaftar");
+        // Khusus karyawan BARU (bukan edit) -> otomatis isi Limit Kasbon awal, jadi admin tidak
+        // perlu buka menu Salary & isi manual satu-satu tiap kali ada anggota baru. Tetap bisa
+        // disesuaikan kapan saja lewat menu Salary (lihat DEFAULT_LIMIT_KASBON_BARU di atas).
+        // Best-effort: kalau gagal, tidak mengganggu proses pendaftaran karyawan yang sudah sukses.
+        if (!isEditing) {
+          fetch(`${TRACK_API}/salary/${karyawanId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ gaji_pokok: 0, limit_kasbon: DEFAULT_LIMIT_KASBON_BARU }),
+          }).catch(() => {});
+        }
         resetForm();
         muatSemuaData(true);
       } else {
@@ -3186,18 +3243,20 @@ function DashboardAdmin({ session, onLogout }) {
 
   const resetFormPemakaian = () => {
     setPmkEditId(null); setPmkTanggal(new Date().toISOString().slice(0, 10)); setPmkTeknisiId(""); setPmkNamaTeam("");
-    setPmkMerekPilihan("ZTE"); setPmkMerekModem("ZTE"); setPmkSnOnt(""); setPmkKabelId("");
+    setPmkMerekPilihan(""); setPmkMerekModem(""); setPmkSnOnt(""); setPmkKabelId("");
     setPmkJumlahOnt(1); setPmkSnOntList([""]); setPmkKabelRows([{ kabel_id: "", jumlah: 1 }]);
     setPmkStatus("Idle"); setPmkReturnCatatan(""); setPmkCatatanReport(""); setPmkPenggunaan("IB");
     setPmkProject(""); setPmkRegion(""); setPmkVendor("");
     setPmkFormErrors({});
   };
-  // Ganti Penggunaan (IB/MT) di form Pemakaian Teknisi -> reset pilihan kabel karena daftar
-  // Jenis Kabel yang muncul mengikuti Penggunaan yang aktif (bucket stoknya beda).
+
   const handlePmkPenggunaanChange = (val) => {
     setPmkPenggunaan(val);
     setPmkKabelId("");
     setPmkKabelRows([{ kabel_id: "", jumlah: 1 }]);
+    // Bucket IB/MT beda -> daftar & sisa stok Merek Modem (Material kategori ONT) ikut beda,
+    // jadi pilihan lama di-reset supaya tidak nyangkut ke merek yg sebenarnya beda bucket.
+    setPmkMerekPilihan(""); setPmkMerekModem("");
   };
   const handlePmkMerekChange = (val) => {
     setPmkMerekPilihan(val);
@@ -3230,6 +3289,12 @@ function DashboardAdmin({ session, onLogout }) {
   // Hanya tampilkan Jenis Kabel yang penggunaan-nya (IB/MT) SAMA dengan yang dipilih di form —
   // supaya pemakaian teknisi selalu memotong stok dari bucket IB/MT yang benar.
   const kabelMaterialOptions = useMemo(() => materialList.filter(m => m.kategori === "Kabel" && m.penggunaan === pmkPenggunaan), [materialList, pmkPenggunaan]);
+  // Sama seperti kabelMaterialOptions -> dropdown Merek Modem ikut menampilkan sisa stok
+  // Material kategori ONT (bucket IB/MT sesuai pmkPenggunaan) & opsi yg stock-nya 0 dikunci.
+  const ontMaterialOptions = useMemo(() => materialList.filter(m => m.kategori === "ONT" && m.penggunaan === pmkPenggunaan), [materialList, pmkPenggunaan]);
+  // Dipakai di pemicuEditPemakaian utk cek apakah merek_modem tersimpan itu masih terdaftar
+  // di master data ONT (lintas IB/MT) -> kalau tidak, dropdown jatuh ke opsi "Lainnya".
+  const ontMaterialNamaSet = useMemo(() => new Set(materialList.filter(m => m.kategori === "ONT").map(m => m.nama)), [materialList]);
 
   // Daftar SN ONT untuk tabel di halaman Laporan — gabungkan sn_list tiap Material ONT dengan
   // status pemakaian terakhir (kalau SN itu sudah pernah dipakai teknisi), biar Owner gampang lihat
@@ -3358,7 +3423,7 @@ function DashboardAdmin({ session, onLogout }) {
   const pemicuEditPemakaian = (l) => {
     setPmkEditId(l._id); setPmkTanggal(l.tanggal_pengambilan ? l.tanggal_pengambilan.slice(0, 10) : "");
     setPmkTeknisiId(l.teknisi_id || ""); setPmkNamaTeam(l.nama_team);
-    setPmkMerekModem(l.merek_modem || ""); setPmkMerekPilihan(ONT_MEREK_PRESETS.includes(l.merek_modem) ? l.merek_modem : (l.merek_modem ? "Lainnya" : "ZTE"));
+    setPmkMerekModem(l.merek_modem || ""); setPmkMerekPilihan(ontMaterialNamaSet.has(l.merek_modem) ? l.merek_modem : (l.merek_modem ? "Lainnya" : ""));
     setPmkSnOnt(l.sn_ont || ""); setPmkKabelId(String(l.kabel_id)); setPmkStatus(l.status); setPmkReturnCatatan(l.return_catatan || "");
     setPmkCatatanReport(l.catatan_report || "");
     setPmkPenggunaan(l.penggunaan || "IB");
@@ -3707,6 +3772,7 @@ function DashboardAdmin({ session, onLogout }) {
         onCancel={() => setLogoutConfirmOpen(false)}
       />
       <PhotoModal data={fotoPreview} onClose={() => setFotoPreview(null)} />
+      <PmkReportModal data={pmkReportTarget} onClose={() => setPmkReportTarget(null)} />
       <ImportKaryawanModal
         open={importModalOpen}
         onClose={() => setImportModalOpen(false)}
@@ -5561,9 +5627,17 @@ function DashboardAdmin({ session, onLogout }) {
                             <div>
                               <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Merek Modem</label>
                               <select value={pmkMerekPilihan} onChange={e => handlePmkMerekChange(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
-                                {ONT_MEREK_PRESETS.map(m => <option key={m} value={m}>{m}</option>)}
+                                <option value="">— Pilih merek modem —</option>
+                                {ontMaterialOptions.map(m => (
+                                  <option key={m._id} value={m.nama} disabled={m.stock <= 0}>
+                                    {m.nama} (stok: {m.stock}){m.stock <= 0 ? " — Habis" : ""}
+                                  </option>
+                                ))}
                                 <option value="Lainnya">Lainnya...</option>
                               </select>
+                              {ontMaterialOptions.length === 0 && (
+                                <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Belum ada Material kategori ONT untuk penggunaan {pmkPenggunaan}. Tambahkan lewat Master Material, atau pilih "Lainnya".</p>
+                              )}
                               {pmkMerekPilihan === "Lainnya" && (
                                 <input type="text" placeholder="Merek modem lain" value={pmkMerekModem} onChange={e => setPmkMerekModem(e.target.value)}
                                   className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium mt-2" style={{ borderColor: "var(--border)" }} />
@@ -5703,7 +5777,7 @@ function DashboardAdmin({ session, onLogout }) {
                                 <th className="p-4">Kabel</th>
                                 <th className="p-4 text-center">Status</th>
                                 <th className="p-4">Return</th>
-                                {canManageMaterial(session.role) && <th className="p-4 text-center w-24">Aksi</th>}
+                                {canManageMaterial(session.role) && <th className="p-4 text-center w-32">Aksi</th>}
                               </tr>
                             </thead>
                             <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
@@ -5746,6 +5820,9 @@ function DashboardAdmin({ session, onLogout }) {
                                       {canManageMaterial(session.role) && (
                                         <td className="p-3.5">
                                           <div className="flex items-center justify-center gap-1.5">
+                                            <button onClick={() => setPmkReportTarget(g)} className="p-1.5 rounded-lg border hover:bg-gray-50" style={{ borderColor: "var(--border)", color: g.catatan_report ? "var(--brand-dark)" : "var(--ink-soft)" }} title="Lihat report">
+                                              <IconReport className="w-3.5 h-3.5" />
+                                            </button>
                                             {isGroup ? (
                                               <button onClick={() => togglePmkBatch(g.key)} className="p-1.5 rounded-lg border hover:bg-gray-50 flex items-center gap-1" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }} title={isExpanded ? "Tutup rincian" : "Lihat rincian per unit"}>
                                                 <IconChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
@@ -5776,6 +5853,9 @@ function DashboardAdmin({ session, onLogout }) {
                                         {canManageMaterial(session.role) && (
                                           <td className="p-2.5">
                                             <div className="flex items-center justify-center gap-1.5">
+                                              <button onClick={() => setPmkReportTarget({ ...l, snList: l.sn_ont ? [l.sn_ont] : [], kabelRingkas: l.kabel_nama, jumlahUnit: 1 })} className="p-1.5 rounded-lg border hover:bg-gray-50" style={{ borderColor: "var(--border)", color: l.catatan_report ? "var(--brand-dark)" : "var(--ink-soft)" }} title="Lihat report">
+                                                <IconReport className="w-3.5 h-3.5" />
+                                              </button>
                                               <button onClick={() => pemicuEditPemakaian(l)} className="p-1.5 rounded-lg border hover:bg-blue-50" style={{ borderColor: "var(--border)", color: "var(--brand-dark)" }} title="Edit"><IconEdit className="w-3.5 h-3.5" /></button>
                                               <button onClick={() => setPmkDeleteTarget(l)} className="p-1.5 rounded-lg border hover:bg-red-50" style={{ borderColor: "var(--border)", color: "var(--red)" }} title="Hapus"><IconTrash className="w-3.5 h-3.5" /></button>
                                             </div>
