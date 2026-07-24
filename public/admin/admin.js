@@ -1793,7 +1793,13 @@ function DashboardAdmin({ session, onLogout }) {
   const [salaryPaymentLoading, setSalaryPaymentLoading] = useState(false);
   const [searchSalary, setSearchSalary] = useState("");
   const [pageSalary, setPageSalary] = useState(1);
-  const PAGE_SIZE_SAL = 8;
+  const [pageSizeSalary, setPageSizeSalary] = useState(10);
+  // Search, filter status, & pagination khusus tabel "Pembayaran Gaji Bulanan" (terpisah dari tabel master di atasnya)
+  const [searchSalaryPayment, setSearchSalaryPayment] = useState("");
+  const [salaryPaymentStatusFilter, setSalaryPaymentStatusFilter] = useState("semua");
+  const [pageSalaryPayment, setPageSalaryPayment] = useState(1);
+  const [pageSizeSalaryPayment, setPageSizeSalaryPayment] = useState(10);
+  const PAGE_SIZE_OPTIONS_SALARY = [5, 10, 20, 50, 100];
   // Dialog edit gaji pokok & limit kasbon 1 karyawan
   const [salaryEditTarget, setSalaryEditTarget] = useState(null); // { karyawan_id, nama, ... }
   const [salaryEditGajiPokok, setSalaryEditGajiPokok] = useState("");
@@ -3079,9 +3085,18 @@ function DashboardAdmin({ session, onLogout }) {
     if (!q) return salaryList;
     return salaryList.filter(s => s.nama?.toLowerCase().includes(q) || s.karyawan_id?.toLowerCase().includes(q));
   }, [salaryList, searchSalary]);
-  const totalPagesSalary = Math.max(1, Math.ceil(filteredSalary.length / PAGE_SIZE_SAL));
-  const pagedSalary = filteredSalary.slice((pageSalary - 1) * PAGE_SIZE_SAL, pageSalary * PAGE_SIZE_SAL);
-  useEffect(() => { setPageSalary(1); }, [searchSalary]);
+  const totalPagesSalary = Math.max(1, Math.ceil(filteredSalary.length / pageSizeSalary));
+  const pageSalaryAman = Math.min(pageSalary, totalPagesSalary);
+  const pagedSalary = filteredSalary.slice((pageSalaryAman - 1) * pageSizeSalary, pageSalaryAman * pageSizeSalary);
+  useEffect(() => { setPageSalary(1); }, [searchSalary, pageSizeSalary]);
+
+  // Ringkasan (card) utk tabel master "Gaji Pokok & Limit Kasbon" — dijumlah dari SELURUH karyawan (bukan cuma hasil filter/halaman aktif)
+  const salarySummary = useMemo(() => salaryList.reduce((a, s) => ({
+    totalKaryawan: a.totalKaryawan + 1,
+    totalGajiPokok: a.totalGajiPokok + (s.gaji_pokok || 0),
+    totalLimitKasbon: a.totalLimitKasbon + (s.limit_kasbon || 0),
+    totalKasbonBelumLunas: a.totalKasbonBelumLunas + (s.kasbon_belum_lunas || 0),
+  }), { totalKaryawan: 0, totalGajiPokok: 0, totalLimitKasbon: 0, totalKasbonBelumLunas: 0 }), [salaryList]);
 
   // Gabungkan data ringkasan pembayaran periode terpilih dengan urutan/pencarian yang sama seperti master gaji
   const salaryPaymentMap = useMemo(() => {
@@ -3093,6 +3108,29 @@ function DashboardAdmin({ session, onLogout }) {
     () => salaryPaymentList.reduce((a, p) => a + (p.total_dibayar || 0), 0),
     [salaryPaymentList]
   );
+
+  // Ringkasan (card) tabel "Pembayaran Gaji Bulanan" utk periode terpilih
+  const salaryPaymentSummary = useMemo(() => salaryPaymentList.reduce((a, p) => ({
+    totalKaryawan: a.totalKaryawan + 1,
+    totalGajiPokok: a.totalGajiPokok + (p.gaji_pokok || 0),
+    totalPotonganKasbon: a.totalPotonganKasbon + (p.total_kasbon_dipotong || 0),
+    sudahDibayar: a.sudahDibayar + (p.status === "Sudah Dibayar" ? 1 : 0),
+    belumDibayar: a.belumDibayar + (p.status === "Sudah Dibayar" ? 0 : 1),
+  }), { totalKaryawan: 0, totalGajiPokok: 0, totalPotonganKasbon: 0, sudahDibayar: 0, belumDibayar: 0 }), [salaryPaymentList]);
+
+  // Filter pencarian (nama/ID) + status untuk tabel Pembayaran Gaji Bulanan
+  const filteredSalaryPayment = useMemo(() => {
+    const q = searchSalaryPayment.trim().toLowerCase();
+    return salaryPaymentList.filter(p => {
+      const cocokCari = !q || p.nama?.toLowerCase().includes(q) || p.karyawan_id?.toLowerCase().includes(q);
+      const cocokStatus = salaryPaymentStatusFilter === "semua" || p.status === salaryPaymentStatusFilter;
+      return cocokCari && cocokStatus;
+    });
+  }, [salaryPaymentList, searchSalaryPayment, salaryPaymentStatusFilter]);
+  const totalPagesSalaryPayment = Math.max(1, Math.ceil(filteredSalaryPayment.length / pageSizeSalaryPayment));
+  const pageSalaryPaymentAman = Math.min(pageSalaryPayment, totalPagesSalaryPayment);
+  const pagedSalaryPayment = filteredSalaryPayment.slice((pageSalaryPaymentAman - 1) * pageSizeSalaryPayment, pageSalaryPaymentAman * pageSizeSalaryPayment);
+  useEffect(() => { setPageSalaryPayment(1); }, [searchSalaryPayment, salaryPaymentStatusFilter, pageSizeSalaryPayment, salaryPeriode]);
 
   const handleKeputusanPengajuan = async (item, status) => {
     let catatan_admin = "";
@@ -4354,6 +4392,22 @@ function DashboardAdmin({ session, onLogout }) {
                     <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>Atur gaji pokok & limit kasbon per karyawan, serta tandai gaji yang sudah ditransfer tiap bulan</p>
                   </div>
 
+                  {/* SUMMARY CARD: Gaji Pokok & Limit Kasbon (seluruh karyawan) */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <StatCard label="Total Karyawan" value={salarySummary.totalKaryawan} unit="orang" tone="brand" icon={<IconUsers className="w-5 h-5" />} />
+                    <StatCard label="Total Gaji Pokok" value={fmtRupiah(salarySummary.totalGajiPokok)} unit="" tone="green" icon={<IconWallet className="w-5 h-5" />} />
+                    <StatCard label="Total Limit Kasbon" value={fmtRupiah(salarySummary.totalLimitKasbon)} unit="" tone="amber" icon={<IconCable className="w-5 h-5" />} />
+                    <StatCard label="Kasbon Belum Lunas" value={fmtRupiah(salarySummary.totalKasbonBelumLunas)} unit="" tone="amber" icon={<IconAlert className="w-5 h-5" />} />
+                  </div>
+
+                  {/* SUMMARY CARD: Pembayaran Gaji Bulanan (periode terpilih) */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <StatCard label={`Total Transfer ${salaryPeriode}`} value={fmtRupiah(totalTransferBulanIni)} unit="" tone="brand" icon={<IconTrendUp className="w-5 h-5" />} />
+                    <StatCard label="Total Gaji Pokok (Periode)" value={fmtRupiah(salaryPaymentSummary.totalGajiPokok)} unit="" tone="green" icon={<IconWallet className="w-5 h-5" />} />
+                    <StatCard label="Sudah Dibayar" value={salaryPaymentSummary.sudahDibayar} unit="orang" tone="green" icon={<IconCheck className="w-5 h-5" />} />
+                    <StatCard label="Belum Dibayar" value={salaryPaymentSummary.belumDibayar} unit="orang" tone="amber" icon={<IconClock className="w-5 h-5" />} />
+                  </div>
+
                   {/* MASTER GAJI POKOK & LIMIT KASBON */}
                   <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
                     <div className="p-4 border-b flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between" style={{ borderColor: "var(--border)" }}>
@@ -4371,6 +4425,7 @@ function DashboardAdmin({ session, onLogout }) {
                       <table className="w-full text-left border-collapse text-xs min-w-[760px]">
                         <thead>
                           <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                            <th className="p-4 w-12">No</th>
                             <th className="p-4">Karyawan</th>
                             <th className="p-4 text-right">Gaji Pokok</th>
                             <th className="p-4 text-right">Limit Kasbon</th>
@@ -4381,12 +4436,13 @@ function DashboardAdmin({ session, onLogout }) {
                         </thead>
                         <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                           {salaryLoading ? (
-                            <tr><td colSpan="6" className="p-8 text-center text-xs" style={{ color: "var(--ink-soft)" }}>Memuat data...</td></tr>
+                            <tr><td colSpan="7" className="p-8 text-center text-xs" style={{ color: "var(--ink-soft)" }}>Memuat data...</td></tr>
                           ) : pagedSalary.length === 0 ? (
-                            <tr><td colSpan="6"><EmptyState title={searchSalary ? "Tidak ditemukan" : "Belum ada data karyawan"} subtitle={searchSalary ? "Coba kata kunci lain." : "Tambahkan karyawan lewat Master Data Karyawan."} icon={<IconWallet className="w-5 h-5" />} /></td></tr>
+                            <tr><td colSpan="7"><EmptyState title={searchSalary ? "Tidak ditemukan" : "Belum ada data karyawan"} subtitle={searchSalary ? "Coba kata kunci lain." : "Tambahkan karyawan lewat Master Data Karyawan."} icon={<IconWallet className="w-5 h-5" />} /></td></tr>
                           ) : (
-                            pagedSalary.map(s => (
+                            pagedSalary.map((s, idx) => (
                               <tr key={s.karyawan_id} className="hover:bg-gray-50/60 transition">
+                                <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{(pageSalaryAman - 1) * pageSizeSalary + idx + 1}</td>
                                 <td className="p-3.5">
                                   <div className="flex items-center gap-2.5">
                                     <Avatar name={s.nama} size={32} />
@@ -4409,23 +4465,43 @@ function DashboardAdmin({ session, onLogout }) {
                         </tbody>
                       </table>
                     </div>
-                    <Pagination page={pageSalary} setPage={setPageSalary} totalPages={totalPagesSalary} totalItems={filteredSalary.length} pageSize={PAGE_SIZE_SAL} />
+                    <Pagination page={pageSalaryAman} setPage={setPageSalary} totalPages={totalPagesSalary} totalItems={filteredSalary.length}
+                      pageSize={pageSizeSalary} pageSizeOptions={PAGE_SIZE_OPTIONS_SALARY}
+                      onPageSizeChange={(n) => { setPageSizeSalary(n); setPageSalary(1); }} />
                   </div>
 
                   {/* PEMBAYARAN GAJI PER PERIODE (BULANAN) */}
                   <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
-                    <div className="p-4 border-b flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between" style={{ borderColor: "var(--border)" }}>
-                      <div>
-                        <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Pembayaran Gaji Bulanan</h3>
-                        <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>Total transfer periode ini: <b style={{ color: "var(--ink)" }}>{fmtRupiah(totalTransferBulanIni)}</b></p>
+                    <div className="p-4 border-b flex flex-col gap-3" style={{ borderColor: "var(--border)" }}>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+                        <div>
+                          <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Pembayaran Gaji Bulanan</h3>
+                          <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>
+                            {filteredSalaryPayment.length} dari {salaryPaymentList.length} karyawan · Total transfer periode ini: <b style={{ color: "var(--ink)" }}>{fmtRupiah(totalTransferBulanIni)}</b>
+                          </p>
+                        </div>
+                        <input type="month" value={salaryPeriode} onChange={e => setSalaryPeriode(e.target.value)}
+                          className="px-3 py-2 border rounded-xl text-xs font-semibold outline-none bg-white" style={{ borderColor: "var(--border)" }} />
                       </div>
-                      <input type="month" value={salaryPeriode} onChange={e => setSalaryPeriode(e.target.value)}
-                        className="px-3 py-2 border rounded-xl text-xs font-semibold outline-none bg-white" style={{ borderColor: "var(--border)" }} />
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+                        <div className="relative flex-1">
+                          <IconSearch className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <input value={searchSalaryPayment} onChange={e => setSearchSalaryPayment(e.target.value)} placeholder="Cari nama / ID"
+                            className="pl-8 pr-3 py-2 border rounded-xl text-xs font-medium outline-none w-full sm:w-56" style={{ borderColor: "var(--border)" }} />
+                        </div>
+                        <select value={salaryPaymentStatusFilter} onChange={e => setSalaryPaymentStatusFilter(e.target.value)}
+                          className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
+                          <option value="semua">Semua Status</option>
+                          <option value="Sudah Dibayar">Sudah Dibayar</option>
+                          <option value="Belum Dibayar">Belum Dibayar</option>
+                        </select>
+                      </div>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse text-xs min-w-[760px]">
                         <thead>
                           <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                            <th className="p-4 w-12">No</th>
                             <th className="p-4">Karyawan</th>
                             <th className="p-4 text-right">Gaji Pokok</th>
                             <th className="p-4 text-right">Potongan Kasbon</th>
@@ -4436,12 +4512,13 @@ function DashboardAdmin({ session, onLogout }) {
                         </thead>
                         <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                           {salaryPaymentLoading ? (
-                            <tr><td colSpan="6" className="p-8 text-center text-xs" style={{ color: "var(--ink-soft)" }}>Memuat data...</td></tr>
-                          ) : salaryPaymentList.length === 0 ? (
-                            <tr><td colSpan="6"><EmptyState title="Belum ada karyawan aktif" subtitle="Data akan muncul otomatis untuk karyawan berstatus Aktif." icon={<IconWallet className="w-5 h-5" />} /></td></tr>
+                            <tr><td colSpan="7" className="p-8 text-center text-xs" style={{ color: "var(--ink-soft)" }}>Memuat data...</td></tr>
+                          ) : pagedSalaryPayment.length === 0 ? (
+                            <tr><td colSpan="7"><EmptyState title={searchSalaryPayment || salaryPaymentStatusFilter !== "semua" ? "Tidak ditemukan" : "Belum ada karyawan aktif"} subtitle={searchSalaryPayment || salaryPaymentStatusFilter !== "semua" ? "Coba ubah kata kunci atau filter." : "Data akan muncul otomatis untuk karyawan berstatus Aktif."} icon={<IconWallet className="w-5 h-5" />} /></td></tr>
                           ) : (
-                            salaryPaymentList.map(p => (
+                            pagedSalaryPayment.map((p, idx) => (
                               <tr key={p.karyawan_id} className="hover:bg-gray-50/60 transition align-top">
+                                <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{(pageSalaryPaymentAman - 1) * pageSizeSalaryPayment + idx + 1}</td>
                                 <td className="p-3.5">
                                   <div className="flex items-center gap-2.5">
                                     <Avatar name={p.nama} size={32} />
@@ -4479,6 +4556,9 @@ function DashboardAdmin({ session, onLogout }) {
                         </tbody>
                       </table>
                     </div>
+                    <Pagination page={pageSalaryPaymentAman} setPage={setPageSalaryPayment} totalPages={totalPagesSalaryPayment} totalItems={filteredSalaryPayment.length}
+                      pageSize={pageSizeSalaryPayment} pageSizeOptions={PAGE_SIZE_OPTIONS_SALARY}
+                      onPageSizeChange={(n) => { setPageSizeSalaryPayment(n); setPageSalaryPayment(1); }} />
                   </div>
 
                   {/* MODAL EDIT GAJI POKOK & LIMIT KASBON */}
