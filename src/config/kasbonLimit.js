@@ -1,4 +1,4 @@
-const DEFAULT_LIMIT = 1000000;
+const DEFAULT_LIMIT = 300000;
 
 function getLimitForKaryawan(karyawan) {
   if (!karyawan) return DEFAULT_LIMIT;
