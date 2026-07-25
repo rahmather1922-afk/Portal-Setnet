@@ -48,7 +48,7 @@ const pemakaianMaterialSchema = new mongoose.Schema({
   penggunaan: { type: String, enum: ['IB', 'MT'], default: 'IB' },
 
   // Tambahan klasifikasi pekerjaan — diisi lewat dropdown di form Pemakaian Teknisi.
-  project: { type: String, enum: ['AMT', 'FS', 'LinkNet', ''], default: '' },
+  project: { type: String, enum: ['AMT', 'FS', 'LinkNet', 'Hifi', ''], default: '' },
   region: {
     type: String,
     enum: ['Jakbar', 'Jakut', 'Jakpus', 'Jaksel', 'Jaktim', 'Bekasi', 'Bogor', 'Depok', 'Bekasi Timur', 'Tangerang', 'Tangkot', ''],
