@@ -1758,6 +1758,8 @@ function DashboardAdmin({ session, onLogout }) {
   // log controls
   const [searchLog, setSearchLog] = useState("");
   const [statusFilter, setStatusFilter] = useState("semua");
+  const [logTanggal, setLogTanggal] = useState(() => new Date().toISOString().slice(0, 10)); // default: hari ini
+  const [logKaryawanFilter, setLogKaryawanFilter] = useState("semua");
   const [pageLog, setPageLog] = useState(1);
   const PAGE_SIZE_L = 8;
 
@@ -2156,6 +2158,11 @@ function DashboardAdmin({ session, onLogout }) {
     return Object.values(groups).sort((a, b) => b.tanggal - a.tanggal);
   }, [rekapAbsen]);
 
+  // Daftar karyawan untuk dropdown filter Log Absensi, diambil dari data master karyawan & diurutkan A-Z
+  const daftarKaryawanFilterLog = useMemo(() => {
+    return [...karyawanList].sort((a, b) => (a.nama || "").localeCompare(b.nama || ""));
+  }, [karyawanList]);
+
   const filteredLog = useMemo(() => {
     const q = searchLog.trim().toLowerCase();
     return groupedLog.filter(g => {
@@ -2165,12 +2172,14 @@ function DashboardAdmin({ session, onLogout }) {
       if (statusFilter === "terlambat") matchStatus = !!telat;
       else if (statusFilter === "tepat") matchStatus = !!g.masuk && !telat;
       else if (statusFilter === "belum_checkout") matchStatus = !!g.masuk && !g.pulang;
-      return matchQ && matchStatus;
+      const matchTanggal = !logTanggal || g.tanggal.toISOString().slice(0, 10) === logTanggal;
+      const matchKaryawan = logKaryawanFilter === "semua" || g.karyawan_id === logKaryawanFilter;
+      return matchQ && matchStatus && matchTanggal && matchKaryawan;
     });
-  }, [groupedLog, searchLog, statusFilter]);
+  }, [groupedLog, searchLog, statusFilter, logTanggal, logKaryawanFilter]);
   const totalPagesLog = Math.max(1, Math.ceil(filteredLog.length / PAGE_SIZE_L));
   const pagedLog = filteredLog.slice((pageLog - 1) * PAGE_SIZE_L, pageLog * PAGE_SIZE_L);
-  useEffect(() => { setPageLog(1); }, [searchLog, statusFilter]);
+  useEffect(() => { setPageLog(1); }, [searchLog, statusFilter, logTanggal, logKaryawanFilter]);
 
   // Preview foto absen (dipakai kolom foto in/out di tabel Log Absensi)
   const [fotoPreview, setFotoPreview] = useState(null);
@@ -4599,25 +4608,17 @@ function DashboardAdmin({ session, onLogout }) {
 
               {currentMenu === "log" && canAccess(session.role, "log") && (
                 <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
-                  <div className="p-4 border-b flex flex-col lg:flex-row lg:items-center gap-3 lg:justify-between" style={{ borderColor: "var(--border)" }}>
-                    <div>
-                      <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Log Riwayat Absensi</h3>
-                      <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{filteredLog.length} dari {rekapAbsen.length} catatan</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <div className="relative">
-                        <IconSearch className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input value={searchLog} onChange={e => setSearchLog(e.target.value)} placeholder="Cari nama / ID"
-                          className="pl-8 pr-3 py-2 border rounded-xl text-xs font-medium outline-none w-44" style={{ borderColor: "var(--border)" }} />
+                  <div className="p-4 border-b flex flex-col gap-3" style={{ borderColor: "var(--border)" }}>
+                    <div className="flex flex-col lg:flex-row lg:items-center gap-3 lg:justify-between">
+                      <div>
+                        <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Log Riwayat Absensi</h3>
+                        <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>
+                          {filteredLog.length} catatan{logTanggal ? ` · ${new Date(logTanggal + "T00:00:00").toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}` : " · Semua Tanggal"}
+                        </p>
                       </div>
-                      <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
-                        <option value="semua">Semua Status</option>
-                        <option value="tepat">Tepat Waktu</option>
-                        <option value="terlambat">Terlambat</option>
-                        <option value="belum_checkout">Belum Checkout</option>
-                      </select>
-                      <button onClick={() => muatSemuaData()} className="p-2 border rounded-xl hover:bg-gray-50" style={{ borderColor: "var(--border)" }} title="Muat ulang"><IconRefresh className="w-3.5 h-3.5" style={{ color: "var(--ink-soft)" }} /></button>
-                      <button onClick={() => downloadCsv("log-absensi.csv", toCsv(filteredLog, [
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={() => muatSemuaData()} className="p-2 border rounded-xl hover:bg-gray-50" style={{ borderColor: "var(--border)" }} title="Muat ulang"><IconRefresh className="w-3.5 h-3.5" style={{ color: "var(--ink-soft)" }} /></button>
+                        <button onClick={() => downloadCsv("log-absensi.csv", toCsv(filteredLog, [
                         { label: "ID", get: r => r.karyawan_id }, { label: "Nama", get: r => r.nama },
                         { label: "Jabatan", get: r => roleInfo(karyawanMap[r.karyawan_id]?.role).label }, { label: "Cabang", get: r => karyawanMap[r.karyawan_id]?.cabang || "" },
                         { label: "Jadwal", get: r => r.shift || "Shift 1" },
@@ -4626,6 +4627,31 @@ function DashboardAdmin({ session, onLogout }) {
                         { label: "Telat", get: r => (r.masuk?.keterangan && r.masuk.keterangan !== "Normal") ? r.masuk.keterangan : "-" },
                         { label: "Lokasi Absen Masuk", get: r => r.masuk?.lokasi?.alamat || (r.masuk?.lokasi?.latitude != null ? `${r.masuk.lokasi.latitude}, ${r.masuk.lokasi.longitude}` : "-") },
                       ]))} className="p-2 border rounded-xl hover:bg-gray-50" style={{ borderColor: "var(--border)" }} title="Ekspor CSV"><IconDownload className="w-3.5 h-3.5" style={{ color: "var(--ink-soft)" }} /></button>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <input type="date" value={logTanggal} onChange={e => setLogTanggal(e.target.value)}
+                        className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }} />
+                      {logTanggal && (
+                        <button onClick={() => setLogTanggal("")} className="text-[10px] font-semibold px-2.5 rounded-xl border hover:bg-gray-50" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }} title="Lihat semua tanggal">Semua Tanggal</button>
+                      )}
+                      <select value={logKaryawanFilter} onChange={e => setLogKaryawanFilter(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white max-w-[180px]" style={{ borderColor: "var(--border)" }}>
+                        <option value="semua">Semua Karyawan</option>
+                        {daftarKaryawanFilterLog.map(k => (
+                          <option key={k.karyawan_id} value={k.karyawan_id}>{k.nama} ({k.karyawan_id})</option>
+                        ))}
+                      </select>
+                      <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
+                        <option value="semua">Semua Status</option>
+                        <option value="tepat">Tepat Waktu</option>
+                        <option value="terlambat">Terlambat</option>
+                        <option value="belum_checkout">Belum Checkout</option>
+                      </select>
+                      <div className="relative">
+                        <IconSearch className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input value={searchLog} onChange={e => setSearchLog(e.target.value)} placeholder="Cari nama / ID"
+                          className="pl-8 pr-3 py-2 border rounded-xl text-xs font-medium outline-none w-44" style={{ borderColor: "var(--border)" }} />
+                      </div>
                     </div>
                   </div>
                   <div className="overflow-x-auto">
@@ -4647,7 +4673,7 @@ function DashboardAdmin({ session, onLogout }) {
                       </thead>
                       <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                         {pagedLog.length === 0 ? (
-                          <tr><td colSpan="11"><EmptyState title={searchLog || statusFilter !== "semua" ? "Tidak ditemukan" : "Belum ada catatan"} subtitle={searchLog || statusFilter !== "semua" ? "Coba ubah filter pencarian." : "Log absensi masuk/pulang akan tampil di sini."} icon={<IconClock className="w-5 h-5" />} /></td></tr>
+                          <tr><td colSpan="11"><EmptyState title={searchLog || statusFilter !== "semua" || logKaryawanFilter !== "semua" || logTanggal ? "Tidak ditemukan" : "Belum ada catatan"} subtitle={searchLog || statusFilter !== "semua" || logKaryawanFilter !== "semua" || logTanggal ? "Coba ubah tanggal atau filter pencarian." : "Log absensi masuk/pulang akan tampil di sini."} icon={<IconClock className="w-5 h-5" />} /></td></tr>
                         ) : (
                           pagedLog.map((g, idx) => {
                             const km = karyawanMap[g.karyawan_id];
