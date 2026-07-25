@@ -259,14 +259,18 @@ router.post('/pemakaian-material', MANAGE_ROLES, async (req, res) => {
 });
 
 // --- TAMBAH BANYAK BARIS LOG SEKALIGUS (batch) — dipakai form "Tambah Log Pemakaian" di
-// frontend, yang bisa input beberapa unit ONT & beberapa jenis kabel dalam satu kali submit.
-// Body: { ..., project, region, vendor, ont_list: [sn, ...], kabel_list: [{kabel_id, jumlah}, ...] }
+// frontend, yang bisa input beberapa unit ONT (boleh beda MEREK sekaligus, mis. 3x "NOKIA"
+// + 2x "ZTE") & beberapa jenis kabel dalam satu kali submit.
+// Body: { ..., project, region, vendor,
+//         ont_list: [{ merek_modem, jumlah, sn_list: [sn, ...] }, ...],
+//         kabel_list: [{ kabel_id, jumlah }, ...] }
 // Setiap unit kabel (dihitung dari jumlah tiap baris kabel_list) jadi 1 dokumen PemakaianMaterial,
-// dipasangkan berurutan dengan SN di ont_list (kalau ont_list lebih pendek, sisanya sn_ont kosong).
+// dipasangkan berurutan dengan unit ONT yang sudah diratakan dari ont_list (kalau ont_list lebih
+// pendek/kosong, sisanya merek_modem & sn_ont kosong -> baris itu dianggap tidak melacak ONT).
 router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
   try {
     const {
-      tanggal_pengambilan, teknisi_id, nama_team, merek_modem,
+      tanggal_pengambilan, teknisi_id, nama_team,
       status, return_catatan, catatan_report, penggunaan, project, region, vendor, id_wo,
       ont_list, kabel_list
     } = req.body;
@@ -306,16 +310,59 @@ router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
 
     const statusFinal = ['Terpakai', 'Idle'].includes(status) ? status : 'Idle';
 
-    // Merek Modem berlaku 1 untuk seluruh batch -> kalau cocok Material kategori ONT
-    // (bucket Penggunaan sama), stok ONT-nya ikut terpotong sebanyak totalUnit.
-    const ontMaterial = await cariOntMaterial(merek_modem, penggunaanFinal);
+    // --- ONT: bisa BEBERAPA merek sekaligus dalam 1x submit, mirip kabel_list. Tiap baris
+    // ont_list = { merek_modem, jumlah, sn_list }. jumlah TOTAL boleh 0 (artinya batch ini
+    // tidak melacak ONT sama sekali), tapi kalau diisi harus sama dengan total unit kabel
+    // karena tiap unit kabel = 1 baris log = paling banyak 1 ONT.
+    const ontRows = Array.isArray(ont_list)
+      ? ont_list
+          .filter(r => r && Math.max(0, Number(r.jumlah) || 0) > 0)
+          .map(r => ({
+            merek_modem: String(r.merek_modem || '').trim(),
+            jumlah: Math.max(0, Number(r.jumlah) || 0),
+            sn_list: Array.isArray(r.sn_list) ? r.sn_list : []
+          }))
+      : [];
+    const totalOntUnit = ontRows.reduce((a, r) => a + r.jumlah, 0);
+    if (totalOntUnit > 0 && totalOntUnit !== totalUnit) {
+      return res.status(400).json({
+        message: `Total unit ONT (${totalOntUnit}) harus sama dengan total unit kabel (${totalUnit}).`
+      });
+    }
+
+    // Cari Material ONT (kalau ada & cocok) untuk tiap merek UNIK yang dipakai di batch ini,
+    // di bucket Penggunaan yang sama. Merek kosong / tidak match master (custom "Lainnya")
+    // sengaja dibiarkan null -> stok ONT-nya TIDAK ikut terpotong (konsisten dgn perilaku lama).
+    const ontMaterialByMerek = {}; // merek (lowercase) -> Material doc | null
+    for (const r of ontRows) {
+      const key = r.merek_modem.toLowerCase();
+      if (!r.merek_modem || key in ontMaterialByMerek) continue;
+      ontMaterialByMerek[key] = await cariOntMaterial(r.merek_modem, penggunaanFinal);
+    }
+
+    // Ratakan ont_list jadi 1 unit {merek_modem, sn_ont, ontMaterial} per unit, urutan
+    // sama seperti ont_list disusun user (baris pertama duluan, dst).
+    const flatOnt = [];
+    ontRows.forEach(r => {
+      for (let i = 0; i < r.jumlah; i++) {
+        flatOnt.push({
+          merek_modem: r.merek_modem,
+          sn_ont: r.sn_list[i] || '',
+          ontMaterial: r.merek_modem ? (ontMaterialByMerek[r.merek_modem.toLowerCase()] || null) : null
+        });
+      }
+    });
 
     // Total kebutuhan per jenis kabel (kalau 1 jenis kabel dipakai di beberapa baris).
     const totalPerKabel = {};
     rows.forEach(r => { totalPerKabel[r.kabel_id] = (totalPerKabel[r.kabel_id] || 0) + r.jumlah; });
 
-    // Kalau langsung "Terpakai", cek dulu stok semua jenis kabel (+ ONT kalau ada) CUKUP
-    // sebelum motong apapun, supaya tidak ada potongan stok "setengah jalan" kalau kurang.
+    // Total kebutuhan per Material ONT (kalau 1 merek dipakai/cocok ke Material yang sama).
+    const totalPerOnt = {};
+    flatOnt.forEach(u => { if (u.ontMaterial) totalPerOnt[u.ontMaterial._id] = (totalPerOnt[u.ontMaterial._id] || 0) + 1; });
+
+    // Kalau langsung "Terpakai", cek dulu stok semua jenis kabel + SEMUA merek ONT yang
+    // dipakai CUKUP sebelum motong apapun, supaya tidak ada potongan stok "setengah jalan".
     if (statusFinal === 'Terpakai') {
       for (const id of Object.keys(totalPerKabel)) {
         const m = materialsMap[id];
@@ -325,17 +372,21 @@ router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
           });
         }
       }
-      if (ontMaterial && ontMaterial.stock < totalUnit) {
-        return res.status(400).json({
-          message: `Stok tidak cukup. Sisa stok Merek Modem "${ontMaterial.nama}" saat ini: ${ontMaterial.stock} ${ontMaterial.satuan}, dibutuhkan ${totalUnit}.`
-        });
+      for (const merekKey of Object.keys(ontMaterialByMerek)) {
+        const ontM = ontMaterialByMerek[merekKey];
+        if (!ontM) continue;
+        const butuh = totalPerOnt[ontM._id] || 0;
+        if (butuh > 0 && ontM.stock < butuh) {
+          return res.status(400).json({
+            message: `Stok tidak cukup. Sisa stok Merek Modem "${ontM.nama}" saat ini: ${ontM.stock} ${ontM.satuan}, dibutuhkan ${butuh}.`
+          });
+        }
       }
     }
 
-    // Ratakan jadi 1 kabel_id per unit, dipasangkan berurutan dengan SN ONT (kalau ada).
+    // Ratakan jadi 1 kabel_id per unit, dipasangkan berurutan dengan unit ONT (kalau ada).
     const flatKabelIds = [];
     rows.forEach(r => { for (let i = 0; i < r.jumlah; i++) flatKabelIds.push(r.kabel_id); });
-    const snList = Array.isArray(ont_list) ? ont_list : [];
 
     const dibuat_oleh = req.header('x-user-id') || '';
     const tanggalFinal = tanggal_pengambilan ? new Date(tanggal_pengambilan) : new Date();
@@ -352,22 +403,23 @@ router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
           await ubahStok(id, -totalPerKabel[id]);
           stokTerpotong.push({ id, jumlah: totalPerKabel[id] });
         }
-        if (ontMaterial) {
-          await ubahStok(ontMaterial._id, -totalUnit);
-          stokTerpotong.push({ id: ontMaterial._id, jumlah: totalUnit });
+        for (const ontId of Object.keys(totalPerOnt)) {
+          await ubahStok(ontId, -totalPerOnt[ontId]);
+          stokTerpotong.push({ id: ontId, jumlah: totalPerOnt[ontId] });
         }
       }
 
       for (let i = 0; i < totalUnit; i++) {
         const kabelId = flatKabelIds[i];
         const kabelDoc = materialsMap[kabelId];
+        const ontUnit = flatOnt[i] || { merek_modem: '', sn_ont: '', ontMaterial: null };
         const logBaru = new PemakaianMaterial({
           tanggal_pengambilan: tanggalFinal,
           teknisi_id: teknisi_id || '',
           nama_team,
-          merek_modem: merek_modem || '',
-          ont_material_id: ontMaterial ? ontMaterial._id : null,
-          sn_ont: snList[i] || '',
+          merek_modem: ontUnit.merek_modem || '',
+          ont_material_id: ontUnit.ontMaterial ? ontUnit.ontMaterial._id : null,
+          sn_ont: ontUnit.sn_ont || '',
           kabel_id: kabelId,
           kabel_nama: kabelDoc.nama,
           status: statusFinal,

@@ -1873,8 +1873,11 @@ function DashboardAdmin({ session, onLogout }) {
   const [pmkMerekPilihan, setPmkMerekPilihan] = useState(""); // pilihan dropdown merek modem (dari master Material kategori ONT), "Lainnya" -> custom
   const [pmkSnOnt, setPmkSnOnt] = useState(""); // dipakai saat mode EDIT (1 baris)
   const [pmkKabelId, setPmkKabelId] = useState(""); // dipakai saat mode EDIT (1 baris)
-  const [pmkJumlahOnt, setPmkJumlahOnt] = useState(1); // dipakai saat mode TAMBAH (batch)
-  const [pmkSnOntList, setPmkSnOntList] = useState([""]); // dipakai saat mode TAMBAH (batch)
+  // pmkOntRows — dipakai saat mode TAMBAH (batch): sama seperti pmkKabelRows, tapi untuk ONT.
+  // Tiap baris = 1 merek/jenis ONT + jumlah unitnya sendiri, jadi bisa input beberapa merek
+  // sekaligus dalam 1x submit (mis. 3 unit "NOKIA" + 2 unit "ZTE"). merek_pilihan menyimpan
+  // pilihan dropdown ("Lainnya" -> pakai merek_modem custom), sn_list otomatis mengikuti jumlah.
+  const [pmkOntRows, setPmkOntRows] = useState([{ merek_pilihan: "", merek_modem: "", jumlah: 1, sn_list: [""] }]);
   const [pmkKabelRows, setPmkKabelRows] = useState([{ kabel_id: "", jumlah: 1 }]); // dipakai saat mode TAMBAH (batch)
   const [pmkStatus, setPmkStatus] = useState("Idle");
   const [pmkReturnCatatan, setPmkReturnCatatan] = useState("");
@@ -3315,7 +3318,8 @@ function DashboardAdmin({ session, onLogout }) {
   const resetFormPemakaian = () => {
     setPmkEditId(null); setPmkTanggal(new Date().toISOString().slice(0, 10)); setPmkTeknisiId(""); setPmkNamaTeam("");
     setPmkMerekPilihan(""); setPmkMerekModem(""); setPmkSnOnt(""); setPmkKabelId("");
-    setPmkJumlahOnt(1); setPmkSnOntList([""]); setPmkKabelRows([{ kabel_id: "", jumlah: 1 }]);
+    setPmkOntRows([{ merek_pilihan: "", merek_modem: "", jumlah: 1, sn_list: [""] }]);
+    setPmkKabelRows([{ kabel_id: "", jumlah: 1 }]);
     setPmkStatus("Idle"); setPmkReturnCatatan(""); setPmkCatatanReport(""); setPmkPenggunaan("IB");
     setPmkProject(""); setPmkRegion(""); setPmkVendor(""); setPmkIdWo("");
     setPmkFormErrors({});
@@ -3328,22 +3332,33 @@ function DashboardAdmin({ session, onLogout }) {
     // Bucket IB/MT beda -> daftar & sisa stok Merek Modem (Material kategori ONT) ikut beda,
     // jadi pilihan lama di-reset supaya tidak nyangkut ke merek yg sebenarnya beda bucket.
     setPmkMerekPilihan(""); setPmkMerekModem("");
+    setPmkOntRows([{ merek_pilihan: "", merek_modem: "", jumlah: 1, sn_list: [""] }]);
   };
   const handlePmkMerekChange = (val) => {
     setPmkMerekPilihan(val);
     if (val !== "Lainnya") setPmkMerekModem(val); else setPmkMerekModem("");
   };
-  const handlePmkJumlahOntChange = (val) => {
-    const n = Math.max(0, Math.min(50, Number(val) || 0));
-    setPmkJumlahOnt(n);
-    setPmkSnOntList(prev => {
-      const arr = prev.slice(0, n);
-      while (arr.length < n) arr.push("");
-      return arr;
-    });
+  // --- Baris ONT (mode TAMBAH/batch) — mirip pmkKabelRows: tiap baris bisa merek berbeda,
+  // dan tiap baris punya daftar SN sendiri yang otomatis mengikuti jumlahnya sendiri.
+  const addPmkOntRow = () => setPmkOntRows(prev => [...prev, { merek_pilihan: "", merek_modem: "", jumlah: 1, sn_list: [""] }]);
+  const removePmkOntRow = (idx) => setPmkOntRows(prev => prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx));
+  const updatePmkOntRowMerek = (idx, val) => {
+    setPmkOntRows(prev => prev.map((r, i) => i === idx ? { ...r, merek_pilihan: val, merek_modem: val !== "Lainnya" ? val : "" } : r));
   };
-  const updatePmkSnOntAt = (idx, val) => {
-    setPmkSnOntList(prev => prev.map((v, i) => i === idx ? val : v));
+  const updatePmkOntRowMerekCustom = (idx, val) => {
+    setPmkOntRows(prev => prev.map((r, i) => i === idx ? { ...r, merek_modem: val } : r));
+  };
+  const updatePmkOntRowJumlah = (idx, val) => {
+    const n = Math.max(0, Math.min(50, Number(val) || 0));
+    setPmkOntRows(prev => prev.map((r, i) => {
+      if (i !== idx) return r;
+      const sn = r.sn_list.slice(0, n);
+      while (sn.length < n) sn.push("");
+      return { ...r, jumlah: n, sn_list: sn };
+    }));
+  };
+  const updatePmkOntRowSn = (idx, snIdx, val) => {
+    setPmkOntRows(prev => prev.map((r, i) => i === idx ? { ...r, sn_list: r.sn_list.map((v, j) => j === snIdx ? val : v) } : r));
   };
   const addPmkKabelRow = () => setPmkKabelRows(prev => [...prev, { kabel_id: "", jumlah: 1 }]);
   const removePmkKabelRow = (idx) => setPmkKabelRows(prev => prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx));
@@ -3448,8 +3463,12 @@ function DashboardAdmin({ session, onLogout }) {
       errs.kabel = "Minimal 1 jenis kabel wajib dipilih";
     } else {
       const totalKabelUnit = kabelValid.reduce((a, r) => a + Math.max(1, Number(r.jumlah) || 1), 0);
-      if (pmkJumlahOnt > 0 && totalKabelUnit !== pmkJumlahOnt) {
-        errs.kabel = `Total unit kabel (${totalKabelUnit}) harus sama dengan jumlah ONT (${pmkJumlahOnt})`;
+      // Total unit ONT dijumlah dari SEMUA baris merek (mis. 3 Nokia + 2 ZTE = 5), boleh 0
+      // (artinya pemakaian ini tidak melacak ONT sama sekali), tapi kalau diisi harus pas
+      // dengan total unit kabel karena tiap unit kabel = 1 baris log = paling banyak 1 ONT.
+      const totalOntUnit = pmkOntRows.reduce((a, r) => a + Math.max(0, Number(r.jumlah) || 0), 0);
+      if (totalOntUnit > 0 && totalKabelUnit !== totalOntUnit) {
+        errs.kabel = `Total unit kabel (${totalKabelUnit}) harus sama dengan total unit ONT (${totalOntUnit})`;
       }
     }
     setPmkFormErrors(errs);
@@ -3477,10 +3496,13 @@ function DashboardAdmin({ session, onLogout }) {
         if (!validatePemakaianBatch()) { setPmkSubmitting(false); return; }
         const bodyData = {
           tanggal_pengambilan: pmkTanggal, teknisi_id: pmkTeknisiId, nama_team: pmkNamaTeam,
-          merek_modem: pmkMerekModem, status: pmkStatus, return_catatan: pmkReturnCatatan,
+          status: pmkStatus, return_catatan: pmkReturnCatatan,
           catatan_report: pmkCatatanReport,
           penggunaan: pmkPenggunaan, project: pmkProject, region: pmkRegion, vendor: pmkVendor, id_wo: pmkIdWo,
-          ont_list: pmkSnOntList,
+          // ont_list sekarang array per-merek (bisa beberapa jenis ONT sekaligus), mirip kabel_list.
+          ont_list: pmkOntRows.filter(r => Math.max(0, Number(r.jumlah) || 0) > 0).map(r => ({
+            merek_modem: r.merek_modem, jumlah: Math.max(0, Number(r.jumlah) || 0), sn_list: r.sn_list,
+          })),
           kabel_list: pmkKabelRows.filter(r => r.kabel_id).map(r => ({ kabel_id: r.kabel_id, jumlah: Math.max(1, Number(r.jumlah) || 1) })),
         };
         const res = await fetch(`${MATERIAL_API}/pemakaian-material/batch`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
@@ -5998,40 +6020,52 @@ function DashboardAdmin({ session, onLogout }) {
                                 className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
                               <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Kosongkan terlebih dahulu jika baru pengambilan digudang.</p>
                             </div>
-                            <div>
-                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Merek Modem</label>
-                              <select value={pmkMerekPilihan} onChange={e => handlePmkMerekChange(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
-                                <option value="">— Pilih merek modem —</option>
-                                {ontMaterialOptions.map(m => (
-                                  <option key={m._id} value={m.nama} disabled={m.stock <= 0}>
-                                    {m.nama} (stok: {m.stock}){m.stock <= 0 ? " — Habis" : ""}
-                                  </option>
-                                ))}
-                                <option value="Lainnya">Lainnya...</option>
-                              </select>
-                              {ontMaterialOptions.length === 0 && (
-                                <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Belum ada Material kategori ONT untuk penggunaan {pmkPenggunaan}. Tambahkan lewat Master Material, atau pilih "Lainnya".</p>
-                              )}
-                              {pmkMerekPilihan === "Lainnya" && (
-                                <input type="text" placeholder="Merek modem lain" value={pmkMerekModem} onChange={e => setPmkMerekModem(e.target.value)}
-                                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium mt-2" style={{ borderColor: "var(--border)" }} />
-                              )}
-                            </div>
-
-                            <div>
-                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Jumlah ONT</label>
-                              <input type="number" min="0" max="50" value={pmkJumlahOnt} onChange={e => handlePmkJumlahOntChange(e.target.value)}
-                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
-                            </div>
-                            {pmkSnOntList.length > 0 && (
-                              <div className="space-y-2">
-                                <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT ({pmkSnOntList.length} unit, opsional)</label>
-                                {pmkSnOntList.map((sn, idx) => (
-                                  <input key={idx} type="text" list="sn-ont-datalist" placeholder={`SN ONT unit #${idx + 1}`} value={sn} onChange={e => updatePmkSnOntAt(idx, e.target.value)}
-                                    className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
-                                ))}
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>ONT Digunakan</label>
+                                <button type="button" onClick={addPmkOntRow} className="text-[10px] font-bold flex items-center gap-1 px-2 py-1 rounded-lg border hover:bg-gray-50" style={{ borderColor: "var(--border)", color: "var(--brand-dark)" }}>
+                                  <IconPlus className="w-3 h-3" /> Tambah Merek ONT
+                                </button>
                               </div>
-                            )}
+                              {ontMaterialOptions.length === 0 && (
+                                <p className="text-[10px]" style={{ color: "var(--ink-soft)" }}>Belum ada Material kategori ONT untuk penggunaan {pmkPenggunaan}. Tambahkan lewat Master Material, atau pilih "Lainnya".</p>
+                              )}
+                              {pmkOntRows.map((row, idx) => (
+                                <div key={idx} className="p-2.5 rounded-xl border space-y-2" style={{ borderColor: "var(--border)", background: "var(--surface, #FAFAFA)" }}>
+                                  <div className="flex gap-2 items-start">
+                                    <select value={row.merek_pilihan} onChange={e => updatePmkOntRowMerek(idx, e.target.value)} className="flex-1 p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
+                                      <option value="">— Pilih merek modem —</option>
+                                      {ontMaterialOptions.map(m => (
+                                        <option key={m._id} value={m.nama} disabled={m.stock <= 0}>
+                                          {m.nama} (stok: {m.stock}){m.stock <= 0 ? " — Habis" : ""}
+                                        </option>
+                                      ))}
+                                      <option value="Lainnya">Lainnya...</option>
+                                    </select>
+                                    <input type="number" min="0" max="50" value={row.jumlah} onChange={e => updatePmkOntRowJumlah(idx, e.target.value)}
+                                      className="w-16 p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} title="Jumlah unit" />
+                                    {pmkOntRows.length > 1 && (
+                                      <button type="button" onClick={() => removePmkOntRow(idx)} className="p-2.5 rounded-xl border hover:bg-red-50" style={{ borderColor: "var(--border)", color: "var(--red)" }}>
+                                        <IconX className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                  {row.merek_pilihan === "Lainnya" && (
+                                    <input type="text" placeholder="Merek modem lain" value={row.merek_modem} onChange={e => updatePmkOntRowMerekCustom(idx, e.target.value)}
+                                      className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                                  )}
+                                  {row.sn_list.length > 0 && (
+                                    <div className="space-y-1.5">
+                                      <label className="block font-semibold text-[10px]" style={{ color: "var(--ink-soft)" }}>SN ONT ({row.sn_list.length} unit, opsional)</label>
+                                      {row.sn_list.map((sn, snIdx) => (
+                                        <input key={snIdx} type="text" list="sn-ont-datalist" placeholder={`SN ONT unit #${snIdx + 1}`} value={sn} onChange={e => updatePmkOntRowSn(idx, snIdx, e.target.value)}
+                                          className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
                                 <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Kabel Digunakan</label>
