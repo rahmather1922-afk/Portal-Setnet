@@ -36,6 +36,13 @@ const pemakaianMaterialSchema = new mongoose.Schema({
   // model MaterialStokLog (tipe "Pengembalian") supaya angkanya rapi & bisa direkap.
   return_catatan: { type: String, default: '' },
 
+  // id_wo — ID Work Order yang MEMAKAI unit material ini (1 baris = 1 unit, jadi 1 WO).
+  // Opsional saat pengambilan awal (teknisi belum tentu tahu WO-nya di gudang), tapi WAJIB
+  // diisi/dilengkapi begitu status diubah jadi "Terpakai" supaya tiap unit terpakai bisa
+  // ditelusuri balik ke WO/tiket pemasangan mana yang menghabiskannya (dipakai gudang saat
+  // konfirmasi di halaman "Stok di Tangan Teknisi" / edit log satu baris).
+  id_wo: { type: String, default: '', trim: true },
+
   // catatan_report — kolom catatan/report BEBAS dari teknisi/admin, isinya beda-beda tiap
   // baris (bukan template baku), jadi disimpan sebagai teks polos apa adanya. Dibatasi 5000
   // karakter supaya cukup untuk laporan lapangan yang panjang tapi tetap wajar.

@@ -1241,7 +1241,7 @@ const ImportMaterialModal = ({ open, onClose, materialList, apiUrl, authHeaders,
             valid: errors.length === 0,
             errors,
             data: {
-              kategori, nama, satuan,
+              penggunaan, kategori, nama, satuan,
               stock_awal: isNaN(stokAwalNum) ? 0 : stokAwalNum,
               keterangan: String(row["Keterangan"] || "").trim(),
               sn_list: snList,
@@ -1371,6 +1371,7 @@ const ImportMaterialModal = ({ open, onClose, materialList, apiUrl, authHeaders,
                     <thead className="sticky top-0">
                       <tr className="border-b font-bold uppercase tracking-wide" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
                         <th className="p-2.5">Baris</th>
+                        <th className="p-2.5">Penggunaan</th>
                         <th className="p-2.5">Kategori</th>
                         <th className="p-2.5">Nama</th>
                         <th className="p-2.5">Satuan</th>
@@ -1383,6 +1384,9 @@ const ImportMaterialModal = ({ open, onClose, materialList, apiUrl, authHeaders,
                       {previewRows.map(r => (
                         <tr key={r.baris} style={{ background: r.valid ? "transparent" : "var(--red-soft)" }}>
                           <td className="p-2.5 font-mono" style={{ color: "var(--ink-soft)" }}>{r.baris}</td>
+                          <td className="p-2.5">
+                            <span className="px-2 py-0.5 rounded-full font-black text-[9px] uppercase tracking-wide" style={{ background: r.data.penggunaan === "MT" ? "var(--amber-soft)" : "var(--green-soft)", color: r.data.penggunaan === "MT" ? "var(--amber)" : "var(--green)" }}>{r.data.penggunaan}</span>
+                          </td>
                           <td className="p-2.5" style={{ color: "var(--ink-soft)" }}>{r.data.kategori}</td>
                           <td className="p-2.5 font-semibold" style={{ color: "var(--ink)" }}>{r.data.nama || "—"}</td>
                           <td className="p-2.5" style={{ color: "var(--ink-soft)" }}>{r.data.satuan}</td>
@@ -1811,7 +1815,22 @@ function DashboardAdmin({ session, onLogout }) {
   const [bayarSubmittingId, setBayarSubmittingId] = useState(null); // karyawan_id yang sedang diproses tombol "Tandai Sudah Dibayar"
 
   // ==================== MODUL MATERIAL: state ====================
-  const [materialSubTab, setMaterialSubTab] = useState("Master"); // Master | Pemakaian | Laporan
+  const [materialSubTab, setMaterialSubTab] = useState("Master"); // Master | Pemakaian | StokTeknisi | Laporan
+  // ==== Tab "Stok di Tangan Teknisi": rekap unit yang masih Idle (sudah diambil, belum
+  // dipastikan terpasang) dikelompokkan per teknisi, + bulk update banyak unit sekaligus ====
+  const [stokTeknisiSelected, setStokTeknisiSelected] = useState(() => new Set());
+  const [stokTeknisiSearch, setStokTeknisiSearch] = useState("");
+  const [stokTeknisiPenggunaanFilter, setStokTeknisiPenggunaanFilter] = useState("semua");
+  const [stokTeknisiBulkSubmitting, setStokTeknisiBulkSubmitting] = useState(false);
+  const [quickToggleLoadingId, setQuickToggleLoadingId] = useState(null); // id baris yg lagi diproses tombol toggle status cepat (1 baris, tanpa buka form)
+  const [expandedStokTeknisi, setExpandedStokTeknisi] = useState(() => new Set());
+  const toggleStokTeknisiGroup = (key) => {
+    setExpandedStokTeknisi(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
   const [importPemakaianModalOpen, setImportPemakaianModalOpen] = useState(false);
   const [importMaterialModalOpen, setImportMaterialModalOpen] = useState(false);
   const [materialList, setMaterialList] = useState([]);
@@ -1864,6 +1883,7 @@ function DashboardAdmin({ session, onLogout }) {
   const [pmkProject, setPmkProject] = useState("");
   const [pmkRegion, setPmkRegion] = useState("");
   const [pmkVendor, setPmkVendor] = useState("");
+  const [pmkIdWo, setPmkIdWo] = useState(""); // ID Work Order yang memakai unit material ini (diisi/dilengkapi terutama saat status "Terpakai")
   const [pmkFormErrors, setPmkFormErrors] = useState({});
   const [pmkSubmitting, setPmkSubmitting] = useState(false);
   const [pmkReportTarget, setPmkReportTarget] = useState(null); // baris/grup yg modal report-nya sedang dibuka
@@ -2233,13 +2253,17 @@ function DashboardAdmin({ session, onLogout }) {
     return { masuk, keluar, saldo: masuk - keluar };
   }, [transaksiList, session.role]);
 
-  // 4b. Ringkasan Material (khusus role yang punya akses modul material) — Stok Awal, Terpakai, Sisa Stok
+  // 4b. Ringkasan Material (khusus role yang punya akses modul material) — Sudah Terpakai, Di Tangan
+  // Teknisi (Idle), dan Stok Terkini (gudang, angka yang sudah ter-update otomatis). Sengaja TIDAK
+  // menampilkan "Stok Awal" di dashboard karena angka itu statis (cuma diisi manual sekali di awal)
+  // dan malah bikin bingung kalau disandingkan sama angka yang terus berubah — cukup dilihat di
+  // halaman Master Material / Laporan kalau memang perlu dibandingkan.
   const materialStatsDash = useMemo(() => {
     if (!canAccess(session.role, "material")) return null;
-    const stokAwal = materialList.reduce((a, m) => a + (m.stock_awal || 0), 0);
     const sisaStok = materialList.reduce((a, m) => a + (m.stock || 0), 0);
     const terpakai = pemakaianList.filter(p => p.status === "Terpakai").length;
-    return { stokAwal, terpakai, sisaStok, jumlahJenis: materialList.length };
+    const ditanganTeknisi = pemakaianList.filter(p => p.status === "Idle").length;
+    return { terpakai, sisaStok, ditanganTeknisi, jumlahJenis: materialList.length };
   }, [materialList, pemakaianList, session.role]);
 
   // 5. Karyawan Terlambat Hari Ini
@@ -3220,7 +3244,7 @@ function DashboardAdmin({ session, onLogout }) {
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
       const resData = await res.json().catch(() => ({}));
       if (res.status === 200 || res.status === 201) {
-        notify(matEditId ? "Material berhasil diperbarui" : "Material baru berhasil ditambahkan");
+        notify(resData.message || (matEditId ? "Material berhasil diperbarui" : "Material baru berhasil ditambahkan"));
         resetFormMaterial(); muatSemuaData(true);
       } else notify(resData.message || "Gagal menyimpan material", "error");
     } catch { notify("Gagal terhubung ke server", "error"); }
@@ -3293,7 +3317,7 @@ function DashboardAdmin({ session, onLogout }) {
     setPmkMerekPilihan(""); setPmkMerekModem(""); setPmkSnOnt(""); setPmkKabelId("");
     setPmkJumlahOnt(1); setPmkSnOntList([""]); setPmkKabelRows([{ kabel_id: "", jumlah: 1 }]);
     setPmkStatus("Idle"); setPmkReturnCatatan(""); setPmkCatatanReport(""); setPmkPenggunaan("IB");
-    setPmkProject(""); setPmkRegion(""); setPmkVendor("");
+    setPmkProject(""); setPmkRegion(""); setPmkVendor(""); setPmkIdWo("");
     setPmkFormErrors({});
   };
 
@@ -3442,7 +3466,7 @@ function DashboardAdmin({ session, onLogout }) {
           tanggal_pengambilan: pmkTanggal, teknisi_id: pmkTeknisiId, nama_team: pmkNamaTeam,
           merek_modem: pmkMerekModem, sn_ont: pmkSnOnt, kabel_id: pmkKabelId, status: pmkStatus, return_catatan: pmkReturnCatatan,
           catatan_report: pmkCatatanReport,
-          penggunaan: pmkPenggunaan, project: pmkProject, region: pmkRegion, vendor: pmkVendor,
+          penggunaan: pmkPenggunaan, project: pmkProject, region: pmkRegion, vendor: pmkVendor, id_wo: pmkIdWo,
         };
         const res = await fetch(`${MATERIAL_API}/pemakaian-material/${pmkEditId}`, { method: "PUT", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
         const resData = await res.json().catch(() => ({}));
@@ -3455,7 +3479,7 @@ function DashboardAdmin({ session, onLogout }) {
           tanggal_pengambilan: pmkTanggal, teknisi_id: pmkTeknisiId, nama_team: pmkNamaTeam,
           merek_modem: pmkMerekModem, status: pmkStatus, return_catatan: pmkReturnCatatan,
           catatan_report: pmkCatatanReport,
-          penggunaan: pmkPenggunaan, project: pmkProject, region: pmkRegion, vendor: pmkVendor,
+          penggunaan: pmkPenggunaan, project: pmkProject, region: pmkRegion, vendor: pmkVendor, id_wo: pmkIdWo,
           ont_list: pmkSnOntList,
           kabel_list: pmkKabelRows.filter(r => r.kabel_id).map(r => ({ kabel_id: r.kabel_id, jumlah: Math.max(1, Number(r.jumlah) || 1) })),
         };
@@ -3474,9 +3498,10 @@ function DashboardAdmin({ session, onLogout }) {
     setPmkSnOnt(l.sn_ont || ""); setPmkKabelId(String(l.kabel_id)); setPmkStatus(l.status); setPmkReturnCatatan(l.return_catatan || "");
     setPmkCatatanReport(l.catatan_report || "");
     setPmkPenggunaan(l.penggunaan || "IB");
-    setPmkProject(l.project || ""); setPmkRegion(l.region || ""); setPmkVendor(l.vendor || "");
+    setPmkProject(l.project || ""); setPmkRegion(l.region || ""); setPmkVendor(l.vendor || ""); setPmkIdWo(l.id_wo || "");
     setPmkFormErrors({});
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    // Modal edit muncul langsung di tempat (lihat <PmkEditModal> di bawah), jadi tidak perlu
+    // scroll ke form atas lagi kayak sebelumnya.
   };
   const hapusPemakaian = async () => {
     if (!pmkDeleteTarget) return;
@@ -3543,9 +3568,10 @@ function DashboardAdmin({ session, onLogout }) {
       Tanggal: new Date(p.tanggal_pengambilan).toLocaleDateString("id-ID"),
       Team: p.nama_team, Penggunaan: p.penggunaan || "IB", Project: p.project || "-", Region: p.region || "-", Vendor: p.vendor || "-",
       "Merek Modem": p.merek_modem || "-", "SN ONT": p.sn_ont || "-",
-      Kabel: p.kabel_nama, Status: p.status, Return: p.return_catatan || "-",
+      Kabel: p.kabel_nama, Status: p.status, "ID WO": p.id_wo || "-", Return: p.return_catatan || "-",
+      "Catatan Report": p.catatan_report || "-",
     })));
-    wsLog["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 11 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 16 }, { wch: 9 }, { wch: 10 }, { wch: 20 }];
+    wsLog["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 11 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 16 }, { wch: 9 }, { wch: 10 }, { wch: 14 }, { wch: 20 }, { wch: 40 }];
     XLSX.utils.book_append_sheet(wb, wsLog, "Log Pemakaian");
 
     // --- Sheet 3: Rekap Team x Penggunaan (IB vs MT) — biar Owner langsung lihat komposisi
@@ -3639,16 +3665,122 @@ function DashboardAdmin({ session, onLogout }) {
       const kabelHitung = new Map();
       rows.forEach(r => kabelHitung.set(r.kabel_nama, (kabelHitung.get(r.kabel_nama) || 0) + 1));
       const kabelRingkas = Array.from(kabelHitung.entries()).map(([nama, qty]) => (qty > 1 ? `${nama} ×${qty}` : nama)).join(", ");
+      const totalTerpakai = rows.filter(r => r.status === "Terpakai").length;
+      // idWoList — kumpulan ID WO unik dari semua unit dalam batch ini (biasanya 1 batch = 1 WO,
+      // tapi dijaga tetap benar walau ada beberapa WO beda dalam 1 batch pengambilan).
+      const idWoList = [...new Set(rows.map(r => r.id_wo).filter(Boolean))];
       return {
-        key, rows, jumlahUnit: rows.length, snList, kabelRingkas,
+        key, rows, jumlahUnit: rows.length, snList, kabelRingkas, totalTerpakai, idWoList,
         tanggal_pengambilan: first.tanggal_pengambilan, nama_team: first.nama_team,
         penggunaan: first.penggunaan, project: first.project, region: first.region, vendor: first.vendor,
         merek_modem: first.merek_modem, status: first.status, return_catatan: first.return_catatan, catatan_report: first.catatan_report,
+        id_wo: first.id_wo,
       };
     });
   }, [filteredPemakaian]);
   const totalPagesPemakaian = Math.max(1, Math.ceil(groupedPemakaian.length / PAGE_SIZE_PMK));
   const pagedPemakaian = groupedPemakaian.slice((pagePemakaian - 1) * PAGE_SIZE_PMK, pagePemakaian * PAGE_SIZE_PMK);
+
+  // ==================== STOK DI TANGAN TEKNISI ====================
+  // Semua baris PemakaianMaterial berstatus "Idle" = sudah diambil teknisi dari gudang
+  // tapi belum dipastikan terpasang (stok belum kepotong). Dikelompokkan per teknisi/team
+  // supaya admin/gudang gampang lihat siapa masih pegang barang apa, lalu bisa centang
+  // beberapa unit sekaligus & tandai "Terpakai" (atau balikin ke Idle kalau salah pencet)
+  // dalam 1x aksi — tanpa buka form Edit satu-satu.
+  const stokTeknisiGroups = useMemo(() => {
+    const q = stokTeknisiSearch.trim().toLowerCase();
+    const idleRows = pemakaianList.filter(l => {
+      if (l.status !== "Idle") return false;
+      const matchQ = !q || l.nama_team.toLowerCase().includes(q) || (l.sn_ont || "").toLowerCase().includes(q) || (l.merek_modem || "").toLowerCase().includes(q) || (l.kabel_nama || "").toLowerCase().includes(q);
+      const matchPenggunaan = stokTeknisiPenggunaanFilter === "semua" || l.penggunaan === stokTeknisiPenggunaanFilter;
+      return matchQ && matchPenggunaan;
+    });
+    const map = new Map();
+    idleRows.forEach(l => {
+      const key = l.teknisi_id || l.nama_team;
+      if (!map.has(key)) map.set(key, { key, nama_team: l.nama_team, teknisi_id: l.teknisi_id, rows: [] });
+      map.get(key).rows.push(l);
+    });
+    return Array.from(map.values())
+      .map(g => ({ ...g, rows: g.rows.sort((a, b) => new Date(b.tanggal_pengambilan) - new Date(a.tanggal_pengambilan)) }))
+      .sort((a, b) => b.rows.length - a.rows.length);
+  }, [pemakaianList, stokTeknisiSearch, stokTeknisiPenggunaanFilter]);
+  const stokTeknisiTotalUnit = stokTeknisiGroups.reduce((total, g) => total + g.rows.length, 0);
+  // Ringkasan buat card di atas halaman — dihitung dari SEMUA baris Idle (sebelum filter search/penggunaan)
+  // supaya card tetap jadi "angka global" yang stabil, bukan ikut berubah pas user lagi nyari sesuatu.
+  const stokTeknisiSummary = useMemo(() => {
+    const idleRows = pemakaianList.filter(l => l.status === "Idle");
+    const teknisiSet = new Set(idleRows.map(l => l.teknisi_id || l.nama_team));
+    const totalKabel = idleRows.length; // tiap baris = 1 unit kabel (wajib ada di semua baris)
+    const totalOnt = idleRows.filter(l => l.ont_material_id).length; // hanya yg merek modem-nya match Material ONT terdaftar
+    const totalIb = idleRows.filter(l => (l.penggunaan || "IB") === "IB").length;
+    const totalMt = idleRows.filter(l => l.penggunaan === "MT").length;
+    // Teknisi dengan unit Idle TERBANYAK -> yg paling perlu ditindaklanjuti/ditanya duluan
+    const perTeknisi = new Map();
+    idleRows.forEach(l => {
+      const key = l.teknisi_id || l.nama_team;
+      perTeknisi.set(key, (perTeknisi.get(key) || 0) + 1);
+    });
+    let teknisiTerbanyak = null, teknisiTerbanyakJumlah = 0;
+    perTeknisi.forEach((jumlah, key) => { if (jumlah > teknisiTerbanyakJumlah) { teknisiTerbanyakJumlah = jumlah; teknisiTerbanyak = key; } });
+    return { totalUnit: idleRows.length, totalTeknisi: teknisiSet.size, totalKabel, totalOnt, totalIb, totalMt, teknisiTerbanyak, teknisiTerbanyakJumlah };
+  }, [pemakaianList]);
+
+  const toggleStokTeknisiRow = (id) => {
+    setStokTeknisiSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleStokTeknisiGroupSelectAll = (group) => {
+    setStokTeknisiSelected(prev => {
+      const next = new Set(prev);
+      const semuaTerpilih = group.rows.every(r => next.has(r._id));
+      group.rows.forEach(r => { if (semuaTerpilih) next.delete(r._id); else next.add(r._id); });
+      return next;
+    });
+  };
+
+  // Toggle status 1 baris langsung dari tabel (tanpa buka form Edit) — dipakai tombol
+  // "centang cepat" di tabel Pemakaian Teknisi & Stok di Tangan Teknisi. Idle -> Terpakai
+  // kalau teknisi konfirmasi barang itu sudah kepasang; Terpakai -> Idle kalau ternyata
+  // salah tandai (barang masih di tangan teknisi / belum jadi dipakai).
+  const ubahStatusSatuBaris = async (l) => {
+    const statusBaru = l.status === "Idle" ? "Terpakai" : "Idle";
+    setQuickToggleLoadingId(l._id);
+    try {
+      const res = await fetch(`${MATERIAL_API}/pemakaian-material/bulk-status`, {
+        method: "PUT", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ ids: [l._id], status: statusBaru }),
+      });
+      const resData = await res.json().catch(() => ({}));
+      if (res.ok) { notify(`Ditandai "${statusBaru}"`); muatSemuaData(true); }
+      else notify(resData.message || "Gagal mengubah status", "error");
+    } catch { notify("Gagal terhubung ke server", "error"); }
+    finally { setQuickToggleLoadingId(null); }
+  };
+
+  // Kirim id-id terpilih ke endpoint bulk-status. statusBaru: "Terpakai" (konfirmasi kepasang)
+  // atau "Idle" (batalkan / balikin ke belum-terpakai kalau salah centang).
+  const bulkUbahStatusPemakaian = async (statusBaru) => {
+    const ids = Array.from(stokTeknisiSelected);
+    if (ids.length === 0) return;
+    setStokTeknisiBulkSubmitting(true);
+    try {
+      const res = await fetch(`${MATERIAL_API}/pemakaian-material/bulk-status`, {
+        method: "PUT", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ ids, status: statusBaru }),
+      });
+      const resData = await res.json().catch(() => ({}));
+      if (res.ok) {
+        notify(resData.message || "Status berhasil diperbarui");
+        setStokTeknisiSelected(new Set());
+        muatSemuaData(true);
+      } else {
+        notify(resData.message || "Gagal mengubah status", "error");
+      }
+    } catch { notify("Gagal terhubung ke server", "error"); }
+    finally { setStokTeknisiBulkSubmitting(false); }
+  };
 
   // ==================== KARYAWAN: ubah status Aktif / Non Aktif (khusus hrd & owner) ====================
   // Klik badge status HANYA membuka dialog konfirmasi (setStatusUbahTarget); proses ubah status
@@ -3820,6 +3952,129 @@ function DashboardAdmin({ session, onLogout }) {
       />
       <PhotoModal data={fotoPreview} onClose={() => setFotoPreview(null)} />
       <PmkReportModal data={pmkReportTarget} onClose={() => setPmkReportTarget(null)} />
+      {pmkEditId && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.5)" }} onClick={resetFormPemakaian}>
+          <div className="modal-in bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b flex items-start justify-between gap-3 sticky top-0 bg-white rounded-t-2xl z-10" style={{ borderColor: "var(--border)" }}>
+              <div>
+                <h2 className="text-base font-bold font-display" style={{ color: "var(--ink)" }}>Edit Log Pemakaian</h2>
+                <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>{pmkNamaTeam} · edit langsung di sini, tanpa pindah halaman</p>
+              </div>
+              <button onClick={resetFormPemakaian} className="p-1.5 rounded-lg hover:bg-gray-100 shrink-0"><IconX className="w-4 h-4" style={{ color: "var(--ink-soft)" }} /></button>
+            </div>
+            <form onSubmit={handleSubmitPemakaian} className="p-5 space-y-3.5 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Tanggal Pengambilan</label>
+                  <input type="date" value={pmkTanggal} onChange={e => setPmkTanggal(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Nama Team / Teknisi</label>
+                  <input type="text" placeholder="Nama team" value={pmkNamaTeam} onChange={e => setPmkNamaTeam(e.target.value)}
+                    className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: pmkFormErrors.nama_team ? "var(--red)" : "var(--border)" }} />
+                  {pmkFormErrors.nama_team && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{pmkFormErrors.nama_team}</p>}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Penggunaan</label>
+                  <select value={pmkPenggunaan} onChange={e => handlePmkPenggunaanChange(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: pmkFormErrors.penggunaan ? "var(--red)" : "var(--border)" }}>
+                    {PENGGUNAAN_PRESETS.map(p => <option key={p} value={p}>{PENGGUNAAN_LABEL[p]}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Status</label>
+                  <select value={pmkStatus} onChange={e => setPmkStatus(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
+                    <option value="Idle">Idle (belum kurangi stok)</option>
+                    <option value="Terpakai">Terpakai (kurangi stok)</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Project</label>
+                  <select value={pmkProject} onChange={e => setPmkProject(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: pmkFormErrors.project ? "var(--red)" : "var(--border)" }}>
+                    <option value="">— Pilih —</option>
+                    {PROJECT_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Region</label>
+                  <select value={pmkRegion} onChange={e => setPmkRegion(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: pmkFormErrors.region ? "var(--red)" : "var(--border)" }}>
+                    <option value="">— Pilih —</option>
+                    {REGION_PRESETS.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Vendor</label>
+                  <select value={pmkVendor} onChange={e => setPmkVendor(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: pmkFormErrors.vendor ? "var(--red)" : "var(--border)" }}>
+                    <option value="">— Pilih —</option>
+                    {VENDOR_PRESETS.map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--brand-dark)" }}>ID WO {pmkStatus === "Terpakai" && <span style={{ color: "var(--red)" }}>*</span>}</label>
+                <input type="text" placeholder="Contoh: WO-2026-00123" value={pmkIdWo} onChange={e => setPmkIdWo(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
+                <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>
+                  {pmkStatus === "Terpakai" ? "Material ini sudah dianggap terpakai — isi ID WO/tiket pemasangan yang menghabiskannya biar gampang ditelusuri." : "Boleh dikosongkan dulu selama masih Idle, lengkapi begitu dipastikan terpasang di WO tertentu."}
+                </p>
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Merek Modem</label>
+                <select value={pmkMerekPilihan} onChange={e => handlePmkMerekChange(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
+                  <option value="">— Pilih merek modem —</option>
+                  {ontMaterialOptions.map(m => (
+                    <option key={m._id} value={m.nama} disabled={m.stock <= 0 && m.nama !== pmkMerekModem}>
+                      {m.nama} (stok: {m.stock}){m.stock <= 0 && m.nama !== pmkMerekModem ? " — Habis" : ""}
+                    </option>
+                  ))}
+                  <option value="Lainnya">Lainnya...</option>
+                </select>
+                {pmkMerekPilihan === "Lainnya" && (
+                  <input type="text" placeholder="Merek modem lain" value={pmkMerekModem} onChange={e => setPmkMerekModem(e.target.value)}
+                    className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium mt-2" style={{ borderColor: "var(--border)" }} />
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT</label>
+                  <input type="text" list="sn-ont-datalist" placeholder="Serial number (opsional)" value={pmkSnOnt} onChange={e => setPmkSnOnt(e.target.value)}
+                    className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Jenis Kabel</label>
+                  <select value={pmkKabelId} onChange={e => setPmkKabelId(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: pmkFormErrors.kabel_id ? "var(--red)" : "var(--border)" }}>
+                    <option value="">— Pilih jenis kabel —</option>
+                    {kabelMaterialOptions.map(m => <option key={m._id} value={m._id}>{m.nama} (stok: {m.stock})</option>)}
+                  </select>
+                  {pmkFormErrors.kabel_id && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{pmkFormErrors.kabel_id}</p>}
+                </div>
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Return</label>
+                <input type="text" placeholder="Contoh: 100 M DI IKR" value={pmkReturnCatatan} onChange={e => setPmkReturnCatatan(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Report</label>
+                  <span className="text-[10px] font-medium" style={{ color: "var(--ink-soft)" }}>{pmkCatatanReport.length}/5000</span>
+                </div>
+                <textarea rows={4} maxLength={5000} placeholder="Catatan/report bebas, isi apa saja sesuai kondisi di lapangan..." value={pmkCatatanReport} onChange={e => setPmkCatatanReport(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+              </div>
+              <div className="pt-1 flex gap-2 sticky bottom-0 bg-white pb-1">
+                <button type="button" onClick={resetFormPemakaian} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-2.5 rounded-xl text-sm">Batal</button>
+                <button type="submit" disabled={pmkSubmitting} className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60" style={{ background: "var(--brand)" }}>
+                  {pmkSubmitting ? "Memproses..." : "Update Log"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       <ImportKaryawanModal
         open={importModalOpen}
         onClose={() => setImportModalOpen(false)}
@@ -4016,10 +4271,16 @@ function DashboardAdmin({ session, onLogout }) {
                         <button onClick={() => setCurrentMenu("material")} className="text-[11px] font-semibold" style={{ color: "var(--brand)" }}>Lihat detail →</button>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <StatCard label="Stok Awal" value={materialStatsDash.stokAwal} unit="unit" tone="brand" icon={<IconBox className="w-5 h-5" />} />
-                        <StatCard label="Terpakai" value={materialStatsDash.terpakai} unit="unit" tone="amber" icon={<IconAlert className="w-5 h-5" />} />
-                        <StatCard label="Sisa Stok" value={materialStatsDash.sisaStok} unit="unit" tone="green" icon={<IconCheck className="w-5 h-5" />} />
+                        <StatCard label="Sudah Terpakai" value={materialStatsDash.terpakai} unit="unit" tone="green" icon={<IconCheck className="w-5 h-5" />} />
+                        <StatCard label="Di Tangan Teknisi" value={materialStatsDash.ditanganTeknisi} unit="unit (Idle)" tone="amber" icon={<IconAlert className="w-5 h-5" />} />
+                        <StatCard label="Stok Terkini (Gudang)" value={materialStatsDash.sisaStok} unit="unit" tone="brand" icon={<IconBox className="w-5 h-5" />} />
                       </div>
+                      <p className="text-[11px] mt-2.5 leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+                        Cara bacanya: stok yang <span className="font-bold">sudah diambil teknisi otomatis kepotong dari Stok Terkini (Gudang)</span>, tapi belum tentu langsung terpasang hari itu juga —
+                        selama masih berstatus <span className="font-bold">Idle</span>, unit itu tercatat di kartu <span className="font-bold">"Di Tangan Teknisi"</span> (masih "menggantung", belum jadi Terpakai).
+                        Begitu admin/gudang menandai unitnya Terpakai (lewat halaman "Stok di Tangan Teknisi"), angka itu baru pindah ke kartu <span className="font-bold">"Sudah Terpakai"</span>.
+                        Jadi kalau Stok Terkini (Gudang) kelihatan lebih kecil dari dugaan padahal belum semuanya Terpakai, cek dulu kartu "Di Tangan Teknisi" — biasanya di situ larinya.
+                      </p>
                     </div>
                   )}
 
@@ -5435,8 +5696,9 @@ function DashboardAdmin({ session, onLogout }) {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-w-2xl">
                     {[
-                      { key: "Master", label: "Master Material" },
+                      { key: "Master", label: "Input Material" },
                       { key: "Pemakaian", label: "Pemakaian Teknisi" },
+                      { key: "StokTeknisi", label: "Stok di Tangan Teknisi" },
                       { key: "Laporan", label: "Laporan" },
                     ].map(tab => (
                       <button key={tab.key} onClick={() => setMaterialSubTab(tab.key)}
@@ -5683,8 +5945,8 @@ function DashboardAdmin({ session, onLogout }) {
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                       {canManageMaterial(session.role) && (
                         <div className="bg-white p-5 rounded-2xl border h-fit lg:sticky lg:top-6" style={{ borderColor: "var(--border)" }}>
-                          <h2 className="text-base font-bold font-display" style={{ color: "var(--ink)" }}>{pmkEditId ? "Edit Log Pemakaian" : "Tambah Log Pemakaian"}</h2>
-                          <p className="text-xs mt-0.5 mb-4" style={{ color: "var(--ink-soft)" }}>{pmkEditId ? "Edit 1 baris log terpilih" : "Bisa input beberapa unit ONT & beberapa jenis kabel sekaligus"}</p>
+                          <h2 className="text-base font-bold font-display" style={{ color: "var(--ink)" }}>Tambah Log Pemakaian</h2>
+                          <p className="text-xs mt-0.5 mb-4" style={{ color: "var(--ink-soft)" }}>Bisa input beberapa unit ONT & beberapa jenis kabel sekaligus. Untuk edit baris yang sudah ada, klik tombol Edit langsung di tabel.</p>
                           <form onSubmit={handleSubmitPemakaian} className="space-y-3.5 text-xs">
                             <div>
                               <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Tanggal Pengambilan</label>
@@ -5731,6 +5993,12 @@ function DashboardAdmin({ session, onLogout }) {
                               </div>
                             </div>
                             <div>
+                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>ID WO <span className="normal-case font-medium" style={{ color: "var(--ink-soft)" }}>(opsional)</span></label>
+                              <input type="text" placeholder="Contoh: FH_12103293" value={pmkIdWo} onChange={e => setPmkIdWo(e.target.value)}
+                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
+                              <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Kosongkan terlebih dahulu jika baru pengambilan digudang.</p>
+                            </div>
+                            <div>
                               <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Merek Modem</label>
                               <select value={pmkMerekPilihan} onChange={e => handlePmkMerekChange(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
                                 <option value="">— Pilih merek modem —</option>
@@ -5750,64 +6018,44 @@ function DashboardAdmin({ session, onLogout }) {
                               )}
                             </div>
 
-                            {pmkEditId ? (
-                              <>
-                                <div>
-                                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT</label>
-                                  <input type="text" list="sn-ont-datalist" placeholder="Serial number (opsional)" value={pmkSnOnt} onChange={e => setPmkSnOnt(e.target.value)}
+                            <div>
+                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Jumlah ONT</label>
+                              <input type="number" min="0" max="50" value={pmkJumlahOnt} onChange={e => handlePmkJumlahOntChange(e.target.value)}
+                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                            </div>
+                            {pmkSnOntList.length > 0 && (
+                              <div className="space-y-2">
+                                <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT ({pmkSnOntList.length} unit, opsional)</label>
+                                {pmkSnOntList.map((sn, idx) => (
+                                  <input key={idx} type="text" list="sn-ont-datalist" placeholder={`SN ONT unit #${idx + 1}`} value={sn} onChange={e => updatePmkSnOntAt(idx, e.target.value)}
                                     className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
-                                </div>
-                                <div>
-                                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Jenis Kabel</label>
-                                  <select value={pmkKabelId} onChange={e => setPmkKabelId(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: pmkFormErrors.kabel_id ? "var(--red)" : "var(--border)" }}>
+                                ))}
+                              </div>
+                            )}
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Kabel Digunakan</label>
+                                <button type="button" onClick={addPmkKabelRow} className="text-[10px] font-bold flex items-center gap-1 px-2 py-1 rounded-lg border hover:bg-gray-50" style={{ borderColor: "var(--border)", color: "var(--brand-dark)" }}>
+                                  <IconPlus className="w-3 h-3" /> Tambah Kabel
+                                </button>
+                              </div>
+                              {pmkKabelRows.map((row, idx) => (
+                                <div key={idx} className="flex gap-2 items-start">
+                                  <select value={row.kabel_id} onChange={e => updatePmkKabelRow(idx, "kabel_id", e.target.value)} className="flex-1 p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
                                     <option value="">— Pilih jenis kabel —</option>
                                     {kabelMaterialOptions.map(m => <option key={m._id} value={m._id}>{m.nama} (stok: {m.stock})</option>)}
                                   </select>
-                                  {pmkFormErrors.kabel_id && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{pmkFormErrors.kabel_id}</p>}
-                                </div>
-                              </>
-                            ) : (
-                              <>
-                                <div>
-                                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Jumlah ONT</label>
-                                  <input type="number" min="0" max="50" value={pmkJumlahOnt} onChange={e => handlePmkJumlahOntChange(e.target.value)}
-                                    className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
-                                </div>
-                                {pmkSnOntList.length > 0 && (
-                                  <div className="space-y-2">
-                                    <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT ({pmkSnOntList.length} unit, opsional)</label>
-                                    {pmkSnOntList.map((sn, idx) => (
-                                      <input key={idx} type="text" list="sn-ont-datalist" placeholder={`SN ONT unit #${idx + 1}`} value={sn} onChange={e => updatePmkSnOntAt(idx, e.target.value)}
-                                        className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
-                                    ))}
-                                  </div>
-                                )}
-                                <div className="space-y-2">
-                                  <div className="flex items-center justify-between">
-                                    <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Kabel Digunakan</label>
-                                    <button type="button" onClick={addPmkKabelRow} className="text-[10px] font-bold flex items-center gap-1 px-2 py-1 rounded-lg border hover:bg-gray-50" style={{ borderColor: "var(--border)", color: "var(--brand-dark)" }}>
-                                      <IconPlus className="w-3 h-3" /> Tambah Kabel
+                                  <input type="number" min="1" value={row.jumlah} onChange={e => updatePmkKabelRow(idx, "jumlah", e.target.value)}
+                                    className="w-16 p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                                  {pmkKabelRows.length > 1 && (
+                                    <button type="button" onClick={() => removePmkKabelRow(idx)} className="p-2.5 rounded-xl border hover:bg-red-50" style={{ borderColor: "var(--border)", color: "var(--red)" }}>
+                                      <IconX className="w-3.5 h-3.5" />
                                     </button>
-                                  </div>
-                                  {pmkKabelRows.map((row, idx) => (
-                                    <div key={idx} className="flex gap-2 items-start">
-                                      <select value={row.kabel_id} onChange={e => updatePmkKabelRow(idx, "kabel_id", e.target.value)} className="flex-1 p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
-                                        <option value="">— Pilih jenis kabel —</option>
-                                        {kabelMaterialOptions.map(m => <option key={m._id} value={m._id}>{m.nama} (stok: {m.stock})</option>)}
-                                      </select>
-                                      <input type="number" min="1" value={row.jumlah} onChange={e => updatePmkKabelRow(idx, "jumlah", e.target.value)}
-                                        className="w-16 p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
-                                      {pmkKabelRows.length > 1 && (
-                                        <button type="button" onClick={() => removePmkKabelRow(idx)} className="p-2.5 rounded-xl border hover:bg-red-50" style={{ borderColor: "var(--border)", color: "var(--red)" }}>
-                                          <IconX className="w-3.5 h-3.5" />
-                                        </button>
-                                      )}
-                                    </div>
-                                  ))}
-                                  {pmkFormErrors.kabel && <p className="text-[10px] font-semibold" style={{ color: "var(--red)" }}>{pmkFormErrors.kabel}</p>}
+                                  )}
                                 </div>
-                              </>
-                            )}
+                              ))}
+                              {pmkFormErrors.kabel && <p className="text-[10px] font-semibold" style={{ color: "var(--red)" }}>{pmkFormErrors.kabel}</p>}
+                            </div>
 
                             <div>
                               <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Status</label>
@@ -5829,11 +6077,10 @@ function DashboardAdmin({ session, onLogout }) {
                               <textarea rows={5} maxLength={5000} placeholder="Catatan/report bebas dari teknisi, isi apa saja sesuai kondisi di lapangan..." value={pmkCatatanReport} onChange={e => setPmkCatatanReport(e.target.value)}
                                 className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
                             </div>
-                            <div className="pt-1 flex gap-2">
-                              <button type="submit" disabled={pmkSubmitting} className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60" style={{ background: "var(--brand)" }}>
-                                {pmkSubmitting ? "Memproses..." : pmkEditId ? "Update Log" : "Simpan Log"}
+                            <div className="pt-1">
+                              <button type="submit" disabled={pmkSubmitting} className="w-full text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60" style={{ background: "var(--brand)" }}>
+                                {pmkSubmitting ? "Memproses..." : "Simpan Log"}
                               </button>
-                              {pmkEditId && <button type="button" onClick={resetFormPemakaian} className="bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-2.5 px-4 rounded-xl text-sm">Batal</button>}
                             </div>
                           </form>
                         </div>
@@ -5882,13 +6129,14 @@ function DashboardAdmin({ session, onLogout }) {
                                 <th className="p-4">Modem / SN</th>
                                 <th className="p-4">Kabel</th>
                                 <th className="p-4 text-center">Status</th>
+                                <th className="p-4">ID WO</th>
                                 <th className="p-4">Return</th>
                                 {canManageMaterial(session.role) && <th className="p-4 text-center w-32">Aksi</th>}
                               </tr>
                             </thead>
                             <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                               {pagedPemakaian.length === 0 ? (
-                                <tr><td colSpan={canManageMaterial(session.role) ? 12 : 11}><EmptyState title="Belum ada log pemakaian" subtitle="Tambahkan baris pertama lewat formulir di samping." icon={<IconCable className="w-5 h-5" />} /></td></tr>
+                                <tr><td colSpan={canManageMaterial(session.role) ? 13 : 12}><EmptyState title="Belum ada log pemakaian" subtitle="Tambahkan baris pertama lewat formulir di samping." icon={<IconCable className="w-5 h-5" />} /></td></tr>
                               ) : pagedPemakaian.map((g, idx) => {
                                 const nomor = (pagePemakaian - 1) * PAGE_SIZE_PMK + idx + 1;
                                 const isGroup = g.jumlahUnit > 1;
@@ -5914,8 +6162,20 @@ function DashboardAdmin({ session, onLogout }) {
                                         {isGroup && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-black" style={{ background: "var(--canvas)", color: "var(--ink-soft)" }}>{g.jumlahUnit} unit</span>}
                                       </td>
                                       <td className="p-3.5 text-center">
-                                        <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide"
-                                          style={{ background: g.status === "Terpakai" ? "var(--green-soft)" : "var(--amber-soft)", color: g.status === "Terpakai" ? "var(--green)" : "var(--amber)" }}>{g.status}</span>
+                                        {isGroup ? (
+                                          <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide"
+                                            style={{ background: g.totalTerpakai === g.jumlahUnit ? "var(--green-soft)" : g.totalTerpakai === 0 ? "var(--amber-soft)" : "var(--blue-soft, #EAF0FE)", color: g.totalTerpakai === g.jumlahUnit ? "var(--green)" : g.totalTerpakai === 0 ? "var(--amber)" : "var(--brand-dark)" }}>
+                                            {g.totalTerpakai}/{g.jumlahUnit} Terpakai
+                                          </span>
+                                        ) : (
+                                          <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide"
+                                            style={{ background: g.status === "Terpakai" ? "var(--green-soft)" : "var(--amber-soft)", color: g.status === "Terpakai" ? "var(--green)" : "var(--amber)" }}>{g.status}</span>
+                                        )}
+                                      </td>
+                                      <td className="p-3.5 font-mono text-[10px]" style={{ color: (isGroup ? g.idWoList.length > 0 : g.id_wo) ? "var(--brand-dark)" : "var(--ink-soft)" }}>
+                                        {isGroup
+                                          ? (g.idWoList.length === 0 ? "—" : g.idWoList.length === 1 ? `WO: ${g.idWoList[0]}` : `${g.idWoList.length} WO`)
+                                          : (g.id_wo ? `WO: ${g.id_wo}` : "—")}
                                       </td>
                                       <td className="p-3.5 truncate max-w-[140px]" style={{ color: "var(--ink-soft)" }}>
                                         <p>{g.return_catatan || "—"}</p>
@@ -5954,13 +6214,22 @@ function DashboardAdmin({ session, onLogout }) {
                                           <p className="font-mono text-[10px]">{l.sn_ont || "—"}</p>
                                         </td>
                                         <td className="p-2.5 text-[11px]" style={{ color: "var(--ink-soft)" }}>{l.kabel_nama}</td>
-                                        <td className="p-2.5"></td>
-                                        <td className="p-2.5"></td>
+                                        <td className="p-2.5 text-center">
+                                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide"
+                                            style={{ background: l.status === "Terpakai" ? "var(--green-soft)" : "var(--amber-soft)", color: l.status === "Terpakai" ? "var(--green)" : "var(--amber)" }}>{l.status}</span>
+                                        </td>
+                                        <td className="p-2.5 text-[10px] font-mono" style={{ color: l.id_wo ? "var(--brand-dark)" : "var(--ink-soft)" }}>{l.id_wo ? `WO: ${l.id_wo}` : "—"}</td>
+                                        <td className="p-2.5 text-[11px] truncate max-w-[140px]" style={{ color: "var(--ink-soft)" }}>{l.return_catatan || "—"}</td>
                                         {canManageMaterial(session.role) && (
                                           <td className="p-2.5">
                                             <div className="flex items-center justify-center gap-1.5">
                                               <button onClick={() => setPmkReportTarget({ ...l, snList: l.sn_ont ? [l.sn_ont] : [], kabelRingkas: l.kabel_nama, jumlahUnit: 1 })} className="p-1.5 rounded-lg border hover:bg-gray-50" style={{ borderColor: "var(--border)", color: l.catatan_report ? "var(--brand-dark)" : "var(--ink-soft)" }} title="Lihat report">
                                                 <IconReport className="w-3.5 h-3.5" />
+                                              </button>
+                                              <button onClick={() => ubahStatusSatuBaris(l)} disabled={quickToggleLoadingId === l._id}
+                                                className="p-1.5 rounded-lg border hover:bg-green-50 disabled:opacity-50" style={{ borderColor: "var(--border)", color: "var(--green)" }}
+                                                title={l.status === "Idle" ? "Tandai Terpakai (1 klik)" : "Kembalikan ke Idle (1 klik)"}>
+                                                {l.status === "Idle" ? <IconCheck className="w-3.5 h-3.5" /> : <IconRefresh className="w-3.5 h-3.5" />}
                                               </button>
                                               <button onClick={() => pemicuEditPemakaian(l)} className="p-1.5 rounded-lg border hover:bg-blue-50" style={{ borderColor: "var(--border)", color: "var(--brand-dark)" }} title="Edit"><IconEdit className="w-3.5 h-3.5" /></button>
                                               <button onClick={() => setPmkDeleteTarget(l)} className="p-1.5 rounded-lg border hover:bg-red-50" style={{ borderColor: "var(--border)", color: "var(--red)" }} title="Hapus"><IconTrash className="w-3.5 h-3.5" /></button>
@@ -5977,6 +6246,142 @@ function DashboardAdmin({ session, onLogout }) {
                         </div>
                         <Pagination page={pagePemakaian} setPage={setPagePemakaian} totalPages={totalPagesPemakaian} totalItems={groupedPemakaian.length} pageSize={PAGE_SIZE_PMK} />
                       </div>
+                    </div>
+                  )}
+
+                  {/* ---------------- STOK DI TANGAN TEKNISI ---------------- */}
+                  {materialSubTab === "StokTeknisi" && (
+                    <div className="space-y-4">
+                      <div className="bg-white p-3.5 rounded-2xl border flex items-start gap-2.5" style={{ borderColor: "var(--border)" }}>
+                        <IconBox className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--brand-dark)" }} />
+                        <p className="text-[11px] leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+                          Semua baris di bawah ini <span className="font-bold">sudah kepotong dari stok gudang</span> saat diambil, tapi masih berstatus <span className="font-bold">Idle</span> —
+                          artinya belum tentu terpasang hari itu juga, masih "menggantung" di tangan teknisi. Segera konfirmasi jadi <span className="font-bold">Terpakai</span> begitu unitnya benar-benar sudah dipasang,
+                          supaya laporan stok gudang, di tangan teknisi, dan terpakai tetap nyambung dan gampang ditelusuri.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <StatCard label="Total Unit Idle" value={stokTeknisiSummary.totalUnit} unit="unit" tone="amber" icon={<IconBox className="w-5 h-5" />} />
+                        <StatCard label="Teknisi Masih Pegang Stok" value={stokTeknisiSummary.totalTeknisi} unit="orang" tone="brand" icon={<IconUsers className="w-5 h-5" />} />
+                        <StatCard label="Kabel vs ONT" value={`${stokTeknisiSummary.totalKabel}`} unit={`kbl · ${stokTeknisiSummary.totalOnt} ont`} tone="green" icon={<IconCable className="w-5 h-5" />} />
+                        <StatCard label="Penggunaan IB vs MT" value={`${stokTeknisiSummary.totalIb}`} unit={`IB · ${stokTeknisiSummary.totalMt} MT`} tone="amber" icon={<IconTracking className="w-5 h-5" />} />
+                      </div>
+                      {stokTeknisiSummary.teknisiTerbanyak && stokTeknisiSummary.teknisiTerbanyakJumlah > 0 && (
+                        <div className="bg-white p-3.5 rounded-2xl border flex items-center gap-2.5" style={{ borderColor: "var(--border)" }}>
+                          <IconAlert className="w-4 h-4 shrink-0" style={{ color: "var(--amber)" }} />
+                          <p className="text-xs" style={{ color: "var(--ink-soft)" }}>
+                            Paling banyak pegang stok Idle: <span className="font-bold" style={{ color: "var(--ink)" }}>{stokTeknisiSummary.teknisiTerbanyak}</span> ({stokTeknisiSummary.teknisiTerbanyakJumlah} unit) — perlu ditindaklanjuti duluan.
+                          </p>
+                        </div>
+                      )}
+                      <div className="bg-white p-4 rounded-2xl border flex flex-wrap items-center gap-3" style={{ borderColor: "var(--border)" }}>
+                        <div className="relative flex-1 min-w-[200px]">
+                          <IconSearch className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--ink-soft)" }} />
+                          <input value={stokTeknisiSearch} onChange={e => setStokTeknisiSearch(e.target.value)} placeholder="Cari team, SN ONT, merek, atau jenis kabel..."
+                            className="w-full pl-9 pr-3 py-2 rounded-xl border text-xs" style={{ borderColor: "var(--border)" }} />
+                        </div>
+                        <select value={stokTeknisiPenggunaanFilter} onChange={e => setStokTeknisiPenggunaanFilter(e.target.value)}
+                          className="px-3 py-2 rounded-xl border text-xs font-semibold" style={{ borderColor: "var(--border)" }}>
+                          <option value="semua">Semua Penggunaan</option>
+                          <option value="IB">IB</option>
+                          <option value="MT">MT</option>
+                        </select>
+                        <span className="text-xs font-semibold ml-auto" style={{ color: "var(--ink-soft)" }}>
+                          {stokTeknisiTotalUnit} unit Idle · {stokTeknisiGroups.length} teknisi/team
+                        </span>
+                      </div>
+
+                      {stokTeknisiSelected.size > 0 && canManageMaterial(session.role) && (
+                        <div className="sticky top-2 z-10 bg-white p-3.5 rounded-2xl border shadow-md flex flex-wrap items-center gap-3" style={{ borderColor: "var(--brand)" }}>
+                          <span className="text-xs font-bold" style={{ color: "var(--ink)" }}>{stokTeknisiSelected.size} unit dipilih</span>
+                          <div className="flex items-center gap-2 ml-auto">
+                            <button onClick={() => setStokTeknisiSelected(new Set())} className="px-3 py-2 rounded-xl text-xs font-bold text-gray-500 hover:bg-gray-100">Batal Pilih</button>
+                            <button disabled={stokTeknisiBulkSubmitting} onClick={() => bulkUbahStatusPemakaian("Terpakai")}
+                              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white shadow-sm disabled:opacity-50" style={{ background: "var(--green)" }}>
+                              <IconCheck className="w-3.5 h-3.5" /> {stokTeknisiBulkSubmitting ? "Memproses..." : "Tandai Terpakai"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {stokTeknisiGroups.length === 0 ? (
+                        <div className="bg-white p-4 rounded-2xl border" style={{ borderColor: "var(--border)" }}>
+                          <EmptyState title="Tidak ada stok Idle" subtitle="Semua barang yang diambil teknisi sudah dikonfirmasi terpakai (atau belum ada pengambilan sama sekali)." icon={<IconBox className="w-5 h-5" />} />
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {stokTeknisiGroups.map(g => {
+                            const isExpanded = expandedStokTeknisi.has(g.key);
+                            const semuaTerpilih = g.rows.every(r => stokTeknisiSelected.has(r._id));
+                            const sebagianTerpilih = !semuaTerpilih && g.rows.some(r => stokTeknisiSelected.has(r._id));
+                            return (
+                              <div key={g.key} className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                                <div className="p-3.5 flex items-center gap-3 cursor-pointer hover:bg-gray-50/60" onClick={() => toggleStokTeknisiGroup(g.key)}>
+                                  {canManageMaterial(session.role) && (
+                                    <input type="checkbox" className="w-3.5 h-3.5 rounded" ref={el => { if (el) el.indeterminate = sebagianTerpilih; }}
+                                      checked={semuaTerpilih} onClick={e => e.stopPropagation()} onChange={() => toggleStokTeknisiGroupSelectAll(g)} />
+                                  )}
+                                  <Avatar name={g.nama_team} size={32} />
+                                  <div className="flex-1">
+                                    <p className="font-bold text-sm" style={{ color: "var(--ink)" }}>{g.nama_team}</p>
+                                    <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{g.rows.length} unit masih Idle (belum dikonfirmasi terpasang)</p>
+                                  </div>
+                                  {isExpanded ? <IconChevronUp className="w-4 h-4" style={{ color: "var(--ink-soft)" }} /> : <IconChevronDown className="w-4 h-4" style={{ color: "var(--ink-soft)" }} />}
+                                </div>
+                                {isExpanded && (
+                                  <div className="overflow-x-auto border-t" style={{ borderColor: "var(--border)" }}>
+                                    <table className="w-full text-left border-collapse text-xs min-w-[700px]">
+                                      <thead>
+                                        <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                                          {canManageMaterial(session.role) && <th className="p-3 w-8"></th>}
+                                          <th className="p-3">Tgl Ambil</th>
+                                          <th className="p-3">Jenis</th>
+                                          <th className="p-3">Merek/SN ONT</th>
+                                          <th className="p-3 text-center">Penggunaan</th>
+                                          <th className="p-3 text-center w-20">Aksi</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
+                                        {g.rows.map(l => (
+                                          <tr key={l._id} className="hover:bg-gray-50/60 transition">
+                                            {canManageMaterial(session.role) && (
+                                              <td className="p-3">
+                                                <input type="checkbox" className="w-3.5 h-3.5 rounded" checked={stokTeknisiSelected.has(l._id)} onChange={() => toggleStokTeknisiRow(l._id)} />
+                                              </td>
+                                            )}
+                                            <td className="p-3" style={{ color: "var(--ink-soft)" }}>{new Date(l.tanggal_pengambilan).toLocaleDateString("id-ID")}</td>
+                                            <td className="p-3 font-semibold" style={{ color: "var(--ink)" }}>{l.kabel_nama}</td>
+                                            <td className="p-3" style={{ color: "var(--ink-soft)" }}>
+                                              <p className="text-[11px]">{l.merek_modem || "—"}</p>
+                                              {l.sn_ont && <p className="font-mono text-[10px]">{l.sn_ont}</p>}
+                                              {l.id_wo && <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--brand-dark)" }}>WO: {l.id_wo}</p>}
+                                            </td>
+                                            <td className="p-3 text-center">
+                                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: l.penggunaan === "MT" ? "var(--amber-soft)" : "var(--green-soft)", color: l.penggunaan === "MT" ? "var(--amber)" : "var(--green)" }}>{l.penggunaan || "IB"}</span>
+                                            </td>
+                                            <td className="p-3 text-center">
+                                              {canManageMaterial(session.role) && (
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                  <button onClick={() => ubahStatusSatuBaris(l)} disabled={quickToggleLoadingId === l._id}
+                                                    className="p-1.5 rounded-lg border hover:bg-green-50 disabled:opacity-50" style={{ borderColor: "var(--border)", color: "var(--green)" }}
+                                                    title="Tandai Terpakai (1 klik)">
+                                                    <IconCheck className="w-3.5 h-3.5" />
+                                                  </button>
+                                                  <button onClick={() => pemicuEditPemakaian(l)} className="p-1.5 rounded-lg border hover:bg-blue-50" style={{ borderColor: "var(--border)", color: "var(--brand-dark)" }} title="Edit baris ini"><IconEdit className="w-3.5 h-3.5" /></button>
+                                                </div>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
 

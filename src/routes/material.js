@@ -51,6 +51,12 @@ router.get('/material', VIEW_ROLES, async (req, res) => {
 });
 
 // --- TAMBAH JENIS MATERIAL BARU (ex: Kabel "100 M", stok awal 15) ---
+// Kalau jenis material dengan Kategori + Penggunaan + Nama yang SAMA (case-insensitive)
+// sudah terdaftar sebelumnya, TIDAK bikin baris duplikat baru — anggap ini restock/
+// penambahan stok untuk jenis yang sudah ada (mis. stok "100 M" sisa 3, diinput lagi
+// qty 5 lewat form Tambah Jenis Material -> jadi 8), supaya Master Material tidak
+// numpuk baris kembar untuk barang yang sebenarnya sama. Tercatat juga di MaterialStokLog
+// (tipe "Penambahan") biar konsisten & kehitung di /material/report seperti restock biasa.
 router.post('/material', MANAGE_ROLES, async (req, res) => {
   try {
     const { kategori, penggunaan, nama, satuan, stock_awal, keterangan, sn_list } = req.body;
@@ -64,6 +70,12 @@ router.post('/material', MANAGE_ROLES, async (req, res) => {
     const penggunaanFinal = penggunaan || 'IB';
     const stokAwalNum = Number(stock_awal) || 0;
     const dibuat_oleh = req.header('x-user-id') || '';
+    const namaTrim = String(nama).trim();
+
+    // Cari dulu apakah jenis material ini (Kategori+Penggunaan+Nama, tanpa peduli besar-kecil
+    // huruf atau spasi berlebih) sudah ada. Escape karakter regex biar nama dgn simbol aman.
+    const namaRegex = new RegExp(`^${namaTrim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const existing = await Material.findOne({ kategori: kategoriFinal, penggunaan: penggunaanFinal, nama: namaRegex });
 
     // Khusus kategori ONT: qty (stock_awal) diisi user lewat form Tambah Jenis Material,
     // dan tiap unit boleh langsung dicatat SN-nya (opsional per unit, boleh dikosongkan).
@@ -71,10 +83,35 @@ router.post('/material', MANAGE_ROLES, async (req, res) => {
       ? [...new Set(sn_list.map(sn => String(sn || '').trim()).filter(Boolean))]
       : [];
 
+    if (existing) {
+      if (stokAwalNum > 0) existing.stock += stokAwalNum;
+      if (snListBersih.length > 0) existing.sn_list = [...new Set([...(existing.sn_list || []), ...snListBersih])];
+      await existing.save();
+
+      // Catat sebagai log Penambahan (audit trail) hanya kalau memang ada qty yang ditambahkan.
+      if (stokAwalNum > 0) {
+        const logGabung = new MaterialStokLog({
+          material_id: existing._id,
+          material_nama: existing.nama,
+          tipe: 'Penambahan',
+          jumlah: stokAwalNum,
+          keterangan: keterangan || `Digabung otomatis dari input "Tambah Jenis Material" (jenis "${existing.nama}" sudah terdaftar)`,
+          dibuat_oleh
+        });
+        await logGabung.save();
+      }
+
+      return res.status(200).json({
+        message: `Jenis material "${existing.nama}" (${penggunaanFinal}) sudah terdaftar — stok digabung${stokAwalNum > 0 ? ` (+${stokAwalNum})` : ''}, stok terkini: ${existing.stock} ${existing.satuan}`,
+        data: existing,
+        digabung: true
+      });
+    }
+
     const materialBaru = new Material({
       kategori: kategoriFinal,
       penggunaan: penggunaanFinal,
-      nama,
+      nama: namaTrim,
       satuan: satuan || 'Roll',
       stock_awal: stokAwalNum,
       stock: stokAwalNum, // saat pertama dibuat, stok terkini = stok awal
@@ -83,7 +120,7 @@ router.post('/material', MANAGE_ROLES, async (req, res) => {
       dibuat_oleh
     });
     await materialBaru.save();
-    res.status(201).json({ message: 'Material berhasil ditambahkan', data: materialBaru });
+    res.status(201).json({ message: 'Material berhasil ditambahkan', data: materialBaru, digabung: false });
   } catch (error) {
     res.status(500).json({ message: 'Gagal menambahkan material', error: error.message });
   }
@@ -149,7 +186,7 @@ router.post('/pemakaian-material', MANAGE_ROLES, async (req, res) => {
   try {
     const {
       tanggal_pengambilan, teknisi_id, nama_team, merek_modem, sn_ont,
-      kabel_id, status, return_catatan, catatan_report, penggunaan, project, region, vendor
+      kabel_id, status, return_catatan, catatan_report, penggunaan, project, region, vendor, id_wo
     } = req.body;
 
     if (!nama_team || !kabel_id) {
@@ -204,6 +241,7 @@ router.post('/pemakaian-material', MANAGE_ROLES, async (req, res) => {
         project: project || '',
         region: region || '',
         vendor: vendor || '',
+        id_wo: id_wo || '',
         dibuat_oleh
       });
       await logBaru.save();
@@ -229,7 +267,7 @@ router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
   try {
     const {
       tanggal_pengambilan, teknisi_id, nama_team, merek_modem,
-      status, return_catatan, catatan_report, penggunaan, project, region, vendor,
+      status, return_catatan, catatan_report, penggunaan, project, region, vendor, id_wo,
       ont_list, kabel_list
     } = req.body;
 
@@ -339,6 +377,7 @@ router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
           project: project || '',
           region: region || '',
           vendor: vendor || '',
+          id_wo: id_wo || '',
           dibuat_oleh,
           batch_id: batchId
         });
@@ -363,6 +402,58 @@ router.post('/pemakaian-material/batch', MANAGE_ROLES, async (req, res) => {
   }
 });
 
+// --- UBAH STATUS BANYAK BARIS SEKALIGUS (Idle <-> Terpakai) ---
+// Dipakai halaman "Stok di Tangan Teknisi": admin/gudang centang beberapa unit yang
+// masih Idle punya 1/beberapa teknisi, lalu 1x klik tandai semuanya "Terpakai" begitu
+// dikonfirmasi sudah kepasang di lapangan (atau sebaliknya, balikin ke Idle kalau salah pencet).
+// Stok tiap unit disesuaikan satu-satu (bukan digabung), supaya kalau salah satu gagal
+// (mis. stok sudah kepakai duluan di tempat lain), unit lainnya tetap jalan & dilaporkan
+// jelas mana yang gagal + kenapa — bukan all-or-nothing.
+// PENTING: route ini didaftarkan SEBELUM 'PUT /pemakaian-material/:id' supaya path statis
+// 'bulk-status' tidak tertangkap duluan oleh parameter ':id' punya Express.
+router.put('/pemakaian-material/bulk-status', MANAGE_ROLES, async (req, res) => {
+  try {
+    const { ids, status } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'Pilih minimal 1 baris log yang mau diubah statusnya' });
+    }
+    if (!['Terpakai', 'Idle'].includes(status)) {
+      return res.status(400).json({ message: 'Status harus "Terpakai" atau "Idle"' });
+    }
+
+    const berhasil = [];
+    const gagal = [];
+    for (const id of ids) {
+      try {
+        const log = await PemakaianMaterial.findById(id);
+        if (!log) { gagal.push({ id, alasan: 'Log tidak ditemukan (mungkin sudah dihapus)' }); continue; }
+        if (log.status === status) { berhasil.push(id); continue; } // sudah sesuai target, tidak perlu ubah stok
+
+        if (log.status === 'Idle' && status === 'Terpakai') {
+          await ubahStok(log.kabel_id, -1);
+          if (log.ont_material_id) await ubahStok(log.ont_material_id, -1);
+        } else if (log.status === 'Terpakai' && status === 'Idle') {
+          await ubahStok(log.kabel_id, +1);
+          if (log.ont_material_id) await ubahStok(log.ont_material_id, +1);
+        }
+        log.status = status;
+        await log.save();
+        berhasil.push(id);
+      } catch (innerError) {
+        gagal.push({ id, alasan: innerError.message });
+      }
+    }
+
+    res.status(200).json({
+      message: `${berhasil.length} log berhasil diubah jadi "${status}"` + (gagal.length ? `, ${gagal.length} gagal diubah` : ''),
+      berhasil,
+      gagal
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal memproses perubahan status massal', error: error.message });
+  }
+});
+
 // --- EDIT BARIS LOG (mis. status Idle -> Terpakai, ganti jenis kabel, dll) ---
 // Stok otomatis dikoreksi sesuai perubahan status/jenis kabel supaya tetap akurat.
 router.put('/pemakaian-material/:id', MANAGE_ROLES, async (req, res) => {
@@ -372,7 +463,7 @@ router.put('/pemakaian-material/:id', MANAGE_ROLES, async (req, res) => {
 
     const {
       tanggal_pengambilan, teknisi_id, nama_team, merek_modem, sn_ont,
-      kabel_id, status, return_catatan, catatan_report, penggunaan, project, region, vendor
+      kabel_id, status, return_catatan, catatan_report, penggunaan, project, region, vendor, id_wo
     } = req.body;
 
     if (penggunaan && !['IB', 'MT'].includes(penggunaan)) {
@@ -422,6 +513,7 @@ router.put('/pemakaian-material/:id', MANAGE_ROLES, async (req, res) => {
     if (project !== undefined) log.project = project;
     if (region !== undefined) log.region = region;
     if (vendor !== undefined) log.vendor = vendor;
+    if (id_wo !== undefined) log.id_wo = id_wo;
     log.status = statusBaru;
     log.kabel_id = kabelIdBaru;
     log.kabel_nama = kabelBaruDoc ? kabelBaruDoc.nama : log.kabel_nama;
