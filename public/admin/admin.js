@@ -90,10 +90,10 @@ const Avatar = ({ name, size = 36 }) => {
 const ROLES = {
   teknisi: { label: "Teknisi", badgeBg: "#F1F5F9", badgeFg: "#475467" },
   admin:   { label: "Staf Admin", badgeBg: "#E3F3F0", badgeFg: "#0B5148" },
-  gudang:  { label: "Staf Gudang", badgeBg: "#FEF3E2", badgeFg: "#B45309" },
+  gudang:  { label: "Staf Gudang", badgeBg: "#FEF3E2", badgeFg: "#B45309" },  
   finance: { label: "Staf Finance", badgeBg: "#EDE9FE", badgeFg: "#6D28D9" },
   owner:   { label: "Owner", badgeBg: "#0B1220", badgeFg: "#FFFFFF" },
-  hrd:       { label: "Owner (Legacy)", badgeBg: "#0B1220", badgeFg: "#FFFFFF" },
+  hrd:       { label: "IT", badgeBg: "#FEF3E2", badgeFg: "#B45309" },
   karyawan: { label: "Teknisi (Legacy)", badgeBg: "#F1F5F9", badgeFg: "#475467" },
 };
 const roleInfo = (r) => ROLES[r] || { label: r || "—", badgeBg: "var(--canvas)", badgeFg: "var(--ink-soft)" };
@@ -1699,6 +1699,28 @@ function DashboardAdmin({ session, onLogout }) {
   // Submenu sidebar yang sedang dibuka (mis. "crud" -> menampilkan sub-item "Salary" di bawahnya)
   const [expandedNav, setExpandedNav] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Kunci scroll halaman di belakang saat drawer menu mobile terbuka — tanpa ini, konten
+  // di belakang menu masih ikut ter-scroll sendiri padahal menunya diam (fixed), jadi
+  // kelihatan "nge-freeze"/nabrak. Begitu menu ditutup, scroll halaman dikembalikan normal.
+  useEffect(() => {
+    if (sidebarOpen) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = prevOverflow; };
+    }
+  }, [sidebarOpen]);
+
+  // Ukur tinggi header (yang sekarang sticky) supaya panel menu mobile mulai PERSIS di bawahnya,
+  // bukan dari ujung atas layar — kalau tidak, item menu paling atas ("Dashboard Utama") akan
+  // ketutup separuh oleh header. Diukur ulang tiap resize (mis. rotasi HP / responsive).
+  const headerRef = useRef(null);
+  const [headerHeight, setHeaderHeight] = useState(64);
+  useEffect(() => {
+    const ukur = () => { if (headerRef.current) setHeaderHeight(headerRef.current.offsetHeight); };
+    ukur();
+    window.addEventListener("resize", ukur);
+    return () => window.removeEventListener("resize", ukur);
+  }, []);
   // Konfirmasi sebelum benar-benar logout, supaya tidak ke-klik tidak sengaja.
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   // Mode rail (icon-only) untuk sidebar desktop — beda dari sidebarOpen (drawer mobile).
@@ -1764,6 +1786,8 @@ function DashboardAdmin({ session, onLogout }) {
   const [statusFilter, setStatusFilter] = useState("semua");
   const [logTanggal, setLogTanggal] = useState(() => new Date().toISOString().slice(0, 10)); // default: hari ini
   const [logKaryawanFilter, setLogKaryawanFilter] = useState("semua");
+  const [logCabangFilter, setLogCabangFilter] = useState("semua");
+  const [logRoleFilter, setLogRoleFilter] = useState("semua");
   const [pageLog, setPageLog] = useState(1);
   const PAGE_SIZE_L = 8;
 
@@ -2186,6 +2210,19 @@ function DashboardAdmin({ session, onLogout }) {
     return [...karyawanList].sort((a, b) => (a.nama || "").localeCompare(b.nama || ""));
   }, [karyawanList]);
 
+  // Daftar Cabang unik untuk dropdown filter Log Absensi (otomatis dari data master karyawan, A-Z)
+  const daftarCabangFilterLog = useMemo(() => {
+    const set = new Set(karyawanList.map(k => k.cabang).filter(Boolean));
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [karyawanList]);
+
+  // Daftar Jabatan (role) unik untuk dropdown filter Log Absensi, hanya role yang benar-benar
+  // dipakai karyawan yang ada di data master (jadi tidak menampilkan role yang tidak relevan)
+  const daftarRoleFilterLog = useMemo(() => {
+    const set = new Set(karyawanList.map(k => k.role).filter(Boolean));
+    return [...set].sort((a, b) => roleInfo(a).label.localeCompare(roleInfo(b).label));
+  }, [karyawanList]);
+
   const filteredLog = useMemo(() => {
     const q = searchLog.trim().toLowerCase();
     return groupedLog.filter(g => {
@@ -2197,12 +2234,15 @@ function DashboardAdmin({ session, onLogout }) {
       else if (statusFilter === "belum_checkout") matchStatus = !!g.masuk && !g.pulang;
       const matchTanggal = !logTanggal || g.tanggal.toISOString().slice(0, 10) === logTanggal;
       const matchKaryawan = logKaryawanFilter === "semua" || g.karyawan_id === logKaryawanFilter;
-      return matchQ && matchStatus && matchTanggal && matchKaryawan;
+      const km = karyawanMap[g.karyawan_id];
+      const matchCabang = logCabangFilter === "semua" || km?.cabang === logCabangFilter;
+      const matchRole = logRoleFilter === "semua" || km?.role === logRoleFilter;
+      return matchQ && matchStatus && matchTanggal && matchKaryawan && matchCabang && matchRole;
     });
-  }, [groupedLog, searchLog, statusFilter, logTanggal, logKaryawanFilter]);
+  }, [groupedLog, searchLog, statusFilter, logTanggal, logKaryawanFilter, logCabangFilter, logRoleFilter, karyawanMap]);
   const totalPagesLog = Math.max(1, Math.ceil(filteredLog.length / PAGE_SIZE_L));
   const pagedLog = filteredLog.slice((pageLog - 1) * PAGE_SIZE_L, pageLog * PAGE_SIZE_L);
-  useEffect(() => { setPageLog(1); }, [searchLog, statusFilter, logTanggal, logKaryawanFilter]);
+  useEffect(() => { setPageLog(1); }, [searchLog, statusFilter, logTanggal, logKaryawanFilter, logCabangFilter, logRoleFilter]);
 
   // Preview foto absen (dipakai kolom foto in/out di tabel Log Absensi)
   const [fotoPreview, setFotoPreview] = useState(null);
@@ -2970,7 +3010,7 @@ function DashboardAdmin({ session, onLogout }) {
 
   const NAV = [
     { key: "dashboard", label: "Dashboard Utama", icon: IconHome },
-    { key: "crud", label: "Master Data Karyawan", icon: IconUsers, children: [{ key: "salary", label: "Salary" }] },
+    { key: "crud", label: "Master Data Karyawan", icon: IconUsers, children: [{ key: "crud", label: "Data Karyawan" }, { key: "salary", label: "Salary" }] },
     { key: "log", label: "Log Absensi", icon: IconClock },
     { key: "keuangan", label: "Keuangan", icon: IconWallet },
     { key: "invoice", label: "Invoice", icon: IconInvoice },
@@ -3118,8 +3158,17 @@ function DashboardAdmin({ session, onLogout }) {
 
   const filteredSalary = useMemo(() => {
     const q = searchSalary.trim().toLowerCase();
-    if (!q) return salaryList;
-    return salaryList.filter(s => s.nama?.toLowerCase().includes(q) || s.karyawan_id?.toLowerCase().includes(q));
+    const hasil = !q ? salaryList : salaryList.filter(s => s.nama?.toLowerCase().includes(q) || s.karyawan_id?.toLowerCase().includes(q));
+    // Karyawan yang masih punya kasbon belum lunas dinaikkan ke atas (nominal terbesar duluan),
+    // supaya Owner langsung kelihatan siapa yang masih ada tanggungan tanpa perlu scroll cari-cari.
+    // Sisanya (kasbon 0 / lunas) tetap urut abjad nama seperti biasa di bawahnya.
+    return [...hasil].sort((a, b) => {
+      const kasbonA = a.kasbon_belum_lunas || 0;
+      const kasbonB = b.kasbon_belum_lunas || 0;
+      if (kasbonA > 0 && kasbonB > 0) return kasbonB - kasbonA;
+      if (kasbonA > 0 !== kasbonB > 0) return kasbonA > 0 ? -1 : 1;
+      return (a.nama || "").localeCompare(b.nama || "");
+    });
   }, [salaryList, searchSalary]);
   const totalPagesSalary = Math.max(1, Math.ceil(filteredSalary.length / pageSizeSalary));
   const pageSalaryAman = Math.min(pageSalary, totalPagesSalary);
@@ -4126,7 +4175,7 @@ function DashboardAdmin({ session, onLogout }) {
       <InvoicePrintView invoice={invPrintTarget} />
 
       {/* TOP BAR */}
-      <header className="app-header text-white px-4 sm:px-6 py-3.5 flex justify-between items-center shrink-0">
+      <header ref={headerRef} className="app-header text-white px-4 sm:px-6 py-3.5 flex justify-between items-center shrink-0 sticky top-0 z-50">
         <div className="flex items-center gap-3">
           <button className="lg:hidden" onClick={() => setSidebarOpen(s => !s)}><IconMenu className="w-5 h-5" /></button>
           <div className="flex items-center gap-2">
@@ -4196,10 +4245,10 @@ function DashboardAdmin({ session, onLogout }) {
       </header>
 
       <div className="flex flex-1 min-h-0 relative">
-        {sidebarOpen && <div className="fixed inset-0 bg-black/30 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />}
+        {sidebarOpen && <div className="fixed inset-x-0 bottom-0 bg-black/30 z-30 lg:hidden" style={{ top: headerHeight }} onClick={() => setSidebarOpen(false)} />}
         {/* SIDEBAR — mode penuh (label terlihat) atau rail/icon-only (toggle via tombol panah) */}
-        <aside className={`sidebar-rail ${sidebarCollapsed ? "sidebar-collapsed lg:w-[76px] w-64" : "w-64"} text-white p-3 flex flex-col gap-1 shrink-0 fixed lg:static inset-y-0 left-0 z-40 transition-transform lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
-          style={{ top: 0, paddingTop: "1rem" }}>
+        <aside className={`sidebar-rail ${sidebarCollapsed ? "sidebar-collapsed lg:w-[76px] w-64" : "w-64"} text-white p-3 flex flex-col gap-1 shrink-0 fixed lg:static inset-y-0 left-0 z-40 transition-transform lg:translate-x-0 overflow-y-auto ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
+          style={{ top: headerHeight, paddingTop: "1rem" }}>
           <div className={`flex items-center mb-2 ${sidebarCollapsed ? "lg:justify-center justify-between px-1" : "justify-between px-1"}`}>
             <p className="sidebar-label text-[10px] font-bold text-white/35 uppercase tracking-widest">Menu Utama</p>
             <button onClick={toggleSidebarCollapsed} title={sidebarCollapsed ? "Buka menu" : "Ciutkan menu"}
@@ -4208,16 +4257,23 @@ function DashboardAdmin({ session, onLogout }) {
             </button>
           </div>
           {NAV.map(item => {
-            const Ico = item.icon; const active = currentMenu === item.key;
+            const Ico = item.icon;
             const children = (item.children || []).filter(c => canAccess(session.role, c.key));
             const hasChildren = children.length > 0;
             const childActive = hasChildren && children.some(c => c.key === currentMenu);
+            // Untuk item dengan submenu (mis. "Master Data Karyawan"), tombol induk TIDAK punya halaman
+            // sendiri — dia cuma pembuka dropdown. Status "aktif" & "terpilih"-nya ikut anaknya.
+            const active = hasChildren ? childActive : currentMenu === item.key;
             const isExpanded = hasChildren && (expandedNav[item.key] ?? childActive);
             return (
               <div key={item.key}>
                 <button onClick={() => {
-                  setCurrentMenu(item.key); setSidebarOpen(false);
-                  if (hasChildren) setExpandedNav(e => ({ ...e, [item.key]: !isExpanded }));
+                  if (hasChildren) {
+                    // Klik induk cuma buka/tutup daftar pilihan di bawahnya, tidak pindah konten
+                    setExpandedNav(e => ({ ...e, [item.key]: !isExpanded }));
+                  } else {
+                    setCurrentMenu(item.key); setSidebarOpen(false);
+                  }
                 }}
                   title={sidebarCollapsed ? item.label : undefined}
                   className={`nav-item ${active ? "is-active" : ""} w-full text-left px-3.5 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2.5 ${sidebarCollapsed ? "lg:justify-center lg:px-0" : ""} ${active ? "text-white" : "text-white/55 hover:bg-white/5 hover:text-white/80"}`}>
@@ -4638,8 +4694,8 @@ function DashboardAdmin({ session, onLogout }) {
                                 </td>
                                 <td className="p-3.5 font-mono" style={{ color: "var(--ink-soft)" }}>{k.nik || "—"}</td>
                                 <td className="p-3.5 font-mono" style={{ color: "var(--ink-soft)" }}>{k.no_telp || "—"}</td>
-                                <td className="p-3.5">
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide"
+                                <td className="p-3.5 text-center">
+                                  <span className="inline-flex items-center justify-center min-w-[76px] px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide whitespace-nowrap"
                                     style={{ background: roleInfo(k.role).badgeBg, color: roleInfo(k.role).badgeFg }}>{roleInfo(k.role).label}</span>
                                 </td>
                                 <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{k.cabang || "—"}</td>
@@ -4924,6 +4980,18 @@ function DashboardAdmin({ session, onLogout }) {
                           <option key={k.karyawan_id} value={k.karyawan_id}>{k.nama} ({k.karyawan_id})</option>
                         ))}
                       </select>
+                      <select value={logCabangFilter} onChange={e => setLogCabangFilter(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white max-w-[160px]" style={{ borderColor: "var(--border)" }}>
+                        <option value="semua">Semua Cabang</option>
+                        {daftarCabangFilterLog.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                      <select value={logRoleFilter} onChange={e => setLogRoleFilter(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white max-w-[160px]" style={{ borderColor: "var(--border)" }}>
+                        <option value="semua">Semua Jabatan</option>
+                        {daftarRoleFilterLog.map(r => (
+                          <option key={r} value={r}>{roleInfo(r).label}</option>
+                        ))}
+                      </select>
                       <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
                         <option value="semua">Semua Status</option>
                         <option value="tepat">Tepat Waktu</option>
@@ -4935,6 +5003,10 @@ function DashboardAdmin({ session, onLogout }) {
                         <input value={searchLog} onChange={e => setSearchLog(e.target.value)} placeholder="Cari nama / ID"
                           className="pl-8 pr-3 py-2 border rounded-xl text-xs font-medium outline-none w-44" style={{ borderColor: "var(--border)" }} />
                       </div>
+                      {(logCabangFilter !== "semua" || logRoleFilter !== "semua" || logKaryawanFilter !== "semua" || statusFilter !== "semua" || searchLog) && (
+                        <button onClick={() => { setLogCabangFilter("semua"); setLogRoleFilter("semua"); setLogKaryawanFilter("semua"); setStatusFilter("semua"); setSearchLog(""); }}
+                          className="text-[10px] font-semibold px-2.5 rounded-xl border hover:bg-gray-50" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }}>Reset Filter</button>
+                      )}
                     </div>
                   </div>
                   <div className="overflow-x-auto">
@@ -4956,7 +5028,7 @@ function DashboardAdmin({ session, onLogout }) {
                       </thead>
                       <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                         {pagedLog.length === 0 ? (
-                          <tr><td colSpan="11"><EmptyState title={searchLog || statusFilter !== "semua" || logKaryawanFilter !== "semua" || logTanggal ? "Tidak ditemukan" : "Belum ada catatan"} subtitle={searchLog || statusFilter !== "semua" || logKaryawanFilter !== "semua" || logTanggal ? "Coba ubah tanggal atau filter pencarian." : "Log absensi masuk/pulang akan tampil di sini."} icon={<IconClock className="w-5 h-5" />} /></td></tr>
+                          <tr><td colSpan="11"><EmptyState title={searchLog || statusFilter !== "semua" || logKaryawanFilter !== "semua" || logCabangFilter !== "semua" || logRoleFilter !== "semua" || logTanggal ? "Tidak ditemukan" : "Belum ada catatan"} subtitle={searchLog || statusFilter !== "semua" || logKaryawanFilter !== "semua" || logCabangFilter !== "semua" || logRoleFilter !== "semua" || logTanggal ? "Coba ubah tanggal atau filter pencarian." : "Log absensi masuk/pulang akan tampil di sini."} icon={<IconClock className="w-5 h-5" />} /></td></tr>
                         ) : (
                           pagedLog.map((g, idx) => {
                             const km = karyawanMap[g.karyawan_id];
@@ -4973,8 +5045,8 @@ function DashboardAdmin({ session, onLogout }) {
                                     </div>
                                   </div>
                                 </td>
-                                <td className="p-3.5">
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide whitespace-nowrap"
+                                <td className="p-3.5 text-center">
+                                  <span className="inline-flex items-center justify-center min-w-[76px] px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide whitespace-nowrap"
                                     style={{ background: roleInfo(km?.role).badgeBg, color: roleInfo(km?.role).badgeFg }}>{roleInfo(km?.role).label}</span>
                                 </td>
                                 <td className="p-3.5 whitespace-nowrap" style={{ color: "var(--ink-soft)" }}>{km?.cabang || "—"}</td>

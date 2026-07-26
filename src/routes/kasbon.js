@@ -44,6 +44,11 @@ router.post('/kasbon', async (req, res) => {
     if (Number(jumlah) <= 0) {
       return res.status(400).json({ message: 'Jumlah kasbon harus lebih dari 0' });
     }
+    if (Number(jumlah) < 10000) {
+      return res.status(400).json({
+        message: `Minimal pengajuan kasbon adalah Rp10.000. Jika maksud Anda Rp${Number(jumlah).toLocaleString('id-ID')} ribu, ketik "${Number(jumlah) * 1000}".`
+      });
+    }
     if (!region || !vendor) {
       return res.status(400).json({ message: 'Region dan vendor wajib diisi!' });
     }

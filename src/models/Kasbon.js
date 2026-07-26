@@ -6,7 +6,7 @@ const mongoose = require('mongoose');
 const kasbonSchema = new mongoose.Schema({
   karyawan_id: { type: String, required: true },
   nama: { type: String, required: true },
-  jumlah: { type: Number, required: true, min: 0 },
+  jumlah: { type: Number, required: true, min: [10000, 'Minimal pengajuan kasbon adalah Rp10.000'] },
   alasan: { type: String, default: '' },
   region: { type: String, required: true },
   vendor: { type: String, required: true },
