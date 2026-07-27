@@ -2223,6 +2223,17 @@ function DashboardAdmin({ session, onLogout }) {
     return [...set].sort((a, b) => roleInfo(a).label.localeCompare(roleInfo(b).label));
   }, [karyawanList]);
 
+  // Format tanggal berbasis waktu LOKAL (WIB), bukan UTC. Dipakai supaya filter tanggal di Log Absensi
+  // selalu konsisten dengan cara data dikelompokkan (groupedLog memakai toDateString() yang juga lokal)
+  // dan dengan tanggal yang ditampilkan di kolom CHECKIN. Sebelumnya filter memakai toISOString() (basis
+  // UTC) sehingga absen pagi WIB (00:00-06:59) bisa "geser" ke tanggal H-1 saat difilter.
+  const toLocalDateStr = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
   const filteredLog = useMemo(() => {
     const q = searchLog.trim().toLowerCase();
     return groupedLog.filter(g => {
@@ -2232,7 +2243,7 @@ function DashboardAdmin({ session, onLogout }) {
       if (statusFilter === "terlambat") matchStatus = !!telat;
       else if (statusFilter === "tepat") matchStatus = !!g.masuk && !telat;
       else if (statusFilter === "belum_checkout") matchStatus = !!g.masuk && !g.pulang;
-      const matchTanggal = !logTanggal || g.tanggal.toISOString().slice(0, 10) === logTanggal;
+      const matchTanggal = !logTanggal || toLocalDateStr(g.tanggal) === logTanggal;
       const matchKaryawan = logKaryawanFilter === "semua" || g.karyawan_id === logKaryawanFilter;
       const km = karyawanMap[g.karyawan_id];
       const matchCabang = logCabangFilter === "semua" || km?.cabang === logCabangFilter;
