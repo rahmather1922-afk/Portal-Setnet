@@ -367,7 +367,7 @@ const TandaiLunasKasbonModal = ({ item, onClose, onConfirm, submitting }) => {
             <div className="flex items-start gap-2.5 rounded-xl p-3" style={{ background: "var(--amber-soft)" }}>
               <IconAlert className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--amber)" }} />
               <p className="text-[11px] leading-relaxed" style={{ color: "var(--ink)" }}>
-                Gunakan tombol ini <b>HANYA</b> jika karyawan sudah membayar/mengembalikan kasbon secara <b>cash</b>, di luar potongan gaji.
+                Gunakan tombol ini <b>HANYA</b> jika karyawan sudah membayar/mengembalikan kasbon secara <b>cash & Transfer</b>, di luar potongan gaji.
               </p>
             </div>
             <div className="flex items-start gap-2.5 rounded-xl p-3" style={{ background: "var(--red-soft)" }}>
@@ -5862,7 +5862,7 @@ function DashboardAdmin({ session, onLogout }) {
                                         <span className="text-[10px] italic" style={{ color: "var(--ink-soft)" }}>Menunggu approval Owner</span>
                                       )}
                                       {k.status === "Disetujui" && !k.lunas && (
-                                        <button onClick={() => handleTandaiLunasKasbon(k)} title="Khusus jika karyawan bayar cash di luar potongan gaji" className="px-2.5 py-1.5 rounded-lg font-bold text-[10px] uppercase border" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }}>Tandai Lunas (Cash)</button>
+                                        <button onClick={() => handleTandaiLunasKasbon(k)} title="Khusus jika karyawan bayar cash di luar potongan gaji" className="px-2.5 py-1.5 rounded-lg font-bold text-[10px] uppercase border" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }}>Tandai Lunas</button>
                                       )}
                                     </div>
                                   </td>
