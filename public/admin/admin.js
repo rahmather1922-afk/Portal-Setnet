@@ -328,6 +328,91 @@ const ConfirmModal = ({ open, title, description, confirmLabel = "Hapus", onConf
   );
 };
 
+// Modal konfirmasi keputusan Kasbon (ACC / Tolak) — dipakai khusus owner di menu "Kasbon & Cuti".
+// Dibuat sebagai modal custom (bukan window.confirm/prompt polos) supaya nominal & nama karyawan
+// terlihat jelas sebelum keputusan final ditekan, plus ada kolom alasan penolakan yang rapi.
+const KasbonKeputusanModal = ({ data, onClose, onSubmit, submitting }) => {
+  const [alasan, setAlasan] = useState("");
+  useEffect(() => { setAlasan(""); }, [data]);
+  if (!data) return null;
+  const { item, status } = data;
+  const isAcc = status === "Disetujui";
+  const tone = isAcc ? "var(--green)" : "var(--red)";
+  const toneSoft = isAcc ? "var(--green-soft)" : "var(--red-soft)";
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.5)" }} onClick={submitting ? undefined : onClose}>
+      <div className="modal-in bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+        {/* Header berwarna sesuai jenis keputusan */}
+        <div className="px-6 pt-6 pb-5 text-center relative" style={{ background: `linear-gradient(180deg, ${toneSoft}, #fff)` }}>
+          <button onClick={onClose} disabled={submitting} className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-black/5 disabled:opacity-40">
+            <IconX className="w-4 h-4" style={{ color: "var(--ink-soft)" }} />
+          </button>
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm" style={{ background: tone, color: "#fff" }}>
+            {isAcc ? <IconCheck className="w-7 h-7" /> : <IconX className="w-7 h-7" />}
+          </div>
+          <h3 className="font-black font-display text-lg" style={{ color: "var(--ink)" }}>
+            {isAcc ? "Setujui Pengajuan Kasbon?" : "Tolak Pengajuan Kasbon?"}
+          </h3>
+          <p className="text-xs mt-1" style={{ color: "var(--ink-soft)" }}>
+            {isAcc ? "Kasbon akan otomatis memotong gaji karyawan ini di menu Salary." : "Karyawan akan menerima notifikasi penolakan kasbon ini."}
+          </p>
+        </div>
+
+        <div className="px-6 pb-6">
+          {/* Kartu ringkasan pengajuan */}
+          <div className="rounded-xl border p-3.5 flex items-center gap-3" style={{ borderColor: "var(--border)", background: "var(--canvas)" }}>
+            <Avatar name={item.nama} size={38} />
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-sm truncate" style={{ color: "var(--ink)" }}>{item.nama}</p>
+              <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>
+                {item.tanggal_pengajuan ? new Date(item.tanggal_pengajuan).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "—"}
+              </p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--ink-soft)" }}>Jumlah</p>
+              <p className="font-black text-sm font-mono" style={{ color: tone }}>{fmtRupiah(item.jumlah)}</p>
+            </div>
+          </div>
+          {item.keterangan && (
+            <p className="text-xs mt-2.5 leading-relaxed px-0.5" style={{ color: "var(--ink-soft)" }}>
+              <span className="font-semibold" style={{ color: "var(--ink)" }}>Keterangan: </span>{item.keterangan}
+            </p>
+          )}
+
+          {/* Kolom alasan penolakan — hanya muncul kalau statusnya Tolak */}
+          {!isAcc && (
+            <div className="mt-4">
+              <label className="text-[11px] font-bold uppercase tracking-wide mb-1.5 block" style={{ color: "var(--ink-soft)" }}>Alasan Penolakan (opsional)</label>
+              <textarea
+                value={alasan}
+                onChange={e => setAlasan(e.target.value)}
+                placeholder="Tulis alasan penolakan di sini, mis. kuota kasbon bulan ini sudah habis..."
+                rows={3}
+                className="w-full rounded-xl border px-3.5 py-2.5 text-xs resize-none focus:outline-none focus:ring-2"
+                style={{ borderColor: "var(--border)", "--tw-ring-color": "var(--red)" }}
+              />
+            </div>
+          )}
+
+          <div className="flex gap-2 mt-5">
+            <button onClick={onClose} disabled={submitting} className="flex-1 py-2.5 rounded-xl border font-semibold text-xs hover:bg-gray-50 disabled:opacity-50" style={{ borderColor: "var(--border)" }}>
+              Batal
+            </button>
+            <button
+              onClick={() => onSubmit(alasan)}
+              disabled={submitting}
+              className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white disabled:opacity-60 flex items-center justify-center gap-1.5"
+              style={{ background: tone }}
+            >
+              {submitting ? "Memproses..." : (isAcc ? "Ya, ACC Kasbon" : "Ya, Tolak Kasbon")}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const PhotoModal = ({ data, onClose }) => {
   if (!data) return null;
   return (
@@ -1809,6 +1894,9 @@ function DashboardAdmin({ session, onLogout }) {
   const [pagePengajuanCIS, setPagePengajuanCIS] = useState(1);
   const [pageSizePengajuanCIS, setPageSizePengajuanCIS] = useState(10);
   const PAGE_SIZE_OPTIONS_KASBON = [10, 20, 50, 100];
+  // Target modal konfirmasi ACC/Tolak Kasbon: { item, status } atau null kalau modal tertutup
+  const [kasbonKeputusanTarget, setKasbonKeputusanTarget] = useState(null);
+  const [kasbonKeputusanSubmitting, setKasbonKeputusanSubmitting] = useState(false);
 
   // ==================== NOTIFIKASI LONCENG (header): pengajuan kasbon & cuti/izin/sakit Pending ====================
   const [notifOpen, setNotifOpen] = useState(false);
@@ -3031,21 +3119,25 @@ function DashboardAdmin({ session, onLogout }) {
   ].filter(item => canAccess(session.role, item.key));
 
   // ==================== HANDLER: KASBON & PENGAJUAN CUTI/IZIN/SAKIT ====================
-  const handleKeputusanKasbon = async (item, status) => {
-    let catatan_admin = "";
-    if (status === "Ditolak") {
-      catatan_admin = window.prompt("Alasan penolakan kasbon (opsional):", "") || "";
-    }
+  // Dipanggil tombol ACC/Tolak di tabel Kasbon -> cuma membuka modal konfirmasi (KasbonKeputusanModal), belum eksekusi apa-apa ke server.
+  const handleKeputusanKasbon = (item, status) => setKasbonKeputusanTarget({ item, status });
+
+  // Dipanggil dari dalam KasbonKeputusanModal setelah owner menekan tombol konfirmasi final.
+  const submitKeputusanKasbon = async (catatan_admin) => {
+    if (!kasbonKeputusanTarget) return;
+    const { item, status } = kasbonKeputusanTarget;
+    setKasbonKeputusanSubmitting(true);
     try {
       const res = await fetch(`${TRACK_API}/kasbon/${item._id}/keputusan`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ status, catatan_admin }),
+        body: JSON.stringify({ status, catatan_admin: catatan_admin || "" }),
       });
       const resData = await res.json().catch(() => ({}));
       if (res.ok) { notify(resData.message || "Keputusan kasbon tersimpan"); muatSemuaData(true); }
       else notify(resData.message || "Gagal memproses keputusan kasbon", "error");
     } catch { notify("Gagal terhubung ke server", "error"); }
+    finally { setKasbonKeputusanSubmitting(false); setKasbonKeputusanTarget(null); }
   };
 
   const handleTandaiLunasKasbon = async (item) => {
@@ -4031,6 +4123,12 @@ function DashboardAdmin({ session, onLogout }) {
         confirmLabel="Ya, Keluar"
         onConfirm={() => { setLogoutConfirmOpen(false); onLogout(); }}
         onCancel={() => setLogoutConfirmOpen(false)}
+      />
+      <KasbonKeputusanModal
+        data={kasbonKeputusanTarget}
+        submitting={kasbonKeputusanSubmitting}
+        onClose={() => { if (!kasbonKeputusanSubmitting) setKasbonKeputusanTarget(null); }}
+        onSubmit={submitKeputusanKasbon}
       />
       <PhotoModal data={fotoPreview} onClose={() => setFotoPreview(null)} />
       <PmkReportModal data={pmkReportTarget} onClose={() => setPmkReportTarget(null)} />
