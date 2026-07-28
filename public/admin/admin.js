@@ -328,6 +328,81 @@ const ConfirmModal = ({ open, title, description, confirmLabel = "Hapus", onConf
   );
 };
 
+// Modal konfirmasi "Tandai Lunas (Cash)" — dipakai khusus owner di menu "Kasbon & Cuti".
+// Penjelasan panjang soal efek ke Salary dipecah jadi poin-poin dengan ikon, bukan satu paragraf
+// panjang di window.confirm bawaan browser, supaya lebih gampang dibaca sebelum owner menekan OK.
+const TandaiLunasKasbonModal = ({ item, onClose, onConfirm, submitting }) => {
+  if (!item) return null;
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.5)" }} onClick={submitting ? undefined : onClose}>
+      <div className="modal-in bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="px-6 pt-6 pb-5 text-center relative" style={{ background: "linear-gradient(180deg, var(--brand-soft), #fff)" }}>
+          <button onClick={onClose} disabled={submitting} className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-black/5 disabled:opacity-40">
+            <IconX className="w-4 h-4" style={{ color: "var(--ink-soft)" }} />
+          </button>
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm" style={{ background: "var(--brand-dark)", color: "#fff" }}>
+            <IconWallet className="w-7 h-7" />
+          </div>
+          <h3 className="font-black font-display text-lg" style={{ color: "var(--ink)" }}>Tandai Lunas (Cash)?</h3>
+          <p className="text-xs mt-1" style={{ color: "var(--ink-soft)" }}>Konfirmasi sebelum menandai kasbon ini selesai secara manual.</p>
+        </div>
+
+        <div className="px-6 pb-6">
+          {/* Kartu ringkasan kasbon */}
+          <div className="rounded-xl border p-3.5 flex items-center gap-3" style={{ borderColor: "var(--border)", background: "var(--canvas)" }}>
+            <Avatar name={item.nama} size={38} />
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-sm truncate" style={{ color: "var(--ink)" }}>{item.nama}</p>
+              <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>Kasbon akan ditandai LUNAS</p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--ink-soft)" }}>Jumlah</p>
+              <p className="font-black text-sm font-mono" style={{ color: "var(--brand-dark)" }}>{fmtRupiah(item.jumlah)}</p>
+            </div>
+          </div>
+
+          {/* Poin-poin penjelasan, gantikan paragraf panjang di window.confirm */}
+          <div className="mt-4 space-y-2.5">
+            <div className="flex items-start gap-2.5 rounded-xl p-3" style={{ background: "var(--amber-soft)" }}>
+              <IconAlert className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--amber)" }} />
+              <p className="text-[11px] leading-relaxed" style={{ color: "var(--ink)" }}>
+                Gunakan tombol ini <b>HANYA</b> jika karyawan sudah membayar/mengembalikan kasbon secara <b>cash</b>, di luar potongan gaji.
+              </p>
+            </div>
+            <div className="flex items-start gap-2.5 rounded-xl p-3" style={{ background: "var(--red-soft)" }}>
+              <IconX className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--red)" }} />
+              <p className="text-[11px] leading-relaxed" style={{ color: "var(--ink)" }}>
+                Setelah ditandai lunas di sini, kasbon ini <b>tidak akan lagi</b> otomatis memotong gaji karyawan di menu Salary.
+              </p>
+            </div>
+            <div className="flex items-start gap-2.5 rounded-xl p-3" style={{ background: "var(--green-soft)" }}>
+              <IconCheck className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--green)" }} />
+              <p className="text-[11px] leading-relaxed" style={{ color: "var(--ink)" }}>
+                Kalau justru ingin kasbon ini dipotong dari gaji bulan ini, <b>jangan lanjutkan</b> — biarkan saja, nanti otomatis lunas sendiri saat proses gaji di menu Salary.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-2 mt-5">
+            <button onClick={onClose} disabled={submitting} className="flex-1 py-2.5 rounded-xl border font-semibold text-xs hover:bg-gray-50 disabled:opacity-50" style={{ borderColor: "var(--border)" }}>
+              Batal
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={submitting}
+              className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white disabled:opacity-60"
+              style={{ background: "var(--brand-dark)" }}
+            >
+              {submitting ? "Memproses..." : "Ya, Tandai Lunas"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Modal konfirmasi keputusan Kasbon (ACC / Tolak) — dipakai khusus owner di menu "Kasbon & Cuti".
 // Dibuat sebagai modal custom (bukan window.confirm/prompt polos) supaya nominal & nama karyawan
 // terlihat jelas sebelum keputusan final ditekan, plus ada kolom alasan penolakan yang rapi.
@@ -1897,6 +1972,9 @@ function DashboardAdmin({ session, onLogout }) {
   // Target modal konfirmasi ACC/Tolak Kasbon: { item, status } atau null kalau modal tertutup
   const [kasbonKeputusanTarget, setKasbonKeputusanTarget] = useState(null);
   const [kasbonKeputusanSubmitting, setKasbonKeputusanSubmitting] = useState(false);
+  // Target modal konfirmasi "Tandai Lunas (Cash)" kasbon
+  const [kasbonLunasTarget, setKasbonLunasTarget] = useState(null);
+  const [kasbonLunasSubmitting, setKasbonLunasSubmitting] = useState(false);
 
   // ==================== NOTIFIKASI LONCENG (header): pengajuan kasbon & cuti/izin/sakit Pending ====================
   const [notifOpen, setNotifOpen] = useState(false);
@@ -3140,25 +3218,20 @@ function DashboardAdmin({ session, onLogout }) {
     finally { setKasbonKeputusanSubmitting(false); setKasbonKeputusanTarget(null); }
   };
 
-  const handleTandaiLunasKasbon = async (item) => {
-    // PENTING: tombol ini KHUSUS untuk kasbon yang dibayar/dilunasi karyawan secara CASH di luar sistem gajian.
-    // Kalau ditandai lunas di sini, kasbon ini TIDAK akan lagi ikut dipotong otomatis di menu Salary saat gajian,
-    // karena sistem menganggapnya sudah selesai. Kalau kamu mau kasbon ini otomatis memotong gaji bulan ini,
-    // JANGAN tekan tombol ini — biarkan saja, nanti otomatis kepotong & ke-lunas-kan sendiri saat kamu tekan
-    // "Tandai Sudah Dibayar" di menu Salary -> Pembayaran Gaji Bulanan.
-    const yakin = window.confirm(
-      `Tandai kasbon ${item.nama} (${fmtRupiah(item.jumlah)}) sebagai LUNAS?\n\n` +
-      `Gunakan ini HANYA jika karyawan sudah membayar/mengembalikan kasbon ini secara cash di luar potongan gaji.\n\n` +
-      `Setelah ditandai lunas di sini, kasbon ini TIDAK akan lagi otomatis memotong gaji karyawan tsb di menu Salary. ` +
-      `Kalau kamu justru ingin kasbon ini dipotong dari gaji bulan ini, JANGAN tekan OK — biarkan saja, nanti akan otomatis lunas sendiri saat kamu proses pembayaran gaji di menu Salary.`
-    );
-    if (!yakin) return;
+  // Dipanggil tombol "Tandai Lunas (Cash)" -> cuma membuka modal konfirmasi.
+  const handleTandaiLunasKasbon = (item) => setKasbonLunasTarget(item);
+
+  // Dipanggil dari dalam TandaiLunasKasbonModal setelah owner menekan tombol konfirmasi final.
+  const submitTandaiLunasKasbon = async () => {
+    if (!kasbonLunasTarget) return;
+    setKasbonLunasSubmitting(true);
     try {
-      const res = await fetch(`${TRACK_API}/kasbon/${item._id}/lunas`, { method: "PUT", headers: authHeaders() });
+      const res = await fetch(`${TRACK_API}/kasbon/${kasbonLunasTarget._id}/lunas`, { method: "PUT", headers: authHeaders() });
       const resData = await res.json().catch(() => ({}));
       if (res.ok) { notify("Kasbon ditandai lunas (cash, di luar potongan gaji)"); muatSemuaData(true); }
       else notify(resData.message || "Gagal menandai lunas", "error");
     } catch { notify("Gagal terhubung ke server", "error"); }
+    finally { setKasbonLunasSubmitting(false); setKasbonLunasTarget(null); }
   };
 
   // ==================== HANDLER: MODUL SALARY ====================
@@ -4129,6 +4202,12 @@ function DashboardAdmin({ session, onLogout }) {
         submitting={kasbonKeputusanSubmitting}
         onClose={() => { if (!kasbonKeputusanSubmitting) setKasbonKeputusanTarget(null); }}
         onSubmit={submitKeputusanKasbon}
+      />
+      <TandaiLunasKasbonModal
+        item={kasbonLunasTarget}
+        submitting={kasbonLunasSubmitting}
+        onClose={() => { if (!kasbonLunasSubmitting) setKasbonLunasTarget(null); }}
+        onConfirm={submitTandaiLunasKasbon}
       />
       <PhotoModal data={fotoPreview} onClose={() => setFotoPreview(null)} />
       <PmkReportModal data={pmkReportTarget} onClose={() => setPmkReportTarget(null)} />
