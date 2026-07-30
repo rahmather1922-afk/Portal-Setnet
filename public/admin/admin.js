@@ -36,6 +36,9 @@ const IconBox = (p) => <Icon {...p} path={<><path d="M21 8 12 3 3 8l9 5 9-5Z"/><
 const IconCable = (p) => <Icon {...p} path={<><path d="M4 4v4a4 4 0 0 0 4 4h1"/><path d="M20 20v-4a4 4 0 0 0-4-4h-1"/><circle cx="4" cy="4" r="2"/><circle cx="20" cy="20" r="2"/><path d="M9 12h6"/></>} />;
 const IconReport = (p) => <Icon {...p} path={<><path d="M4 19V5a1 1 0 0 1 1-1h9l5 5v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"/><path d="M13 4v5h5"/><path d="M8 13h8"/><path d="M8 16.5h8"/></>} />;
 const IconBell = (p) => <Icon {...p} path={<><path d="M6 8a6 6 0 0 1 12 0c0 4.2 1.3 6.2 2 7H4c.7-.8 2-2.8 2-7Z"/><path d="M10 19a2 2 0 0 0 4 0"/></>} />;
+const IconCalendarDays = (p) => <Icon {...p} path={<><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18"/><path d="M8 2.5v4"/><path d="M16 2.5v4"/><path d="M7.5 13.5h2M11.75 13.5h2M16 13.5h2M7.5 17h2M11.75 17h2"/></>} />;
+const IconFileText = (p) => <Icon {...p} path={<><path d="M6 2.5h9l3 3v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1Z"/><path d="M15 2.5v3a1 1 0 0 0 1 1h3"/><path d="M8.5 12h7"/><path d="M8.5 15.5h7"/><path d="M8.5 19h4"/></>} />;
+const IconHeartPulse = (p) => <Icon {...p} path={<><path d="M12 20.5s-7.5-4.6-9.8-9.4C.7 7.5 2.4 4 6 4c2 0 3.4 1.1 4 2.2C10.6 5.1 12 4 14 4c3.6 0 5.3 3.5 3.8 7.1-.5 1.1-1.2 2.1-2 3"/><path d="M3.5 12h3.2l1.6-2.6L10 15l1.7-4h2.4l1.4 2h3"/></>} />;
 
 /* ---------------------------------- HELPERS ---------------------------------- */
 const AVATAR_BG_PALETTE = ["#E3F3F0","#FEF3E2","#EAF0FE","#FDECEC","#EDE9FE","#E0F6FA"];
@@ -190,6 +193,20 @@ const keputusanStatusTone = (s) => ({
   "Disetujui": { bg: "var(--green-soft)", fg: "var(--green)" },
   "Ditolak": { bg: "var(--red-soft)", fg: "var(--red)" },
 }[s] || { bg: "var(--canvas)", fg: "var(--ink-soft)" });
+// Warna & ikon per jenis pengajuan (Cuti/Izin/Sakit), dipakai di badge tabel & header modal keputusan
+// supaya owner bisa langsung bedakan jenisnya sekilas pandang tanpa baca teks dulu.
+const jenisPengajuanTone = (j) => ({
+  "Cuti": { bg: "var(--brand-soft)", fg: "var(--brand-dark)", icon: IconCalendarDays },
+  "Izin": { bg: "var(--amber-soft)", fg: "var(--amber)", icon: IconFileText },
+  "Sakit": { bg: "var(--red-soft)", fg: "var(--red)", icon: IconHeartPulse },
+}[j] || { bg: "var(--canvas)", fg: "var(--ink-soft)", icon: IconFileText });
+// Hitung lama hari (inklusif tanggal mulai & selesai) untuk ditampilkan di modal keputusan.
+const hitungLamaHari = (mulai, selesai) => {
+  if (!mulai || !selesai) return null;
+  const a = new Date(mulai), b = new Date(selesai);
+  const diff = Math.round((b.setHours(0,0,0,0) - a.setHours(0,0,0,0)) / 86400000) + 1;
+  return diff > 0 ? diff : null;
+};
 
 // --- Konstanta Modul Pemakaian Material — warna kategori biar Laporan enak dibaca Owner ---
 const kategoriMaterialTone = (k) => ({
@@ -480,6 +497,112 @@ const KasbonKeputusanModal = ({ data, onClose, onSubmit, submitting }) => {
               style={{ background: tone }}
             >
               {submitting ? "Memproses..." : (isAcc ? "Ya, ACC Kasbon" : "Ya, Tolak Kasbon")}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Modal konfirmasi keputusan Pengajuan Cuti/Izin/Sakit (ACC / Tolak) — dipakai owner/hrd di menu "Kasbon & Cuti",
+// tab "Cuti/Izin/Sakit". Dibuat senada dengan KasbonKeputusanModal supaya konsisten & tidak pakai window.prompt polos.
+const PengajuanKeputusanModal = ({ data, onClose, onSubmit, submitting }) => {
+  const [alasan, setAlasan] = useState("");
+  useEffect(() => { setAlasan(""); }, [data]);
+  if (!data) return null;
+  const { item, status } = data;
+  const isAcc = status === "Disetujui";
+  const tone = isAcc ? "var(--green)" : "var(--red)";
+  const toneSoft = isAcc ? "var(--green-soft)" : "var(--red-soft)";
+  const jTone = jenisPengajuanTone(item.jenis);
+  const JIcon = jTone.icon;
+  const lamaHari = hitungLamaHari(item.tanggal_mulai, item.tanggal_selesai);
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.5)" }} onClick={submitting ? undefined : onClose}>
+      <div className="modal-in bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+        {/* Header berwarna sesuai jenis keputusan */}
+        <div className="px-6 pt-6 pb-5 text-center relative" style={{ background: `linear-gradient(180deg, ${toneSoft}, #fff)` }}>
+          <button onClick={onClose} disabled={submitting} className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-black/5 disabled:opacity-40">
+            <IconX className="w-4 h-4" style={{ color: "var(--ink-soft)" }} />
+          </button>
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm" style={{ background: tone, color: "#fff" }}>
+            {isAcc ? <IconCheck className="w-7 h-7" /> : <IconX className="w-7 h-7" />}
+          </div>
+          <h3 className="font-black font-display text-lg" style={{ color: "var(--ink)" }}>
+            {isAcc ? `Setujui Pengajuan ${item.jenis}?` : `Tolak Pengajuan ${item.jenis}?`}
+          </h3>
+          <p className="text-xs mt-1" style={{ color: "var(--ink-soft)" }}>
+            {isAcc ? "Karyawan akan menerima notifikasi bahwa pengajuannya disetujui." : "Karyawan akan menerima notifikasi penolakan pengajuan ini."}
+          </p>
+        </div>
+
+        <div className="px-6 pb-6">
+          {/* Kartu ringkasan karyawan + jenis pengajuan */}
+          <div className="rounded-xl border p-3.5 flex items-center gap-3" style={{ borderColor: "var(--border)", background: "var(--canvas)" }}>
+            <Avatar name={item.nama} size={38} />
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-sm truncate" style={{ color: "var(--ink)" }}>{item.nama}</p>
+              <p className="text-[11px] font-mono" style={{ color: "var(--ink-soft)" }}>{item.karyawan_id}</p>
+            </div>
+            <span className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wide shrink-0" style={{ background: jTone.bg, color: jTone.fg }}>
+              <JIcon className="w-3 h-3" /> {item.jenis}
+            </span>
+          </div>
+
+          {/* Periode tanggal & durasi */}
+          <div className="rounded-xl border p-3.5 mt-2.5 flex items-center gap-3" style={{ borderColor: "var(--border)" }}>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: jTone.bg, color: jTone.fg }}>
+              <IconCalendarDays className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--ink-soft)" }}>Periode</p>
+              <p className="font-bold text-xs" style={{ color: "var(--ink)" }}>
+                {item.tanggal_mulai ? new Date(item.tanggal_mulai).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                {" – "}
+                {item.tanggal_selesai ? new Date(item.tanggal_selesai).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+              </p>
+            </div>
+            {lamaHari && (
+              <div className="text-right shrink-0">
+                <p className="font-black text-sm" style={{ color: tone }}>{lamaHari}</p>
+                <p className="text-[10px] font-semibold" style={{ color: "var(--ink-soft)" }}>hari</p>
+              </div>
+            )}
+          </div>
+
+          {item.alasan && (
+            <p className="text-xs mt-2.5 leading-relaxed px-0.5" style={{ color: "var(--ink-soft)" }}>
+              <span className="font-semibold" style={{ color: "var(--ink)" }}>Alasan: </span>{item.alasan}
+            </p>
+          )}
+
+          {/* Kolom alasan penolakan — hanya muncul kalau statusnya Tolak */}
+          {!isAcc && (
+            <div className="mt-4">
+              <label className="text-[11px] font-bold uppercase tracking-wide mb-1.5 block" style={{ color: "var(--ink-soft)" }}>Alasan Penolakan (opsional)</label>
+              <textarea
+                value={alasan}
+                onChange={e => setAlasan(e.target.value)}
+                placeholder={`Tulis alasan penolakan di sini, mis. jadwal ${item.jenis.toLowerCase()} bentrok dengan pekerjaan...`}
+                rows={3}
+                className="w-full rounded-xl border px-3.5 py-2.5 text-xs resize-none focus:outline-none focus:ring-2"
+                style={{ borderColor: "var(--border)", "--tw-ring-color": "var(--red)" }}
+              />
+            </div>
+          )}
+
+          <div className="flex gap-2 mt-5">
+            <button onClick={onClose} disabled={submitting} className="flex-1 py-2.5 rounded-xl border font-semibold text-xs hover:bg-gray-50 disabled:opacity-50" style={{ borderColor: "var(--border)" }}>
+              Batal
+            </button>
+            <button
+              onClick={() => onSubmit(alasan)}
+              disabled={submitting}
+              className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white disabled:opacity-60 flex items-center justify-center gap-1.5"
+              style={{ background: tone }}
+            >
+              {submitting ? "Memproses..." : (isAcc ? `Ya, ACC ${item.jenis}` : `Ya, Tolak ${item.jenis}`)}
             </button>
           </div>
         </div>
@@ -1975,6 +2098,9 @@ function DashboardAdmin({ session, onLogout }) {
   // Target modal konfirmasi "Tandai Lunas (Cash)" kasbon
   const [kasbonLunasTarget, setKasbonLunasTarget] = useState(null);
   const [kasbonLunasSubmitting, setKasbonLunasSubmitting] = useState(false);
+  // Target modal konfirmasi ACC/Tolak Pengajuan Cuti/Izin/Sakit: { item, status } atau null kalau modal tertutup
+  const [pengajuanKeputusanTarget, setPengajuanKeputusanTarget] = useState(null);
+  const [pengajuanKeputusanSubmitting, setPengajuanKeputusanSubmitting] = useState(false);
 
   // ==================== NOTIFIKASI LONCENG (header): pengajuan kasbon & cuti/izin/sakit Pending ====================
   const [notifOpen, setNotifOpen] = useState(false);
@@ -3393,11 +3519,14 @@ function DashboardAdmin({ session, onLogout }) {
   const pagedSalaryPayment = filteredSalaryPayment.slice((pageSalaryPaymentAman - 1) * pageSizeSalaryPayment, pageSalaryPaymentAman * pageSizeSalaryPayment);
   useEffect(() => { setPageSalaryPayment(1); }, [searchSalaryPayment, salaryPaymentStatusFilter, pageSizeSalaryPayment, salaryPeriode]);
 
-  const handleKeputusanPengajuan = async (item, status) => {
-    let catatan_admin = "";
-    if (status === "Ditolak") {
-      catatan_admin = window.prompt(`Alasan penolakan ${item.jenis.toLowerCase()} (opsional):`, "") || "";
-    }
+  // Dipanggil tombol ACC/Tolak di tabel Cuti/Izin/Sakit -> cuma membuka modal konfirmasi (PengajuanKeputusanModal), belum eksekusi apa-apa ke server.
+  const handleKeputusanPengajuan = (item, status) => setPengajuanKeputusanTarget({ item, status });
+
+  // Dipanggil dari dalam PengajuanKeputusanModal setelah owner/hrd menekan tombol konfirmasi final.
+  const submitKeputusanPengajuan = async (catatan_admin) => {
+    if (!pengajuanKeputusanTarget) return;
+    const { item, status } = pengajuanKeputusanTarget;
+    setPengajuanKeputusanSubmitting(true);
     try {
       const res = await fetch(`${TRACK_API}/pengajuan/${item._id}/keputusan`, {
         method: "PUT",
@@ -3408,6 +3537,7 @@ function DashboardAdmin({ session, onLogout }) {
       if (res.ok) { notify(resData.message || "Keputusan tersimpan"); muatSemuaData(true); }
       else notify(resData.message || "Gagal memproses keputusan", "error");
     } catch { notify("Gagal terhubung ke server", "error"); }
+    finally { setPengajuanKeputusanSubmitting(false); setPengajuanKeputusanTarget(null); }
   };
 
   // ==================== MODUL MATERIAL: handlers ====================
@@ -4208,6 +4338,12 @@ function DashboardAdmin({ session, onLogout }) {
         submitting={kasbonLunasSubmitting}
         onClose={() => { if (!kasbonLunasSubmitting) setKasbonLunasTarget(null); }}
         onConfirm={submitTandaiLunasKasbon}
+      />
+      <PengajuanKeputusanModal
+        data={pengajuanKeputusanTarget}
+        submitting={pengajuanKeputusanSubmitting}
+        onClose={() => { if (!pengajuanKeputusanSubmitting) setPengajuanKeputusanTarget(null); }}
+        onSubmit={submitKeputusanPengajuan}
       />
       <PhotoModal data={fotoPreview} onClose={() => setFotoPreview(null)} />
       <PmkReportModal data={pmkReportTarget} onClose={() => setPmkReportTarget(null)} />
@@ -5928,16 +6064,29 @@ function DashboardAdmin({ session, onLogout }) {
                               <tr><td colSpan="7"><EmptyState title={(searchPengajuanCIS || pengajuanCISStatusFilter !== "semua") ? "Tidak ditemukan" : "Belum ada pengajuan"} subtitle={(searchPengajuanCIS || pengajuanCISStatusFilter !== "semua") ? "Coba ubah kata kunci atau filter." : "Pengajuan cuti/izin/sakit dari karyawan akan muncul di sini."} icon={<IconClock className="w-5 h-5" />} /></td></tr>
                             ) : pagedPengajuanCIS.map((p, idx) => {
                               const tone = keputusanStatusTone(p.status);
+                              const jTone = jenisPengajuanTone(p.jenis);
+                              const JIcon = jTone.icon;
+                              const lamaHariRow = hitungLamaHari(p.tanggal_mulai, p.tanggal_selesai);
                               return (
                                 <tr key={p._id} className="hover:bg-gray-50/60 transition align-top">
                                   <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{(pagePengajuanCISAman - 1) * pageSizePengajuanCIS + idx + 1}</td>
                                   <td className="p-3.5">
-                                    <p className="font-bold text-sm" style={{ color: "var(--ink)" }}>{p.nama}</p>
-                                    <p className="text-[10px] font-mono" style={{ color: "var(--ink-soft)" }}>{p.karyawan_id}</p>
+                                    <div className="flex items-center gap-2.5">
+                                      <Avatar name={p.nama} size={30} />
+                                      <div className="min-w-0">
+                                        <p className="font-bold text-sm truncate" style={{ color: "var(--ink)" }}>{p.nama}</p>
+                                        <p className="text-[10px] font-mono" style={{ color: "var(--ink-soft)" }}>{p.karyawan_id}</p>
+                                      </div>
+                                    </div>
                                   </td>
-                                  <td className="p-3.5 text-center font-bold" style={{ color: "var(--ink)" }}>{p.jenis}</td>
+                                  <td className="p-3.5 text-center">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-black text-[10px] uppercase tracking-wide" style={{ background: jTone.bg, color: jTone.fg }}>
+                                      <JIcon className="w-3 h-3" /> {p.jenis}
+                                    </span>
+                                  </td>
                                   <td className="p-3.5 text-center" style={{ color: "var(--ink-soft)" }}>
-                                    {new Date(p.tanggal_mulai).toLocaleDateString("id-ID")} – {new Date(p.tanggal_selesai).toLocaleDateString("id-ID")}
+                                    <p>{new Date(p.tanggal_mulai).toLocaleDateString("id-ID")} – {new Date(p.tanggal_selesai).toLocaleDateString("id-ID")}</p>
+                                    {lamaHariRow && <p className="text-[10px] font-bold mt-0.5" style={{ color: "var(--ink)" }}>{lamaHariRow} hari</p>}
                                   </td>
                                   <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{p.alasan || "-"}</td>
                                   <td className="p-3.5 text-center">
