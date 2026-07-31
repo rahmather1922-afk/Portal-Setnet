@@ -100,6 +100,10 @@ const ROLES = {
   karyawan: { label: "Teknisi (Legacy)", badgeBg: "#F1F5F9", badgeFg: "#475467" },
 };
 const roleInfo = (r) => ROLES[r] || { label: r || "—", badgeBg: "var(--canvas)", badgeFg: "var(--ink-soft)" };
+// Urutan tingkatan jabatan (dari paling tinggi ke paling rendah), dipakai untuk mengurutkan
+// tabel Database Karyawan: tingkatan jabatan dulu, baru abjad nama di dalam tingkatan yang sama.
+const ROLE_RANK = { owner: 1, hrd: 2, finance: 3, admin: 4, gudang: 5, teknisi: 6, karyawan: 7 };
+const roleRank = (r) => ROLE_RANK[r] ?? 99;
 
 // Role yang boleh masuk Portal Admin
 const PORTAL_ROLES = ["admin", "gudang", "finance", "owner", "hrd"];
@@ -2036,6 +2040,7 @@ function DashboardAdmin({ session, onLogout }) {
 
   // form state
   const [isEditing, setIsEditing] = useState(false);
+  const [karyawanModalOpen, setKaryawanModalOpen] = useState(false);
   const [editId, setEditId] = useState(null);
   const [karyawanId, setKaryawanId] = useState("");
   const [namaKaryawan, setNamaKaryawan] = useState("");
@@ -2085,6 +2090,7 @@ function DashboardAdmin({ session, onLogout }) {
   const [kasbonSubTab, setKasbonSubTab] = useState("Kasbon");
   const [searchKasbon, setSearchKasbon] = useState("");
   const [kasbonStatusFilter, setKasbonStatusFilter] = useState("semua");
+  const [kasbonBulanFilter, setKasbonBulanFilter] = useState(""); // "" = Semua Bulan, isi format "YYYY-MM" dari <input type="month">
   const [pageKasbon, setPageKasbon] = useState(1);
   const [pageSizeKasbon, setPageSizeKasbon] = useState(10);
   const [searchPengajuanCIS, setSearchPengajuanCIS] = useState("");
@@ -2114,11 +2120,15 @@ function DashboardAdmin({ session, onLogout }) {
   const [salaryPaymentList, setSalaryPaymentList] = useState([]); // ringkasan bayar utk periode terpilih
   const [salaryPaymentLoading, setSalaryPaymentLoading] = useState(false);
   const [searchSalary, setSearchSalary] = useState("");
+  const [cabangFilterSalary, setCabangFilterSalary] = useState("semua");
+  const [roleFilterSalary, setRoleFilterSalary] = useState("semua");
   const [pageSalary, setPageSalary] = useState(1);
   const [pageSizeSalary, setPageSizeSalary] = useState(10);
   // Search, filter status, & pagination khusus tabel "Pembayaran Gaji Bulanan" (terpisah dari tabel master di atasnya)
   const [searchSalaryPayment, setSearchSalaryPayment] = useState("");
   const [salaryPaymentStatusFilter, setSalaryPaymentStatusFilter] = useState("semua");
+  const [cabangFilterSalaryPayment, setCabangFilterSalaryPayment] = useState("semua");
+  const [roleFilterSalaryPayment, setRoleFilterSalaryPayment] = useState("semua");
   const [pageSalaryPayment, setPageSalaryPayment] = useState(1);
   const [pageSizeSalaryPayment, setPageSizeSalaryPayment] = useState(10);
   const PAGE_SIZE_OPTIONS_SALARY = [5, 10, 20, 50, 100];
@@ -2310,7 +2320,7 @@ function DashboardAdmin({ session, onLogout }) {
   const resetForm = () => {
     setIsEditing(false); setEditId(null); setKaryawanId(""); setNamaKaryawan("");
     setPasswordKaryawan(""); setRoleKaryawan("teknisi"); setNikKaryawan(""); setTanggalLahirKaryawan(""); setNoTelpKaryawan(""); setCabangKaryawan(""); setAlamatKaryawan("");
-    setFormErrors({}); setShowPassword(false);
+    setFormErrors({}); setShowPassword(false); setKaryawanModalOpen(false);
   };
 
   const validate = () => {
@@ -2367,7 +2377,12 @@ function DashboardAdmin({ session, onLogout }) {
     setNamaKaryawan(k.nama); setRoleKaryawan(k.role); setNikKaryawan(k.nik || ""); setTanggalLahirKaryawan(k.tanggal_lahir ? k.tanggal_lahir.slice(0, 10) : ""); setNoTelpKaryawan(k.no_telp || ""); setCabangKaryawan(k.cabang || ""); setAlamatKaryawan(k.alamat || "");
     setPasswordKaryawan("********"); setFormErrors({});
     setCurrentMenu("crud");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setKaryawanModalOpen(true);
+  };
+
+  const bukaModalTambahKaryawan = () => {
+    resetForm();
+    setKaryawanModalOpen(true);
   };
 
   const hapusKaryawan = async () => {
@@ -2452,6 +2467,13 @@ function DashboardAdmin({ session, onLogout }) {
       return matchQ && matchRole && matchStatus;
     });
     list = [...list].sort((a, b) => {
+      // Default (kolom Nama, yang tidak punya sort manual): urutkan berdasarkan tingkatan
+      // jabatan dulu (Owner paling atas, dst.), baru abjad nama di tingkatan yang sama.
+      if (sortKey === "nama") {
+        const ra = roleRank(a.role), rb = roleRank(b.role);
+        if (ra !== rb) return sortDir === "asc" ? ra - rb : rb - ra;
+        return (a.nama || "").localeCompare(b.nama || "");
+      }
       const va = (a[sortKey] || "").toString().toLowerCase();
       const vb = (b[sortKey] || "").toString().toLowerCase();
       return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
@@ -2563,7 +2585,16 @@ function DashboardAdmin({ session, onLogout }) {
   const pulangHariIni = useMemo(() => absensiHariIni.filter(a => a.status === "Pulang"), [absensiHariIni]);
   const hadirHariIniCount = useMemo(() => new Set(masukHariIni.map(a => a.karyawan_id)).size, [masukHariIni]);
   const kehadiranHariIniPct = karyawanList.length > 0 ? Math.round((hadirHariIniCount / karyawanList.length) * 100) : 0;
-  const belumAbsenCount = Math.max(karyawanList.length - hadirHariIniCount, 0);
+
+  // 1b. Daftar Karyawan yang BELUM Absen Masuk Hari Ini (hanya karyawan berstatus Aktif —
+  // karyawan Non Aktif tidak dihitung karena memang sudah tidak bertugas/tidak wajib absen).
+  const karyawanBelumAbsenHariIni = useMemo(() => {
+    const sudahHadirIds = new Set(masukHariIni.map(a => a.karyawan_id));
+    return karyawanList
+      .filter(k => (k.status || "Aktif") !== "Non Aktif" && !sudahHadirIds.has(k.karyawan_id))
+      .sort((a, b) => (a.nama || "").localeCompare(b.nama || ""));
+  }, [karyawanList, masukHariIni]);
+  const belumAbsenCount = karyawanBelumAbsenHariIni.length;
 
   // 2. Grafik Kehadiran 7 Hari Terakhir (jumlah "Masuk" per hari, H-6 s.d. hari ini)
   const kehadiran7Hari = useMemo(() => {
@@ -2618,20 +2649,8 @@ function DashboardAdmin({ session, onLogout }) {
     [masukHariIni]
   );
 
-  // 6. Karyawan Ulang Tahun Hari Ini
-  const ulangTahunHariIni = useMemo(() => {
-    const now = new Date();
-    return karyawanList.filter(k => {
-      if (!k.tanggal_lahir) return false;
-      const d = new Date(k.tanggal_lahir);
-      if (isNaN(d)) return false;
-      return d.getDate() === now.getDate() && d.getMonth() === now.getMonth();
-    }).map(k => {
-      const d = new Date(k.tanggal_lahir);
-      const usia = new Date().getFullYear() - d.getFullYear();
-      return { ...k, usia };
-    });
-  }, [karyawanList]);
+  // 6. (Sebelumnya: Karyawan Ulang Tahun Hari Ini — sekarang card ini diganti menjadi
+  // "Karyawan Belum Absen Hari Ini", lihat memo karyawanBelumAbsenHariIni di atas.)
 
   /* ---------------- MODUL KEUANGAN (Staf Finance & Owner) ---------------- */
   const [finEditId, setFinEditId] = useState(null);
@@ -3460,7 +3479,13 @@ function DashboardAdmin({ session, onLogout }) {
 
   const filteredSalary = useMemo(() => {
     const q = searchSalary.trim().toLowerCase();
-    const hasil = !q ? salaryList : salaryList.filter(s => s.nama?.toLowerCase().includes(q) || s.karyawan_id?.toLowerCase().includes(q));
+    const hasil = salaryList.filter(s => {
+      const kw = karyawanMap[s.karyawan_id];
+      const cocokCari = !q || s.nama?.toLowerCase().includes(q) || s.karyawan_id?.toLowerCase().includes(q);
+      const cocokCabang = cabangFilterSalary === "semua" || (kw?.cabang || "") === cabangFilterSalary;
+      const cocokRole = roleFilterSalary === "semua" || kw?.role === roleFilterSalary;
+      return cocokCari && cocokCabang && cocokRole;
+    });
     // Karyawan yang masih punya kasbon belum lunas dinaikkan ke atas (nominal terbesar duluan),
     // supaya Owner langsung kelihatan siapa yang masih ada tanggungan tanpa perlu scroll cari-cari.
     // Sisanya (kasbon 0 / lunas) tetap urut abjad nama seperti biasa di bawahnya.
@@ -3471,11 +3496,11 @@ function DashboardAdmin({ session, onLogout }) {
       if (kasbonA > 0 !== kasbonB > 0) return kasbonA > 0 ? -1 : 1;
       return (a.nama || "").localeCompare(b.nama || "");
     });
-  }, [salaryList, searchSalary]);
+  }, [salaryList, searchSalary, cabangFilterSalary, roleFilterSalary, karyawanMap]);
   const totalPagesSalary = Math.max(1, Math.ceil(filteredSalary.length / pageSizeSalary));
   const pageSalaryAman = Math.min(pageSalary, totalPagesSalary);
   const pagedSalary = filteredSalary.slice((pageSalaryAman - 1) * pageSizeSalary, pageSalaryAman * pageSizeSalary);
-  useEffect(() => { setPageSalary(1); }, [searchSalary, pageSizeSalary]);
+  useEffect(() => { setPageSalary(1); }, [searchSalary, cabangFilterSalary, roleFilterSalary, pageSizeSalary]);
 
   // Ringkasan (card) utk tabel master "Gaji Pokok & Limit Kasbon" — dijumlah dari SELURUH karyawan (bukan cuma hasil filter/halaman aktif)
   const salarySummary = useMemo(() => salaryList.reduce((a, s) => ({
@@ -3491,6 +3516,13 @@ function DashboardAdmin({ session, onLogout }) {
     salaryPaymentList.forEach(p => { map[p.karyawan_id] = p; });
     return map;
   }, [salaryPaymentList]);
+  // Peta cepat karyawan_id -> data master gaji (dipakai utk cek kasbon_belum_lunas di tabel Pembayaran,
+  // karena info kasbon belum lunas hanya ada di data master, bukan di ringkasan pembayaran per periode)
+  const salaryMasterMap = useMemo(() => {
+    const map = {};
+    salaryList.forEach(s => { map[s.karyawan_id] = s; });
+    return map;
+  }, [salaryList]);
   const totalTransferBulanIni = useMemo(
     () => salaryPaymentList.reduce((a, p) => a + (p.total_dibayar || 0), 0),
     [salaryPaymentList]
@@ -3505,19 +3537,31 @@ function DashboardAdmin({ session, onLogout }) {
     belumDibayar: a.belumDibayar + (p.status === "Sudah Dibayar" ? 0 : 1),
   }), { totalKaryawan: 0, totalGajiPokok: 0, totalPotonganKasbon: 0, sudahDibayar: 0, belumDibayar: 0 }), [salaryPaymentList]);
 
-  // Filter pencarian (nama/ID) + status untuk tabel Pembayaran Gaji Bulanan
+  // Filter pencarian (nama/ID) + status + cabang + role untuk tabel Pembayaran Gaji Bulanan
   const filteredSalaryPayment = useMemo(() => {
     const q = searchSalaryPayment.trim().toLowerCase();
-    return salaryPaymentList.filter(p => {
+    const hasil = salaryPaymentList.filter(p => {
+      const kw = karyawanMap[p.karyawan_id];
       const cocokCari = !q || p.nama?.toLowerCase().includes(q) || p.karyawan_id?.toLowerCase().includes(q);
       const cocokStatus = salaryPaymentStatusFilter === "semua" || p.status === salaryPaymentStatusFilter;
-      return cocokCari && cocokStatus;
+      const cocokCabang = cabangFilterSalaryPayment === "semua" || (kw?.cabang || "") === cabangFilterSalaryPayment;
+      const cocokRole = roleFilterSalaryPayment === "semua" || kw?.role === roleFilterSalaryPayment;
+      return cocokCari && cocokStatus && cocokCabang && cocokRole;
     });
-  }, [salaryPaymentList, searchSalaryPayment, salaryPaymentStatusFilter]);
+    // Sama seperti tabel master: karyawan yang masih punya kasbon belum lunas dinaikkan ke atas
+    // (nominal terbesar duluan), baru sisanya diurutkan abjad nama.
+    return [...hasil].sort((a, b) => {
+      const kasbonA = salaryMasterMap[a.karyawan_id]?.kasbon_belum_lunas || 0;
+      const kasbonB = salaryMasterMap[b.karyawan_id]?.kasbon_belum_lunas || 0;
+      if (kasbonA > 0 && kasbonB > 0) return kasbonB - kasbonA;
+      if (kasbonA > 0 !== kasbonB > 0) return kasbonA > 0 ? -1 : 1;
+      return (a.nama || "").localeCompare(b.nama || "");
+    });
+  }, [salaryPaymentList, searchSalaryPayment, salaryPaymentStatusFilter, cabangFilterSalaryPayment, roleFilterSalaryPayment, karyawanMap, salaryMasterMap]);
   const totalPagesSalaryPayment = Math.max(1, Math.ceil(filteredSalaryPayment.length / pageSizeSalaryPayment));
   const pageSalaryPaymentAman = Math.min(pageSalaryPayment, totalPagesSalaryPayment);
   const pagedSalaryPayment = filteredSalaryPayment.slice((pageSalaryPaymentAman - 1) * pageSizeSalaryPayment, pageSalaryPaymentAman * pageSizeSalaryPayment);
-  useEffect(() => { setPageSalaryPayment(1); }, [searchSalaryPayment, salaryPaymentStatusFilter, pageSizeSalaryPayment, salaryPeriode]);
+  useEffect(() => { setPageSalaryPayment(1); }, [searchSalaryPayment, salaryPaymentStatusFilter, cabangFilterSalaryPayment, roleFilterSalaryPayment, pageSizeSalaryPayment, salaryPeriode]);
 
   // Dipanggil tombol ACC/Tolak di tabel Cuti/Izin/Sakit -> cuma membuka modal konfirmasi (PengajuanKeputusanModal), belum eksekusi apa-apa ke server.
   const handleKeputusanPengajuan = (item, status) => setPengajuanKeputusanTarget({ item, status });
@@ -4184,15 +4228,16 @@ function DashboardAdmin({ session, onLogout }) {
   const kasbonPending = kasbonList.filter(k => k.status === "Pending").length;
   const pengajuanPending = pengajuanCISList.filter(p => p.status === "Pending").length;
 
-  // Filter pencarian + status untuk tabel Kasbon
+  // Filter pencarian + status + bulan (berdasarkan tanggal pengajuan) untuk tabel Kasbon
   const filteredKasbonList = useMemo(() => {
     const q = searchKasbon.trim().toLowerCase();
     return kasbonList.filter(k => {
       const matchQ = !q || k.nama?.toLowerCase().includes(q) || k.karyawan_id?.toLowerCase().includes(q);
       const matchStatus = kasbonStatusFilter === "semua" || k.status === kasbonStatusFilter;
-      return matchQ && matchStatus;
+      const matchBulan = !kasbonBulanFilter || (k.tanggal_pengajuan && toLocalDateStr(new Date(k.tanggal_pengajuan)).slice(0, 7) === kasbonBulanFilter);
+      return matchQ && matchStatus && matchBulan;
     });
-  }, [kasbonList, searchKasbon, kasbonStatusFilter]);
+  }, [kasbonList, searchKasbon, kasbonStatusFilter, kasbonBulanFilter]);
 
   // Filter pencarian + status untuk tabel Cuti/Izin/Sakit
   const filteredPengajuanCISList = useMemo(() => {
@@ -4211,7 +4256,7 @@ function DashboardAdmin({ session, onLogout }) {
   const totalPagesPengajuanCIS = Math.max(1, Math.ceil(filteredPengajuanCISList.length / pageSizePengajuanCIS));
   const pagePengajuanCISAman = Math.min(pagePengajuanCIS, totalPagesPengajuanCIS);
   const pagedPengajuanCIS = filteredPengajuanCISList.slice((pagePengajuanCISAman - 1) * pageSizePengajuanCIS, pagePengajuanCISAman * pageSizePengajuanCIS);
-  useEffect(() => { setPageKasbon(1); }, [searchKasbon, kasbonStatusFilter]);
+  useEffect(() => { setPageKasbon(1); }, [searchKasbon, kasbonStatusFilter, kasbonBulanFilter]);
   useEffect(() => { setPagePengajuanCIS(1); }, [searchPengajuanCIS, pengajuanCISStatusFilter]);
 
   // Gabungan notifikasi pengajuan yang masih Pending (kasbon + cuti/izin/sakit), terbaru duluan
@@ -4470,6 +4515,106 @@ function DashboardAdmin({ session, onLogout }) {
           </div>
         </div>
       )}
+      {karyawanModalOpen && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.5)" }} onClick={submitting ? undefined : resetForm}>
+          <div className="modal-in bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b flex items-start justify-between gap-3 sticky top-0 bg-white rounded-t-2xl z-10" style={{ borderColor: "var(--border)" }}>
+              <div>
+                <h2 className="text-base font-bold font-display" style={{ color: "var(--ink)" }}>{isEditing ? "Edit Data Karyawan" : "Tambah Anggota Baru"}</h2>
+                <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>{isEditing ? "Perbarui profil karyawan terpilih" : "Daftarkan akun karyawan baru"}</p>
+              </div>
+              <button onClick={resetForm} disabled={submitting} className="p-1.5 rounded-lg hover:bg-gray-100 shrink-0 disabled:opacity-50"><IconX className="w-4 h-4" style={{ color: "var(--ink-soft)" }} /></button>
+            </div>
+            <form onSubmit={handleSubmitKaryawan} className="p-5 space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>ID Karyawan</label>
+                <input type="text" placeholder="Contoh: K001" value={karyawanId} onChange={e => setKaryawanId(e.target.value)} disabled={isEditing}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium disabled:bg-gray-50 disabled:text-gray-400"
+                  style={{ borderColor: formErrors.karyawanId ? "var(--red)" : "var(--border)" }} />
+                {formErrors.karyawanId && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{formErrors.karyawanId}</p>}
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Nama Lengkap</label>
+                <input type="text" placeholder="Nama karyawan" value={namaKaryawan} onChange={e => setNamaKaryawan(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: formErrors.nama ? "var(--red)" : "var(--border)" }} />
+                {formErrors.nama && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{formErrors.nama}</p>}
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>NIK KTP</label>
+                <input type="text" inputMode="numeric" maxLength="16" placeholder="16 digit sesuai KTP" value={nikKaryawan} onChange={e => setNikKaryawan(e.target.value.replace(/\D/g, ""))}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: formErrors.nik ? "var(--red)" : "var(--border)" }} />
+                {formErrors.nik && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{formErrors.nik}</p>}
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Tanggal Lahir</label>
+                <input type="date" value={tanggalLahirKaryawan} onChange={e => setTanggalLahirKaryawan(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Dipakai untuk menampilkan ucapan ulang tahun di Dashboard.</p>
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>No. Telepon</label>
+                <input type="tel" inputMode="tel" placeholder="Contoh: 081234567890" value={noTelpKaryawan} onChange={e => setNoTelpKaryawan(e.target.value.replace(/[^\d+\s-]/g, ""))}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: formErrors.noTelp ? "var(--red)" : "var(--border)" }} />
+                {formErrors.noTelp && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{formErrors.noTelp}</p>}
+              </div>
+              {!isEditing && (
+                <div>
+                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Kata Sandi Akun</label>
+                  <div className="relative">
+                    <input type={showPassword ? "text" : "password"} placeholder="Password login HP" value={passwordKaryawan} onChange={e => setPasswordKaryawan(e.target.value)}
+                      className="w-full p-2.5 pr-9 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: formErrors.password ? "var(--red)" : "var(--border)" }} />
+                    <button type="button" onClick={() => setShowPassword(s => !s)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showPassword ? <IconEyeOff className="w-4 h-4" /> : <IconEye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {formErrors.password && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{formErrors.password}</p>}
+                </div>
+              )}
+              {isEditing && (
+                <div>
+                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Reset Password (opsional)</label>
+                  <div className="relative">
+                    <input type={showPassword ? "text" : "password"} placeholder="Kosongkan jika tidak diubah" value={passwordKaryawan === "********" ? "" : passwordKaryawan}
+                      onChange={e => setPasswordKaryawan(e.target.value)}
+                      className="w-full p-2.5 pr-9 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                    <button type="button" onClick={() => setShowPassword(s => !s)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showPassword ? <IconEyeOff className="w-4 h-4" /> : <IconEye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Isi kolom ini hanya jika ingin mengganti password karyawan.</p>
+                </div>
+              )}
+              <div>
+                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Tingkatan Hak Akses</label>
+                <select value={roleKaryawan} onChange={e => setRoleKaryawan(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
+                  <option value="teknisi">Teknisi (Hanya Aplikasi Absensi)</option>
+                  <option value="admin">Staf Admin (Kelola Karyawan & Log)</option>
+                  <option value="gudang">Staf Gudang (Lihat Dashboard & Log)</option>
+                  <option value="finance">Staf Finance (Modul Keuangan)</option>
+                  <option value="owner">Owner (Akses Penuh)</option>
+                </select>
+                <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Teknisi hanya bisa login ke aplikasi absensi HP, tidak bisa masuk Portal Admin ini.</p>
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Cabang</label>
+                <input type="text" placeholder="Contoh: Bandung" value={cabangKaryawan} onChange={e => setCabangKaryawan(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Alamat Domisili</label>
+                <textarea placeholder="Tulis alamat detail..." rows="3" value={alamatKaryawan} onChange={e => setAlamatKaryawan(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium resize-none" style={{ borderColor: "var(--border)" }}></textarea>
+              </div>
+              <div className="pt-1 flex gap-2 sticky bottom-0 bg-white pb-1">
+                <button type="button" onClick={resetForm} disabled={submitting} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-2.5 rounded-xl text-sm disabled:opacity-60">Batal</button>
+                <button type="submit" disabled={submitting} className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60" style={{ background: "var(--brand)" }}>
+                  {submitting ? "Memproses..." : isEditing ? "Update Data" : "Daftarkan User"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       <ImportKaryawanModal
         open={importModalOpen}
         onClose={() => setImportModalOpen(false)}
@@ -4707,26 +4852,29 @@ function DashboardAdmin({ session, onLogout }) {
                       </div>
                     </div>
 
-                    {/* ===== 5. KARYAWAN ULANG TAHUN HARI INI ===== */}
+                    {/* ===== 5. KARYAWAN BELUM ABSEN HARI INI ===== */}
                     <div className="elev-card bg-white rounded-2xl border flex flex-col" style={{ borderColor: "var(--border)" }}>
                       <div className="p-4 border-b flex justify-between items-center" style={{ borderColor: "var(--border)" }}>
-                        <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Employee Birthday</h3>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: "var(--brand-soft)", color: "var(--brand-dark)" }}>{ulangTahunHariIni.length}</span>
+                        <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Karyawan Belum Absen Hari Ini</h3>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: "var(--amber-soft)", color: "var(--amber)" }}>{karyawanBelumAbsenHariIni.length}</span>
                       </div>
-                      {ulangTahunHariIni.length === 0 ? (
-                        <EmptyState title="Tidak ada yang ulang tahun" subtitle="Belum ada karyawan yang berulang tahun hari ini." icon={<IconCheck className="w-5 h-5" />} />
+                      {karyawanBelumAbsenHariIni.length === 0 ? (
+                        <EmptyState title="Semua sudah absen" subtitle="Seluruh karyawan aktif sudah melakukan absen masuk hari ini." icon={<IconCheck className="w-5 h-5" />} />
                       ) : (
                         <ul className="divide-y overflow-y-auto" style={{ borderColor: "var(--border)", maxHeight: 260 }}>
-                          {ulangTahunHariIni.map(k => (
-                            <li key={k._id} className="p-3.5 flex items-center gap-3">
-                              <Avatar name={k.nama} size={30} />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-bold truncate" style={{ color: "var(--ink)" }}>{k.nama}</p>
-                                <p className="text-[10px] font-mono" style={{ color: "var(--ink-soft)" }}>{new Date(k.tanggal_lahir).toLocaleDateString("id-ID", { day: "2-digit", month: "long" })}</p>
-                              </div>
-                              <span className="px-2 py-1 rounded-full font-bold text-[9px] uppercase text-right shrink-0" style={{ background: "var(--brand-soft)", color: "var(--brand-dark)" }}>{k.usia} th</span>
-                            </li>
-                          ))}
+                          {karyawanBelumAbsenHariIni.map(k => {
+                            const ri = roleInfo(k.role);
+                            return (
+                              <li key={k._id} className="p-3.5 flex items-center gap-3">
+                                <Avatar name={k.nama} size={30} />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold truncate" style={{ color: "var(--ink)" }}>{k.nama}</p>
+                                  <p className="text-[10px] truncate" style={{ color: "var(--ink-soft)" }}>{k.cabang || "—"}</p>
+                                </div>
+                                <span className="px-2 py-1 rounded-full font-bold text-[9px] uppercase text-right shrink-0" style={{ background: ri.badgeBg, color: ri.badgeFg }}>{ri.label}</span>
+                              </li>
+                            );
+                          })}
                         </ul>
                       )}
                     </div>
@@ -4817,11 +4965,18 @@ function DashboardAdmin({ session, onLogout }) {
                       <h1 className="text-2xl font-bold font-display" style={{ color: "var(--ink)" }}>Master Data Karyawan</h1>
                       <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>Profil lengkap seluruh anggota tim: identitas, NIK KTP, jabatan, cabang, dan hak akses</p>
                     </div>
-                    <button onClick={() => setImportModalOpen(true)}
-                      className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-white shadow-sm shrink-0"
-                      style={{ background: "var(--green)" }}>
-                      <IconFileExcel className="w-3.5 h-3.5" /> Upload To Excel
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={bukaModalTambahKaryawan}
+                        className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-white shadow-sm"
+                        style={{ background: "var(--brand)" }}>
+                        <IconPlus className="w-3.5 h-3.5" /> Tambah Anggota Baru
+                      </button>
+                      <button onClick={() => setImportModalOpen(true)}
+                        className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-white shadow-sm"
+                        style={{ background: "var(--green)" }}>
+                        <IconFileExcel className="w-3.5 h-3.5" /> Upload To Excel
+                      </button>
+                    </div>
                   </div>
 
                   {/* RINGKASAN KARYAWAN */}
@@ -4832,105 +4987,8 @@ function DashboardAdmin({ session, onLogout }) {
                     <StatCard label="Owner" value={karyawanSummary.ownerCount} unit="akun" tone="brand" icon={<IconUsers className="w-5 h-5" />} />
                   </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* FORM */}
-                  <div className="bg-white p-5 rounded-2xl border h-fit lg:sticky lg:top-6" style={{ borderColor: "var(--border)" }}>
-                    <h2 className="text-base font-bold font-display" style={{ color: "var(--ink)" }}>{isEditing ? "Edit Data Karyawan" : "Tambah Anggota Baru"}</h2>
-                    <p className="text-xs mt-0.5 mb-4" style={{ color: "var(--ink-soft)" }}>{isEditing ? "Perbarui profil karyawan terpilih" : "Daftarkan akun karyawan baru"}</p>
-
-                    <form onSubmit={handleSubmitKaryawan} className="space-y-3.5 text-xs">
-                      <div>
-                        <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>ID Karyawan</label>
-                        <input type="text" placeholder="Contoh: K001" value={karyawanId} onChange={e => setKaryawanId(e.target.value)} disabled={isEditing}
-                          className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium disabled:bg-gray-50 disabled:text-gray-400"
-                          style={{ borderColor: formErrors.karyawanId ? "var(--red)" : "var(--border)" }} />
-                        {formErrors.karyawanId && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{formErrors.karyawanId}</p>}
-                      </div>
-                      <div>
-                        <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Nama Lengkap</label>
-                        <input type="text" placeholder="Nama karyawan" value={namaKaryawan} onChange={e => setNamaKaryawan(e.target.value)}
-                          className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: formErrors.nama ? "var(--red)" : "var(--border)" }} />
-                        {formErrors.nama && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{formErrors.nama}</p>}
-                      </div>
-                      <div>
-                        <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>NIK KTP</label>
-                        <input type="text" inputMode="numeric" maxLength="16" placeholder="16 digit sesuai KTP" value={nikKaryawan} onChange={e => setNikKaryawan(e.target.value.replace(/\D/g, ""))}
-                          className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: formErrors.nik ? "var(--red)" : "var(--border)" }} />
-                        {formErrors.nik && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{formErrors.nik}</p>}
-                      </div>
-                      <div>
-                        <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Tanggal Lahir</label>
-                        <input type="date" value={tanggalLahirKaryawan} onChange={e => setTanggalLahirKaryawan(e.target.value)}
-                          className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
-                        <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Dipakai untuk menampilkan ucapan ulang tahun di Dashboard.</p>
-                      </div>
-                      <div>
-                        <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>No. Telepon</label>
-                        <input type="tel" inputMode="tel" placeholder="Contoh: 081234567890" value={noTelpKaryawan} onChange={e => setNoTelpKaryawan(e.target.value.replace(/[^\d+\s-]/g, ""))}
-                          className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: formErrors.noTelp ? "var(--red)" : "var(--border)" }} />
-                        {formErrors.noTelp && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{formErrors.noTelp}</p>}
-                      </div>
-                      {!isEditing && (
-                        <div>
-                          <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Kata Sandi Akun</label>
-                          <div className="relative">
-                            <input type={showPassword ? "text" : "password"} placeholder="Password login HP" value={passwordKaryawan} onChange={e => setPasswordKaryawan(e.target.value)}
-                              className="w-full p-2.5 pr-9 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: formErrors.password ? "var(--red)" : "var(--border)" }} />
-                            <button type="button" onClick={() => setShowPassword(s => !s)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                              {showPassword ? <IconEyeOff className="w-4 h-4" /> : <IconEye className="w-4 h-4" />}
-                            </button>
-                          </div>
-                          {formErrors.password && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{formErrors.password}</p>}
-                        </div>
-                      )}
-                      {isEditing && (
-                        <div>
-                          <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Reset Password (opsional)</label>
-                          <div className="relative">
-                            <input type={showPassword ? "text" : "password"} placeholder="Kosongkan jika tidak diubah" value={passwordKaryawan === "********" ? "" : passwordKaryawan}
-                              onChange={e => setPasswordKaryawan(e.target.value)}
-                              className="w-full p-2.5 pr-9 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
-                            <button type="button" onClick={() => setShowPassword(s => !s)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                              {showPassword ? <IconEyeOff className="w-4 h-4" /> : <IconEye className="w-4 h-4" />}
-                            </button>
-                          </div>
-                          <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Isi kolom ini hanya jika ingin mengganti password karyawan.</p>
-                        </div>
-                      )}
-                      <div>
-                        <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Tingkatan Hak Akses</label>
-                        <select value={roleKaryawan} onChange={e => setRoleKaryawan(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
-                          <option value="teknisi">Teknisi (Hanya Aplikasi Absensi)</option>
-                          <option value="admin">Staf Admin (Kelola Karyawan & Log)</option>
-                          <option value="gudang">Staf Gudang (Lihat Dashboard & Log)</option>
-                          <option value="finance">Staf Finance (Modul Keuangan)</option>
-                          <option value="owner">Owner (Akses Penuh)</option>
-                        </select>
-                        <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Teknisi hanya bisa login ke aplikasi absensi HP, tidak bisa masuk Portal Admin ini.</p>
-                      </div>
-                      <div>
-                        <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Cabang</label>
-                        <input type="text" placeholder="Contoh: Bandung" value={cabangKaryawan} onChange={e => setCabangKaryawan(e.target.value)}
-                          className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
-                      </div>
-                      <div>
-                        <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Alamat Domisili</label>
-                        <textarea placeholder="Tulis alamat detail..." rows="3" value={alamatKaryawan} onChange={e => setAlamatKaryawan(e.target.value)}
-                          className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium resize-none" style={{ borderColor: "var(--border)" }}></textarea>
-                      </div>
-                      <div className="pt-1 flex gap-2">
-                        <button type="submit" disabled={submitting} className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60" style={{ background: "var(--brand)" }}>
-                          {submitting ? "Memproses..." : isEditing ? "Update Data" : "Daftarkan User"}
-                        </button>
-                        {isEditing && (
-                          <button type="button" onClick={resetForm} className="bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-2.5 px-4 rounded-xl text-sm">Batal</button>
-                        )}
-                      </div>
-                    </form>
-                  </div>
-
                   {/* TABLE */}
-                  <div className="elev-card lg:col-span-2 bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                  <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
                     <div className="p-4 border-b flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between" style={{ borderColor: "var(--border)" }}>
                       <div>
                         <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Database Karyawan</h3>
@@ -4986,6 +5044,7 @@ function DashboardAdmin({ session, onLogout }) {
                                 checked={pagedKaryawan.length > 0 && pagedKaryawan.every(k => selectedKaryawanIds.has(k._id))}
                                 onChange={toggleSelectAllKaryawan} />
                             </th>
+                            <th className="p-4 w-10">No</th>
                             <th className="p-4">Karyawan</th>
                             <th className="p-4">NIK KTP</th>
                             <th className="p-4">No. Telepon</th>
@@ -4998,15 +5057,17 @@ function DashboardAdmin({ session, onLogout }) {
                         </thead>
                         <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                           {pagedKaryawan.length === 0 ? (
-                            <tr><td colSpan="9"><EmptyState title={(searchKaryawan || roleFilterKaryawan !== "semua" || statusFilterKaryawan !== "semua") ? "Tidak ditemukan" : "Belum ada data user"} subtitle={(searchKaryawan || roleFilterKaryawan !== "semua" || statusFilterKaryawan !== "semua") ? "Coba ubah kata kunci atau filter." : "Tambahkan anggota baru lewat formulir di samping."} icon={<IconUsers className="w-5 h-5" />} /></td></tr>
+                            <tr><td colSpan="10"><EmptyState title={(searchKaryawan || roleFilterKaryawan !== "semua" || statusFilterKaryawan !== "semua") ? "Tidak ditemukan" : "Belum ada data user"} subtitle={(searchKaryawan || roleFilterKaryawan !== "semua" || statusFilterKaryawan !== "semua") ? "Coba ubah kata kunci atau filter." : "Tambahkan anggota baru lewat tombol \"Tambah Anggota Baru\" di atas."} icon={<IconUsers className="w-5 h-5" />} /></td></tr>
                           ) : (
-                            pagedKaryawan.map(k => (
+                            pagedKaryawan.map((k, idx) => (
                               <tr key={k._id} className="hover:bg-gray-50/60 transition">
                                 <td className="p-3.5">
                                   <input type="checkbox" className="w-3.5 h-3.5 rounded"
                                     checked={selectedKaryawanIds.has(k._id)}
                                     onChange={() => toggleSelectKaryawan(k._id)} />
                                 </td>
+                                <td className="p-3.5 font-mono" style={{ color: "var(--ink-soft)" }}>{(pageKaryawan - 1) * pageSizeKaryawan + idx + 1}</td>
+
                                 <td className="p-3.5">
                                   <div className="flex items-center gap-2.5">
                                     <Avatar name={k.nama} size={32} />
@@ -5054,7 +5115,6 @@ function DashboardAdmin({ session, onLogout }) {
                       onPageSizeChange={(n) => { setPageSizeKaryawan(n); setPageKaryawan(1); }} />
                   </div>
                 </div>
-                </div>
               )}
 
               {currentMenu === "salary" && canAccess(session.role, "salary") && (
@@ -5082,15 +5142,27 @@ function DashboardAdmin({ session, onLogout }) {
 
                   {/* MASTER GAJI POKOK & LIMIT KASBON */}
                   <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
-                    <div className="p-4 border-b flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between" style={{ borderColor: "var(--border)" }}>
+                    <div className="p-4 border-b flex flex-col gap-3" style={{ borderColor: "var(--border)" }}>
                       <div>
                         <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Gaji Pokok & Limit Kasbon</h3>
                         <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{filteredSalary.length} dari {salaryList.length} karyawan</p>
                       </div>
-                      <div className="relative">
-                        <IconSearch className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input value={searchSalary} onChange={e => setSearchSalary(e.target.value)} placeholder="Cari nama / ID"
-                          className="pl-8 pr-3 py-2 border rounded-xl text-xs font-medium outline-none w-full sm:w-56" style={{ borderColor: "var(--border)" }} />
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+                        <div className="relative flex-1">
+                          <IconSearch className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <input value={searchSalary} onChange={e => setSearchSalary(e.target.value)} placeholder="Cari nama / ID"
+                            className="pl-8 pr-3 py-2 border rounded-xl text-xs font-medium outline-none w-full sm:w-56" style={{ borderColor: "var(--border)" }} />
+                        </div>
+                        <select value={cabangFilterSalary} onChange={e => setCabangFilterSalary(e.target.value)}
+                          className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
+                          <option value="semua">Semua Cabang</option>
+                          {daftarCabangFilterLog.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <select value={roleFilterSalary} onChange={e => setRoleFilterSalary(e.target.value)}
+                          className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
+                          <option value="semua">Semua Role</option>
+                          {daftarRoleFilterLog.map(r => <option key={r} value={r}>{roleInfo(r).label}</option>)}
+                        </select>
                       </div>
                     </div>
                     <div className="overflow-x-auto">
@@ -5166,6 +5238,16 @@ function DashboardAdmin({ session, onLogout }) {
                           <option value="semua">Semua Status</option>
                           <option value="Sudah Dibayar">Sudah Dibayar</option>
                           <option value="Belum Dibayar">Belum Dibayar</option>
+                        </select>
+                        <select value={cabangFilterSalaryPayment} onChange={e => setCabangFilterSalaryPayment(e.target.value)}
+                          className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
+                          <option value="semua">Semua Cabang</option>
+                          {daftarCabangFilterLog.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <select value={roleFilterSalaryPayment} onChange={e => setRoleFilterSalaryPayment(e.target.value)}
+                          className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
+                          <option value="semua">Semua Role</option>
+                          {daftarRoleFilterLog.map(r => <option key={r} value={r}>{roleInfo(r).label}</option>)}
                         </select>
                       </div>
                     </div>
@@ -5923,6 +6005,17 @@ function DashboardAdmin({ session, onLogout }) {
                             <option value="Disetujui">Disetujui</option>
                             <option value="Ditolak">Ditolak</option>
                           </select>
+                          <div className="flex items-center gap-1">
+                            <input type="month" value={kasbonBulanFilter} onChange={e => setKasbonBulanFilter(e.target.value)}
+                              title="Filter berdasarkan bulan pengajuan"
+                              className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }} />
+                            {kasbonBulanFilter && (
+                              <button onClick={() => setKasbonBulanFilter("")} title="Tampilkan semua bulan"
+                                className="p-2 rounded-xl border hover:bg-gray-50 shrink-0" style={{ borderColor: "var(--border)" }}>
+                                <IconX className="w-3.5 h-3.5" style={{ color: "var(--ink-soft)" }} />
+                              </button>
+                            )}
+                          </div>
                         <button onClick={() => downloadCsv("kasbon.csv", toCsv(filteredKasbonList, [
                           { label: "ID Karyawan", get: r => r.karyawan_id },
                           { label: "Nama", get: r => r.nama },
@@ -5959,7 +6052,7 @@ function DashboardAdmin({ session, onLogout }) {
                           </thead>
                           <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                             {filteredKasbonList.length === 0 ? (
-                              <tr><td colSpan="9"><EmptyState title={(searchKasbon || kasbonStatusFilter !== "semua") ? "Tidak ditemukan" : "Belum ada pengajuan kasbon"} subtitle={(searchKasbon || kasbonStatusFilter !== "semua") ? "Coba ubah kata kunci atau filter." : "Pengajuan dari karyawan akan muncul di sini."} icon={<IconWallet className="w-5 h-5" />} /></td></tr>
+                              <tr><td colSpan="9"><EmptyState title={(searchKasbon || kasbonStatusFilter !== "semua" || kasbonBulanFilter) ? "Tidak ditemukan" : "Belum ada pengajuan kasbon"} subtitle={(searchKasbon || kasbonStatusFilter !== "semua" || kasbonBulanFilter) ? "Coba ubah kata kunci atau filter." : "Pengajuan dari karyawan akan muncul di sini."} icon={<IconWallet className="w-5 h-5" />} /></td></tr>
                             ) : pagedKasbon.map((k, idx) => {
                               const tone = keputusanStatusTone(k.status);
                               return (
