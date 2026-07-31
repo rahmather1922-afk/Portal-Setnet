@@ -39,6 +39,7 @@ const IconBell = (p) => <Icon {...p} path={<><path d="M6 8a6 6 0 0 1 12 0c0 4.2 
 const IconCalendarDays = (p) => <Icon {...p} path={<><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18"/><path d="M8 2.5v4"/><path d="M16 2.5v4"/><path d="M7.5 13.5h2M11.75 13.5h2M16 13.5h2M7.5 17h2M11.75 17h2"/></>} />;
 const IconFileText = (p) => <Icon {...p} path={<><path d="M6 2.5h9l3 3v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1Z"/><path d="M15 2.5v3a1 1 0 0 0 1 1h3"/><path d="M8.5 12h7"/><path d="M8.5 15.5h7"/><path d="M8.5 19h4"/></>} />;
 const IconHeartPulse = (p) => <Icon {...p} path={<><path d="M12 20.5s-7.5-4.6-9.8-9.4C.7 7.5 2.4 4 6 4c2 0 3.4 1.1 4 2.2C10.6 5.1 12 4 14 4c3.6 0 5.3 3.5 3.8 7.1-.5 1.1-1.2 2.1-2 3"/><path d="M3.5 12h3.2l1.6-2.6L10 15l1.7-4h2.4l1.4 2h3"/></>} />;
+const IconCopy = (p) => <Icon {...p} path={<><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></>} />;
 
 /* ---------------------------------- HELPERS ---------------------------------- */
 const AVATAR_BG_PALETTE = ["#E3F3F0","#FEF3E2","#EAF0FE","#FDECEC","#EDE9FE","#E0F6FA"];
@@ -2166,6 +2167,7 @@ function DashboardAdmin({ session, onLogout }) {
   const [reportLoading, setReportLoading] = useState(false);
 
   // form: master material
+  const [materialModalOpen, setMaterialModalOpen] = useState(false); // modal Tambah/Edit Material + Tambah Stok, biar tabel Master Data Material bisa full width
   const [matEditId, setMatEditId] = useState(null);
   const [matPenggunaan, setMatPenggunaan] = useState("IB"); // IB / MT — bucket stok terpisah per jenis penggunaan
   const [matKategori, setMatKategori] = useState("Kabel");
@@ -2217,6 +2219,7 @@ function DashboardAdmin({ session, onLogout }) {
   const [pmkSubmitting, setPmkSubmitting] = useState(false);
   const [pmkReportTarget, setPmkReportTarget] = useState(null); // baris/grup yg modal report-nya sedang dibuka
   const [pmkDeleteTarget, setPmkDeleteTarget] = useState(null);
+  const [pmkAddModalOpen, setPmkAddModalOpen] = useState(false); // modal "Tambah Log Pemakaian" (mode TAMBAH/batch), biar tabel Log Pemakaian bisa full width kayak Master Material
   const [searchPemakaian, setSearchPemakaian] = useState("");
   const [pemakaianStatusFilter, setPemakaianStatusFilter] = useState("semua");
   const [pemakaianPenggunaanFilter, setPemakaianPenggunaanFilter] = useState("semua");
@@ -2595,6 +2598,39 @@ function DashboardAdmin({ session, onLogout }) {
       .sort((a, b) => (a.nama || "").localeCompare(b.nama || ""));
   }, [karyawanList, masukHariIni]);
   const belumAbsenCount = karyawanBelumAbsenHariIni.length;
+
+  // Filter role khusus untuk card "Karyawan Belum Absen Hari Ini" di Dashboard
+  const [belumAbsenRoleFilter, setBelumAbsenRoleFilter] = useState("semua");
+  // Daftar role yang benar-benar muncul di antara karyawan yang belum absen (untuk isi dropdown filter)
+  const belumAbsenRoleOptions = useMemo(() => {
+    const roles = new Set(karyawanBelumAbsenHariIni.map(k => k.role).filter(Boolean));
+    return [...roles].sort((a, b) => roleInfo(a).label.localeCompare(roleInfo(b).label));
+  }, [karyawanBelumAbsenHariIni]);
+  // Hasil setelah difilter role — inilah yang ditampilkan di list & yang disalin ke clipboard
+  const karyawanBelumAbsenFiltered = useMemo(() => {
+    if (belumAbsenRoleFilter === "semua") return karyawanBelumAbsenHariIni;
+    return karyawanBelumAbsenHariIni.filter(k => k.role === belumAbsenRoleFilter);
+  }, [karyawanBelumAbsenHariIni, belumAbsenRoleFilter]);
+  // Salin daftar nama karyawan yang belum absen (sesuai filter role aktif) ke clipboard,
+  // siap tempel langsung ke grup WA supaya owner tinggal teriakin karyawan untuk absen.
+  const handleCopyBelumAbsen = useCallback(async () => {
+    if (karyawanBelumAbsenFiltered.length === 0) {
+      notify("Tidak ada nama untuk disalin.", "error");
+      return;
+    }
+    const tanggalStr = new Date().toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+    const labelRole = belumAbsenRoleFilter === "semua" ? "" : ` (${roleInfo(belumAbsenRoleFilter).label})`;
+    const daftarNama = karyawanBelumAbsenFiltered
+      .map((k, i) => `${i + 1}. ${k.nama}${k.cabang ? ` - ${k.cabang}` : ""}`)
+      .join("\n");
+    const teks = `*Karyawan Belum Absen${labelRole} - ${tanggalStr}*\n\n${daftarNama}\n\nMohon segera melakukan absen masuk. Terima kasih.`;
+    try {
+      await navigator.clipboard.writeText(teks);
+      notify(`Berhasil menyalin ${karyawanBelumAbsenFiltered.length} nama karyawan.`, "success");
+    } catch (err) {
+      notify("Gagal menyalin ke clipboard.", "error");
+    }
+  }, [karyawanBelumAbsenFiltered, belumAbsenRoleFilter, notify]);
 
   // 2. Grafik Kehadiran 7 Hari Terakhir (jumlah "Masuk" per hari, H-6 s.d. hari ini)
   const kehadiran7Hari = useMemo(() => {
@@ -3594,6 +3630,7 @@ function DashboardAdmin({ session, onLogout }) {
   const resetFormMaterial = () => {
     setMatEditId(null); setMatPenggunaan("IB"); setMatKategori("Kabel"); setMatNamaPilihan("50"); setMatNama("50 M"); setMatSatuan("Roll");
     setMatJumlah(""); setMatSnOntList([]); setMatFormErrors({});
+    setMaterialModalOpen(false);
     resetFormAddStok();
   };
   // Ganti kategori -> reset preset & satuan default yang relevan buat kategori itu
@@ -3665,7 +3702,7 @@ function DashboardAdmin({ session, onLogout }) {
     }
     setMatFormErrors({});
     resetFormAddStok();
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setMaterialModalOpen(true);
   };
   const hapusMaterial = async () => {
     if (!matDeleteTarget) return;
@@ -3722,6 +3759,7 @@ function DashboardAdmin({ session, onLogout }) {
     setPmkStatus("Idle"); setPmkReturnCatatan(""); setPmkCatatanReport(""); setPmkPenggunaan("IB");
     setPmkProject(""); setPmkRegion(""); setPmkVendor(""); setPmkIdWo("");
     setPmkFormErrors({});
+    setPmkAddModalOpen(false);
   };
 
   const handlePmkPenggunaanChange = (val) => {
@@ -4058,6 +4096,17 @@ function DashboardAdmin({ session, onLogout }) {
   }, [materialList, searchMaterial, materialPenggunaanFilter]);
   const totalPagesMaterial = Math.max(1, Math.ceil(filteredMaterial.length / PAGE_SIZE_MAT));
   const pagedMaterial = filteredMaterial.slice((pageMaterial - 1) * PAGE_SIZE_MAT, pageMaterial * PAGE_SIZE_MAT);
+  // Ringkasan cepat Master Material buat card di atas tabel — supaya Owner bisa langsung
+  // paham kondisi stok tanpa harus scroll & baca tabel baris per baris.
+  const materialSummaryStats = useMemo(() => {
+    const totalJenis = materialList.length;
+    const totalKategori = new Set(materialList.map(m => m.kategori)).size;
+    const habis = materialList.filter(m => Number(m.stock) <= 0).length;
+    const menipis = materialList.filter(m => Number(m.stock) > 0 && Number(m.stock_awal) > 0 && (Number(m.stock) / Number(m.stock_awal)) <= 0.2).length;
+    const totalIB = materialList.filter(m => (m.penggunaan || "IB") === "IB").length;
+    const totalMT = materialList.filter(m => m.penggunaan === "MT").length;
+    return { totalJenis, totalKategori, habis, menipis, totalIB, totalMT };
+  }, [materialList]);
 
   const filteredPemakaian = useMemo(() => {
     const q = searchPemakaian.trim().toLowerCase();
@@ -4854,15 +4903,43 @@ function DashboardAdmin({ session, onLogout }) {
 
                     {/* ===== 5. KARYAWAN BELUM ABSEN HARI INI ===== */}
                     <div className="elev-card bg-white rounded-2xl border flex flex-col" style={{ borderColor: "var(--border)" }}>
-                      <div className="p-4 border-b flex justify-between items-center" style={{ borderColor: "var(--border)" }}>
-                        <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Karyawan Belum Absen Hari Ini</h3>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: "var(--amber-soft)", color: "var(--amber)" }}>{karyawanBelumAbsenHariIni.length}</span>
+                      <div className="p-4 border-b" style={{ borderColor: "var(--border)" }}>
+                        <div className="flex justify-between items-center mb-2.5">
+                          <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Karyawan Belum Absen Hari Ini</h3>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: "var(--amber-soft)", color: "var(--amber)" }}>{karyawanBelumAbsenFiltered.length}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={belumAbsenRoleFilter}
+                            onChange={(e) => setBelumAbsenRoleFilter(e.target.value)}
+                            className="flex-1 min-w-0 text-[11px] font-semibold rounded-lg border px-2 py-1.5 bg-white"
+                            style={{ borderColor: "var(--border)", color: "var(--ink)" }}
+                          >
+                            <option value="semua">Semua Role</option>
+                            {belumAbsenRoleOptions.map(r => (
+                              <option key={r} value={r}>{roleInfo(r).label}</option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={handleCopyBelumAbsen}
+                            disabled={karyawanBelumAbsenFiltered.length === 0}
+                            className="flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg text-white shrink-0 disabled:opacity-50"
+                            style={{ background: "var(--brand)" }}
+                            title="Salin daftar nama untuk dikirim ke grup WA"
+                          >
+                            <IconCopy className="w-3.5 h-3.5" /> Salin
+                          </button>
+                        </div>
                       </div>
-                      {karyawanBelumAbsenHariIni.length === 0 ? (
-                        <EmptyState title="Semua sudah absen" subtitle="Seluruh karyawan aktif sudah melakukan absen masuk hari ini." icon={<IconCheck className="w-5 h-5" />} />
+                      {karyawanBelumAbsenFiltered.length === 0 ? (
+                        <EmptyState
+                          title={belumAbsenRoleFilter === "semua" ? "Semua sudah absen" : "Tidak ada di role ini"}
+                          subtitle={belumAbsenRoleFilter === "semua" ? "Seluruh karyawan aktif sudah melakukan absen masuk hari ini." : "Semua karyawan pada role ini sudah absen masuk hari ini."}
+                          icon={<IconCheck className="w-5 h-5" />}
+                        />
                       ) : (
                         <ul className="divide-y overflow-y-auto" style={{ borderColor: "var(--border)", maxHeight: 260 }}>
-                          {karyawanBelumAbsenHariIni.map(k => {
+                          {karyawanBelumAbsenFiltered.map(k => {
                             const ri = roleInfo(k.role);
                             return (
                               <li key={k._id} className="p-3.5 flex items-center gap-3">
@@ -6240,163 +6317,78 @@ function DashboardAdmin({ session, onLogout }) {
 
                   {/* ---------------- MASTER MATERIAL ---------------- */}
                   {materialSubTab === "Master" && (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                      {canManageMaterial(session.role) && (
-                        <div className="bg-white p-5 rounded-2xl border h-fit lg:sticky lg:top-6" style={{ borderColor: "var(--border)" }}>
-                          <h2 className="text-base font-bold font-display" style={{ color: "var(--ink)" }}>{matEditId ? "Edit Material" : "Tambah Jenis Material"}</h2>
-                          <p className="text-xs mt-0.5 mb-4" style={{ color: "var(--ink-soft)" }}>{matEditId ? "Perbarui data material terpilih" : "Contoh: Kabel 100 M, Kabel 150 M, ONT ZTE"}</p>
-                          <form onSubmit={handleSubmitMaterial} className="space-y-3.5 text-xs">
-                            <div>
-                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Penggunaan</label>
-                              <select value={matPenggunaan} onChange={e => setMatPenggunaan(e.target.value)} disabled={!!matEditId} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white disabled:opacity-60" style={{ borderColor: "var(--border)" }}>
-                                {PENGGUNAAN_PRESETS.map(p => <option key={p} value={p}>{PENGGUNAAN_LABEL[p]}</option>)}
-                              </select>
-                              <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Stok material IB &amp; MT terpisah sendiri-sendiri, walau nama/jenisnya sama.</p>
+                    <div className="space-y-5">
+                      {/* ---------------- CARD RINGKASAN — biar Owner enak bacanya, tanpa perlu telusuri tabel ---------------- */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                        <div className="elev-card bg-white p-4 rounded-2xl border" style={{ borderColor: "var(--border)" }}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--canvas)" }}>
+                              <IconBox className="w-3.5 h-3.5" style={{ color: "var(--brand-dark)" }} />
                             </div>
-                            <div>
-                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Kategori</label>
-                              <select value={matKategori} onChange={e => handleMatKategoriChange(e.target.value)} disabled={!!matEditId} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white disabled:opacity-60" style={{ borderColor: "var(--border)" }}>
-                                <option value="Kabel">Kabel</option>
-                                <option value="ONT">ONT</option>
-                                <option value="Lainnya">Lainnya</option>
-                              </select>
-                            </div>
-
-                            {matKategori === "Kabel" && (
-                              <div>
-                                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Jenis Kabel</label>
-                                <select value={matNamaPilihan} onChange={e => handleMatNamaPilihanChange(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }}>
-                                  {KABEL_METER_PRESETS.map(n => <option key={n} value={String(n)}>{n} M</option>)}
-                                  <option value="Lainnya">Lainnya...</option>
-                                </select>
-                                {matNamaPilihan === "Lainnya" && (
-                                  <input type="text" placeholder="Contoh: 300 M" value={matNama} onChange={e => setMatNama(e.target.value)} autoFocus
-                                    className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium mt-2" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }} />
-                                )}
-                                {matFormErrors.nama && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{matFormErrors.nama}</p>}
-                              </div>
-                            )}
-
-                            {matKategori === "ONT" && (
-                              <div>
-                                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Jenis / Merek ONT</label>
-                                <select value={matNamaPilihan} onChange={e => handleMatNamaPilihanChange(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }}>
-                                  {ONT_MEREK_PRESETS.map(m => <option key={m} value={m}>{m}</option>)}
-                                  <option value="Lainnya">Lainnya...</option>
-                                </select>
-                                {matNamaPilihan === "Lainnya" && (
-                                  <input type="text" placeholder="Contoh: Fiberhome" value={matNama} onChange={e => setMatNama(e.target.value)} autoFocus
-                                    className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium mt-2" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }} />
-                                )}
-                                {matFormErrors.nama && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{matFormErrors.nama}</p>}
-                              </div>
-                            )}
-
-                            {matKategori === "Lainnya" && (
-                              <div>
-                                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Nama / Jenis</label>
-                                <input type="text" placeholder="Nama material" value={matNama} onChange={e => setMatNama(e.target.value)}
-                                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }} />
-                                {matFormErrors.nama && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{matFormErrors.nama}</p>}
-                              </div>
-                            )}
-
-                            <div>
-                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Satuan</label>
-                              {matKategori === "Kabel" ? (
-                                <select value={matSatuan} onChange={e => setMatSatuan(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
-                                  <option value="Roll">Roll</option>
-                                  <option value="Meter">Meter</option>
-                                </select>
-                              ) : matKategori === "ONT" ? (
-                                <select value="Unit" disabled className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-gray-50 opacity-70" style={{ borderColor: "var(--border)" }}>
-                                  <option value="Unit">Unit</option>
-                                </select>
-                              ) : (
-                                <input type="text" placeholder="Roll / Meter / Pcs / Box" value={matSatuan} onChange={e => setMatSatuan(e.target.value)}
-                                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
-                              )}
-                            </div>
-
-                            {!matEditId && (
-                              <div>
-                                <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>
-                                  {matKategori === "ONT" ? "Qty / Jumlah Unit (Stok Awal)" : "Jumlah / Qty (Stok Awal)"}
-                                </label>
-                                <input type="number" min="0" placeholder="0" value={matJumlah} onChange={e => handleMatJumlahChange(e.target.value)}
-                                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
-                                <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>
-                                  {matKategori === "ONT" ? "Isi jumlah unit ONT yang mau didaftarkan, kolom SN akan otomatis muncul di bawah." : "Stok awal material ini saat pertama didaftarkan."}
-                                </p>
-                              </div>
-                            )}
-
-                            {!matEditId && matKategori === "ONT" && matSnOntList.length > 0 && (
-                              <div className="space-y-2">
-                                <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT ({matSnOntList.length} unit, opsional per unit)</label>
-                                <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
-                                  {matSnOntList.map((sn, idx) => (
-                                    <input key={idx} type="text" list="sn-ont-datalist" placeholder={`SN ONT unit #${idx + 1}`} value={sn} onChange={e => updateMatSnOntAt(idx, e.target.value)}
-                                      className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            <div className="pt-1 flex gap-2">
-                              <button type="submit" disabled={matSubmitting} className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60" style={{ background: "var(--brand)" }}>
-                                {matSubmitting ? "Memproses..." : matEditId ? "Update Material" : "Tambah Material"}
-                              </button>
-                              {matEditId && <button type="button" onClick={resetFormMaterial} className="bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-2.5 px-4 rounded-xl text-sm">Batal</button>}
-                            </div>
-                          </form>
+                            <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--ink-soft)" }}>Jenis Material</p>
+                          </div>
+                          <p className="text-xl font-black font-display" style={{ color: "var(--ink)" }}>{materialSummaryStats.totalJenis}</p>
+                          <p className="text-[10px] mt-0.5" style={{ color: "var(--ink-soft)" }}>terdaftar di master</p>
                         </div>
-                      )}
-
-                      {canManageMaterial(session.role) && matEditId && (
-                        <div className="bg-white p-5 rounded-2xl border h-fit lg:sticky lg:top-6" style={{ borderColor: "var(--border)" }}>
-                          <h2 className="text-base font-bold font-display" style={{ color: "var(--ink)" }}>Tambah Stok</h2>
-                          <p className="text-xs mt-0.5 mb-4" style={{ color: "var(--ink-soft)" }}>Restock "{matNama}" — stok terkini akan bertambah sesuai jumlah di bawah</p>
-                          <form onSubmit={handleSubmitAddStok} className="space-y-3.5 text-xs">
-                            <div>
-                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>
-                                {matKategori === "ONT" ? "Qty / Jumlah Unit Tambahan" : "Jumlah Tambahan"}
-                              </label>
-                              <input type="number" min="1" placeholder="0" value={addStokJumlah} onChange={e => handleAddStokJumlahChange(e.target.value)}
-                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: addStokError ? "var(--red)" : "var(--border)" }} />
-                              {addStokError && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{addStokError}</p>}
+                        <div className="elev-card bg-white p-4 rounded-2xl border" style={{ borderColor: "var(--border)" }}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--canvas)" }}>
+                              <IconCable className="w-3.5 h-3.5" style={{ color: "var(--brand-dark)" }} />
                             </div>
-                            {jumlahSnOntTambahStok > 0 && (
-                              <div className="space-y-2">
-                                <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT ({jumlahSnOntTambahStok} unit, opsional)</label>
-                                <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
-                                  {addStokSnList.map((sn, idx) => (
-                                    <input key={idx} type="text" list="sn-ont-datalist" placeholder={`SN ONT unit #${idx + 1}`} value={sn} onChange={e => updateAddStokSnAt(idx, e.target.value)}
-                                      className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            <div>
-                              <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Keterangan</label>
-                              <textarea rows="2" placeholder="Catatan opsional, contoh: restock dari gudang pusat" value={addStokKeterangan} onChange={e => setAddStokKeterangan(e.target.value)}
-                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium resize-none" style={{ borderColor: "var(--border)" }}></textarea>
-                            </div>
-                            <div className="pt-1">
-                              <button type="submit" disabled={addStokSubmitting} className="w-full text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60" style={{ background: "var(--green)" }}>
-                                {addStokSubmitting ? "Memproses..." : "Tambah Stok"}
-                              </button>
-                            </div>
-                          </form>
+                            <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--ink-soft)" }}>Kategori</p>
+                          </div>
+                          <p className="text-xl font-black font-display" style={{ color: "var(--ink)" }}>{materialSummaryStats.totalKategori}</p>
+                          <p className="text-[10px] mt-0.5" style={{ color: "var(--ink-soft)" }}>Kabel / ONT / Lainnya</p>
                         </div>
-                      )}
-                      <div className={canManageMaterial(session.role) ? "elev-card lg:col-span-2 bg-white rounded-2xl border overflow-hidden" : "elev-card lg:col-span-3 bg-white rounded-2xl border overflow-hidden"} style={{ borderColor: "var(--border)" }}>
+                        <div className="elev-card bg-white p-4 rounded-2xl border" style={{ borderColor: "var(--border)" }}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: penggunaanTone("IB").bg }}>
+                              <IconTrendUp className="w-3.5 h-3.5" style={{ color: penggunaanTone("IB").fg }} />
+                            </div>
+                            <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--ink-soft)" }}>Bucket IB</p>
+                          </div>
+                          <p className="text-xl font-black font-display" style={{ color: "var(--ink)" }}>{materialSummaryStats.totalIB}</p>
+                          <p className="text-[10px] mt-0.5" style={{ color: "var(--ink-soft)" }}>jenis material Instalasi Baru</p>
+                        </div>
+                        <div className="elev-card bg-white p-4 rounded-2xl border" style={{ borderColor: "var(--border)" }}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: penggunaanTone("MT").bg }}>
+                              <IconRefresh className="w-3.5 h-3.5" style={{ color: penggunaanTone("MT").fg }} />
+                            </div>
+                            <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--ink-soft)" }}>Bucket MT</p>
+                          </div>
+                          <p className="text-xl font-black font-display" style={{ color: "var(--ink)" }}>{materialSummaryStats.totalMT}</p>
+                          <p className="text-[10px] mt-0.5" style={{ color: "var(--ink-soft)" }}>jenis material Maintenance</p>
+                        </div>
+                        <div className="elev-card p-4 rounded-2xl border" style={{ borderColor: "var(--amber, #B45309)", background: "var(--amber-soft, #FEF3E2)" }}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-white/60">
+                              <IconAlert className="w-3.5 h-3.5" style={{ color: "var(--amber)" }} />
+                            </div>
+                            <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--amber)" }}>Stok Menipis</p>
+                          </div>
+                          <p className="text-xl font-black font-display" style={{ color: "var(--amber)" }}>{materialSummaryStats.menipis}</p>
+                          <p className="text-[10px] mt-0.5" style={{ color: "var(--amber)" }}>sisa ≤ 20% dari stok awal</p>
+                        </div>
+                        <div className="elev-card p-4 rounded-2xl border" style={{ borderColor: "var(--red, #B91C1C)", background: "#FDECEC" }}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-white/60">
+                              <IconAlert className="w-3.5 h-3.5" style={{ color: "var(--red)" }} />
+                            </div>
+                            <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--red)" }}>Stok Habis</p>
+                          </div>
+                          <p className="text-xl font-black font-display" style={{ color: "var(--red)" }}>{materialSummaryStats.habis}</p>
+                          <p className="text-[10px] mt-0.5" style={{ color: "var(--red)" }}>perlu di-restock segera</p>
+                        </div>
+                      </div>
+
+                      <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
                         <div className="p-4 border-b flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between" style={{ borderColor: "var(--border)" }}>
                           <div>
                             <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Master Data Material</h3>
                             <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{filteredMaterial.length} dari {materialList.length} jenis material</p>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <div className="relative">
                               <IconSearch className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                               <input value={searchMaterial} onChange={e => setSearchMaterial(e.target.value)} placeholder="Cari nama / kategori"
@@ -6407,11 +6399,18 @@ function DashboardAdmin({ session, onLogout }) {
                               {PENGGUNAAN_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
                             </select>
                             {canManageMaterial(session.role) && (
-                              <button onClick={() => setImportMaterialModalOpen(true)}
-                                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white shadow-sm shrink-0"
-                                style={{ background: "var(--green)" }}>
-                                <IconFileExcel className="w-3.5 h-3.5" /> Upload To Excel
-                              </button>
+                              <>
+                                <button onClick={() => setImportMaterialModalOpen(true)}
+                                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white shadow-sm shrink-0"
+                                  style={{ background: "var(--green)" }}>
+                                  <IconFileExcel className="w-3.5 h-3.5" /> Upload To Excel
+                                </button>
+                                <button onClick={() => { resetFormMaterial(); setMaterialModalOpen(true); }}
+                                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white shadow-sm shrink-0"
+                                  style={{ background: "var(--brand)" }}>
+                                  <IconPlus className="w-3.5 h-3.5" /> Tambah Material
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
@@ -6430,7 +6429,7 @@ function DashboardAdmin({ session, onLogout }) {
                             </thead>
                             <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                               {pagedMaterial.length === 0 ? (
-                                <tr><td colSpan={canManageMaterial(session.role) ? 7 : 6}><EmptyState title="Belum ada material" subtitle="Tambahkan jenis material pertama lewat formulir di samping." icon={<IconBox className="w-5 h-5" />} /></td></tr>
+                                <tr><td colSpan={canManageMaterial(session.role) ? 7 : 6}><EmptyState title="Belum ada material" subtitle="Tambahkan jenis material pertama lewat tombol Tambah Material di atas." icon={<IconBox className="w-5 h-5" />} /></td></tr>
                               ) : pagedMaterial.map(m => (
                                 <tr key={m._id} className="hover:bg-gray-50/60 transition">
                                   <td className="p-3.5">
@@ -6461,16 +6460,184 @@ function DashboardAdmin({ session, onLogout }) {
                         </div>
                         <Pagination page={pageMaterial} setPage={setPageMaterial} totalPages={totalPagesMaterial} totalItems={filteredMaterial.length} pageSize={PAGE_SIZE_MAT} />
                       </div>
+
+                      {/* ---------------- MODAL: TAMBAH / EDIT MATERIAL + TAMBAH STOK ---------------- */}
+                      {canManageMaterial(session.role) && materialModalOpen && (
+                        <div className="fixed inset-0 z-[92] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.5)" }} onClick={resetFormMaterial}>
+                          <div className="modal-in bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                            <div className="p-5 border-b flex items-center justify-between shrink-0" style={{ borderColor: "var(--border)" }}>
+                              <div>
+                                <h2 className="text-base font-bold font-display" style={{ color: "var(--ink)" }}>{matEditId ? "Edit Material" : "Tambah Jenis Material"}</h2>
+                                <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>{matEditId ? "Perbarui data material terpilih" : "Contoh: Kabel 100 M, Kabel 150 M, ONT ZTE"}</p>
+                              </div>
+                              <button onClick={resetFormMaterial} className="p-1.5 rounded-lg hover:bg-gray-100 shrink-0"><IconX className="w-4 h-4" style={{ color: "var(--ink-soft)" }} /></button>
+                            </div>
+                            <div className="p-5 overflow-y-auto flex-1 space-y-5">
+                              <form onSubmit={handleSubmitMaterial} className="space-y-3.5 text-xs">
+                                <div>
+                                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Penggunaan</label>
+                                  <select value={matPenggunaan} onChange={e => setMatPenggunaan(e.target.value)} disabled={!!matEditId} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white disabled:opacity-60" style={{ borderColor: "var(--border)" }}>
+                                    {PENGGUNAAN_PRESETS.map(p => <option key={p} value={p}>{PENGGUNAAN_LABEL[p]}</option>)}
+                                  </select>
+                                  <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Stok material IB &amp; MT terpisah sendiri-sendiri, walau nama/jenisnya sama.</p>
+                                </div>
+                                <div>
+                                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Kategori</label>
+                                  <select value={matKategori} onChange={e => handleMatKategoriChange(e.target.value)} disabled={!!matEditId} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white disabled:opacity-60" style={{ borderColor: "var(--border)" }}>
+                                    <option value="Kabel">Kabel</option>
+                                    <option value="ONT">ONT</option>
+                                    <option value="Lainnya">Lainnya</option>
+                                  </select>
+                                </div>
+
+                                {matKategori === "Kabel" && (
+                                  <div>
+                                    <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Jenis Kabel</label>
+                                    <select value={matNamaPilihan} onChange={e => handleMatNamaPilihanChange(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }}>
+                                      {KABEL_METER_PRESETS.map(n => <option key={n} value={String(n)}>{n} M</option>)}
+                                      <option value="Lainnya">Lainnya...</option>
+                                    </select>
+                                    {matNamaPilihan === "Lainnya" && (
+                                      <input type="text" placeholder="Contoh: 300 M" value={matNama} onChange={e => setMatNama(e.target.value)} autoFocus
+                                        className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium mt-2" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }} />
+                                    )}
+                                    {matFormErrors.nama && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{matFormErrors.nama}</p>}
+                                  </div>
+                                )}
+
+                                {matKategori === "ONT" && (
+                                  <div>
+                                    <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Jenis / Merek ONT</label>
+                                    <select value={matNamaPilihan} onChange={e => handleMatNamaPilihanChange(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }}>
+                                      {ONT_MEREK_PRESETS.map(m => <option key={m} value={m}>{m}</option>)}
+                                      <option value="Lainnya">Lainnya...</option>
+                                    </select>
+                                    {matNamaPilihan === "Lainnya" && (
+                                      <input type="text" placeholder="Contoh: Fiberhome" value={matNama} onChange={e => setMatNama(e.target.value)} autoFocus
+                                        className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium mt-2" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }} />
+                                    )}
+                                    {matFormErrors.nama && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{matFormErrors.nama}</p>}
+                                  </div>
+                                )}
+
+                                {matKategori === "Lainnya" && (
+                                  <div>
+                                    <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Nama / Jenis</label>
+                                    <input type="text" placeholder="Nama material" value={matNama} onChange={e => setMatNama(e.target.value)}
+                                      className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: matFormErrors.nama ? "var(--red)" : "var(--border)" }} />
+                                    {matFormErrors.nama && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{matFormErrors.nama}</p>}
+                                  </div>
+                                )}
+
+                                <div>
+                                  <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Satuan</label>
+                                  {matKategori === "Kabel" ? (
+                                    <select value={matSatuan} onChange={e => setMatSatuan(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
+                                      <option value="Roll">Roll</option>
+                                      <option value="Meter">Meter</option>
+                                    </select>
+                                  ) : matKategori === "ONT" ? (
+                                    <select value="Unit" disabled className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-gray-50 opacity-70" style={{ borderColor: "var(--border)" }}>
+                                      <option value="Unit">Unit</option>
+                                    </select>
+                                  ) : (
+                                    <input type="text" placeholder="Roll / Meter / Pcs / Box" value={matSatuan} onChange={e => setMatSatuan(e.target.value)}
+                                      className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                                  )}
+                                </div>
+
+                                {!matEditId && (
+                                  <div>
+                                    <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>
+                                      {matKategori === "ONT" ? "Qty / Jumlah Unit (Stok Awal)" : "Jumlah / Qty (Stok Awal)"}
+                                    </label>
+                                    <input type="number" min="0" placeholder="0" value={matJumlah} onChange={e => handleMatJumlahChange(e.target.value)}
+                                      className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                                    <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>
+                                      {matKategori === "ONT" ? "Isi jumlah unit ONT yang mau didaftarkan, kolom SN akan otomatis muncul di bawah." : "Stok awal material ini saat pertama didaftarkan."}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {!matEditId && matKategori === "ONT" && matSnOntList.length > 0 && (
+                                  <div className="space-y-2">
+                                    <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT ({matSnOntList.length} unit, opsional per unit)</label>
+                                    <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
+                                      {matSnOntList.map((sn, idx) => (
+                                        <input key={idx} type="text" list="sn-ont-datalist" placeholder={`SN ONT unit #${idx + 1}`} value={sn} onChange={e => updateMatSnOntAt(idx, e.target.value)}
+                                          className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className="pt-1 flex gap-2">
+                                  <button type="submit" disabled={matSubmitting} className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60" style={{ background: "var(--brand)" }}>
+                                    {matSubmitting ? "Memproses..." : matEditId ? "Update Material" : "Tambah Material"}
+                                  </button>
+                                  <button type="button" onClick={resetFormMaterial} className="bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-2.5 px-4 rounded-xl text-sm">Batal</button>
+                                </div>
+                              </form>
+
+                              {matEditId && (
+                                <div className="pt-4 border-t" style={{ borderColor: "var(--border)" }}>
+                                  <h3 className="text-sm font-bold font-display" style={{ color: "var(--ink)" }}>Tambah Stok</h3>
+                                  <p className="text-xs mt-0.5 mb-3" style={{ color: "var(--ink-soft)" }}>Restock "{matNama}" — stok terkini akan bertambah sesuai jumlah di bawah</p>
+                                  <form onSubmit={handleSubmitAddStok} className="space-y-3.5 text-xs">
+                                    <div>
+                                      <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>
+                                        {matKategori === "ONT" ? "Qty / Jumlah Unit Tambahan" : "Jumlah Tambahan"}
+                                      </label>
+                                      <input type="number" min="1" placeholder="0" value={addStokJumlah} onChange={e => handleAddStokJumlahChange(e.target.value)}
+                                        className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: addStokError ? "var(--red)" : "var(--border)" }} />
+                                      {addStokError && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{addStokError}</p>}
+                                    </div>
+                                    {jumlahSnOntTambahStok > 0 && (
+                                      <div className="space-y-2">
+                                        <label className="block font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>SN ONT ({jumlahSnOntTambahStok} unit, opsional)</label>
+                                        <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
+                                          {addStokSnList.map((sn, idx) => (
+                                            <input key={idx} type="text" list="sn-ont-datalist" placeholder={`SN ONT unit #${idx + 1}`} value={sn} onChange={e => updateAddStokSnAt(idx, e.target.value)}
+                                              className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: "var(--border)" }} />
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    <div>
+                                      <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Keterangan</label>
+                                      <textarea rows="2" placeholder="Catatan opsional, contoh: restock dari gudang pusat" value={addStokKeterangan} onChange={e => setAddStokKeterangan(e.target.value)}
+                                        className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium resize-none" style={{ borderColor: "var(--border)" }}></textarea>
+                                    </div>
+                                    <div className="pt-1">
+                                      <button type="submit" disabled={addStokSubmitting} className="w-full text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60" style={{ background: "var(--green)" }}>
+                                        {addStokSubmitting ? "Memproses..." : "Tambah Stok"}
+                                      </button>
+                                    </div>
+                                  </form>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {/* ---------------- PEMAKAIAN TEKNISI ---------------- */}
                   {materialSubTab === "Pemakaian" && (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                      {canManageMaterial(session.role) && (
-                        <div className="bg-white p-5 rounded-2xl border h-fit lg:sticky lg:top-6" style={{ borderColor: "var(--border)" }}>
-                          <h2 className="text-base font-bold font-display" style={{ color: "var(--ink)" }}>Tambah Log Pemakaian</h2>
-                          <p className="text-xs mt-0.5 mb-4" style={{ color: "var(--ink-soft)" }}>Bisa input beberapa unit ONT & beberapa jenis kabel sekaligus. Untuk edit baris yang sudah ada, klik tombol Edit langsung di tabel.</p>
+                    <div className="space-y-5">
+                      {/* ---------------- MODAL: TAMBAH LOG PEMAKAIAN (mode TAMBAH/batch) ---------------- */}
+                      {canManageMaterial(session.role) && pmkAddModalOpen && (
+                        <div className="fixed inset-0 z-[92] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.5)" }} onClick={resetFormPemakaian}>
+                          <div className="modal-in bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                            <div className="p-5 border-b flex items-start justify-between gap-3 shrink-0" style={{ borderColor: "var(--border)" }}>
+                              <div>
+                                <h2 className="text-base font-bold font-display" style={{ color: "var(--ink)" }}>Tambah Log Pemakaian</h2>
+                                <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>Bisa input beberapa unit ONT &amp; beberapa jenis kabel sekaligus.</p>
+                              </div>
+                              <button onClick={resetFormPemakaian} className="p-1.5 rounded-lg hover:bg-gray-100 shrink-0"><IconX className="w-4 h-4" style={{ color: "var(--ink-soft)" }} /></button>
+                            </div>
+                            <div className="p-5 overflow-y-auto flex-1">
                           <form onSubmit={handleSubmitPemakaian} className="space-y-3.5 text-xs">
                             <div>
                               <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Tanggal Pengambilan</label>
@@ -6619,9 +6786,11 @@ function DashboardAdmin({ session, onLogout }) {
                               </button>
                             </div>
                           </form>
+                            </div>
+                          </div>
                         </div>
                       )}
-                      <div className={canManageMaterial(session.role) ? "elev-card lg:col-span-2 bg-white rounded-2xl border overflow-hidden" : "elev-card lg:col-span-3 bg-white rounded-2xl border overflow-hidden"} style={{ borderColor: "var(--border)" }}>
+                      <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
                         <div className="p-4 border-b flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between" style={{ borderColor: "var(--border)" }}>
                           <div>
                             <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Log Pemakaian per Teknisi</h3>
@@ -6643,11 +6812,18 @@ function DashboardAdmin({ session, onLogout }) {
                               {PENGGUNAAN_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
                             </select>
                             {canManageMaterial(session.role) && (
-                              <button onClick={() => setImportPemakaianModalOpen(true)}
-                                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white shadow-sm shrink-0"
-                                style={{ background: "var(--green)" }}>
-                                <IconFileExcel className="w-3.5 h-3.5" /> Upload To Excel
-                              </button>
+                              <>
+                                <button onClick={() => setImportPemakaianModalOpen(true)}
+                                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white shadow-sm shrink-0"
+                                  style={{ background: "var(--green)" }}>
+                                  <IconFileExcel className="w-3.5 h-3.5" /> Upload To Excel
+                                </button>
+                                <button onClick={() => { resetFormPemakaian(); setPmkAddModalOpen(true); }}
+                                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white shadow-sm shrink-0"
+                                  style={{ background: "var(--brand)" }}>
+                                  <IconPlus className="w-3.5 h-3.5" /> Tambah Log Pemakaian
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
@@ -6672,7 +6848,7 @@ function DashboardAdmin({ session, onLogout }) {
                             </thead>
                             <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                               {pagedPemakaian.length === 0 ? (
-                                <tr><td colSpan={canManageMaterial(session.role) ? 13 : 12}><EmptyState title="Belum ada log pemakaian" subtitle="Tambahkan baris pertama lewat formulir di samping." icon={<IconCable className="w-5 h-5" />} /></td></tr>
+                                <tr><td colSpan={canManageMaterial(session.role) ? 13 : 12}><EmptyState title="Belum ada log pemakaian" subtitle="Tambahkan baris pertama lewat tombol Tambah Log Pemakaian di atas." icon={<IconCable className="w-5 h-5" />} /></td></tr>
                               ) : pagedPemakaian.map((g, idx) => {
                                 const nomor = (pagePemakaian - 1) * PAGE_SIZE_PMK + idx + 1;
                                 const isGroup = g.jumlahUnit > 1;

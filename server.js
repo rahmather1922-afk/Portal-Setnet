@@ -14,28 +14,12 @@ const salaryRoutes = require('./src/routes/salary');
 
 const app = express();
 
-// 1. MIDDLEWARE CONFIGURATION
-// Limit body parser dinaikkan ke 10mb agar server mampu menerima string data foto Base64 yang dikirim dari HP tanpa error 'Payload Too Large'
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(corsMiddleware);
 
-// Serve halaman frontend (public/employee & public/admin) lewat HTTP.
-// WAJIB diakses via http://localhost:5000/... — kalau file index.html dibuka
-// langsung dari File Explorer (file://...), fetch ke app.js/admin.js akan
-// diblokir CORS oleh browser dan halaman jadi kosong.
-//
-// /admin & /employee (tanpa garis miring di akhir) di-redirect ke /admin/
-// dan /employee/. Ini PENTING: kalau index.html langsung di-serve di path
-// tanpa trailing slash, browser menghitung alamat relatif (admin.css,
-// admin.js) dari folder ROOT (localhost:5000/), bukan dari folder /admin/,
-// sehingga file CSS/JS-nya gagal ditemukan (404) walau isinya benar.
-//
-// CATATAN: sengaja pakai middleware manual (bukan app.get('/admin', ...))
-// dan cek req.path secara PERSIS (===). Kalau pakai app.get('/admin', ...),
-// Express secara default menganggap '/admin' dan '/admin/' sebagai route
-// yang sama (trailing slash diabaikan), sehingga redirect ke '/admin/' akan
-// mengenai handler yang sama lagi -> redirect tanpa henti (ERR_TOO_MANY_REDIRECTS).
+
 app.use((req, res, next) => {
   if (req.path === '/employee') return res.redirect('/employee/');
   if (req.path === '/admin') return res.redirect('/admin/');
