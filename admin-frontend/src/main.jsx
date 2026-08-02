@@ -1,4 +1,9 @@
-const { useState, useEffect, useMemo, useRef, useCallback } = React;
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import ReactDOM from "react-dom/client";
+import * as XLSX from "xlsx";
+import "./index.css";   // Tailwind
+import "./admin.css";   // token warna & style custom kamu (dipindah dari admin.css lama)
+
 
 /* ---------------------------------- ICONS ---------------------------------- */
 const Icon = ({ path, className = "w-4 h-4" }) => (

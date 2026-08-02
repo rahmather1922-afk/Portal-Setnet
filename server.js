@@ -26,7 +26,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use('/employee', express.static(path.join(__dirname, 'public/employee')));
-app.use('/admin', express.static(path.join(__dirname, 'public/admin')));
+app.use('/admin', express.static(path.join(__dirname, 'public/admin-dist')));
 
 // 2. KONEKSI DATABASE MONGODB ATLAS
 connectDB();
