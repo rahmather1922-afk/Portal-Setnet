@@ -19,6 +19,38 @@ function sapaanWaktu() {
     return 'malam';
 }
 
+// Batas jam Absen Masuk sebelum dianggap Terlambat (harus sama persis dengan backend: src/routes/absen.js)
+const BATAS_JAM_MASUK_WIB = 8;
+const BATAS_MENIT_MASUK_WIB = 30;
+const BATAS_MENIT_TOTAL_MASUK_WIB = (BATAS_JAM_MASUK_WIB * 60) + BATAS_MENIT_MASUK_WIB; // 08:30 WIB = 510 menit
+
+// Helper: ambil jam:menit versi WIB (Asia/Jakarta) SECARA EKSPLISIT, sama seperti di backend.
+// Supaya peringatan telat di HP tetap akurat walaupun timezone HP karyawan bukan WIB.
+function getJamMenitWIB(date = new Date()) {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Jakarta',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23'
+    });
+    const parts = formatter.formatToParts(date);
+    const jam = Number(parts.find(p => p.type === 'hour').value);
+    const menit = Number(parts.find(p => p.type === 'minute').value);
+    const detik = Number(parts.find(p => p.type === 'second').value);
+    return { jam, menit, detik };
+}
+
+// Helper: status "apakah SUDAH lewat jam 08:30 WIB sekarang" + berapa menit sudah lewat.
+function getStatusBatasMasukWIB(date = new Date()) {
+    const { jam, menit } = getJamMenitWIB(date);
+    const totalMenitSekarang = (jam * 60) + menit;
+    const sudahLewat = totalMenitSekarang > BATAS_MENIT_TOTAL_MASUK_WIB;
+    const selisihMenit = sudahLewat ? (totalMenitSekarang - BATAS_MENIT_TOTAL_MASUK_WIB) : 0;
+    const jamText = `${String(jam).padStart(2, '0')}:${String(menit).padStart(2, '0')}`;
+    return { sudahLewat, selisihMenit, jamText };
+}
+
 function StatusBadge({ status }) {
     const map = {
         Pending: 'bg-amber-100 text-amber-700',
@@ -519,9 +551,16 @@ function PengajuanPanel({ userSession, onBack }) {
 }
 
 // ==================== TAB: ABSENSI (KAMERA) ====================
-function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelectedShift, loading, handleAbsen, modalData, setModalData, onSelesai, lokasi, cariLokasi, statusHariIni, statusHariIniLoading }) {
+function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelectedShift, loading, handleAbsen, modalData, setModalData, onSelesai, konfirmasiTelat, onLanjutkanTelat, onBatalkanTelat, lokasi, cariLokasi, statusHariIni, statusHariIniLoading }) {
     const gpsSiap = lokasi.status === 'siap';
     const tombolDasarTerkunci = loading || !gpsSiap || statusHariIniLoading;
+
+    // Jam WIB berjalan (update tiap detik), dipakai untuk peringatan batas Absen Masuk 08:30 WIB.
+    const [statusBatasMasuk, setStatusBatasMasuk] = React.useState(() => getStatusBatasMasukWIB());
+    React.useEffect(() => {
+        const timer = setInterval(() => setStatusBatasMasuk(getStatusBatasMasukWIB()), 1000);
+        return () => clearInterval(timer);
+    }, []);
 
     // Aturan kunci tombol:
     // - "Absen Masuk" terkunci kalau hari ini SUDAH absen masuk (tidak bisa absen masuk 2x / ganti shift)
@@ -548,6 +587,22 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
                 <video ref={videoRef} autoPlay playsInline muted class="w-full h-full object-cover transform -scale-x-100"></video>
                 <div class="absolute bottom-2 left-2 bg-black/60 text-[10px] text-white px-2 py-0.5 rounded font-mono font-bold">📷 LIVE CAMERA ACTIVE</div>
             </div>
+
+            {/* PERINGATAN BATAS JAM ABSEN MASUK 08:30 WIB — hanya tampil sebelum karyawan Absen Masuk hari ini */}
+            {!statusHariIniLoading && !statusHariIni.sudahMasuk && (
+                <div class={`mb-4 text-left rounded-xl p-3 border flex items-center justify-between gap-2 ${statusBatasMasuk.sudahLewat ? 'bg-red-50 border-red-150' : 'bg-blue-50 border-blue-150'}`}>
+                    <div class="min-w-0">
+                        <p class={`text-[11px] font-black uppercase ${statusBatasMasuk.sudahLewat ? 'text-red-700' : 'text-blue-700'}`}>
+                            {statusBatasMasuk.sudahLewat ? '⚠️ Sudah Lewat Jam Absen Masuk' : '⏰ Batas Absen Masuk 08:30 WIB'}
+                        </p>
+                        <p class="text-[10px] text-gray-500">
+                            {statusBatasMasuk.sudahLewat
+                                ? `Sekarang ${statusBatasMasuk.jamText} WIB. Anda akan tercatat TERLAMBAT ${statusBatasMasuk.selisihMenit} menit jika Absen Masuk sekarang.`
+                                : `Sekarang ${statusBatasMasuk.jamText} WIB. Absen Masuk sebelum 08:30 WIB supaya tidak tercatat terlambat.`}
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {/* STATUS GPS: wajib aktif sebelum bisa absen, sama seperti kamera */}
             <div class={`mb-4 text-left rounded-xl p-3 border flex items-center justify-between gap-2 ${gpsSiap ? 'bg-green-50 border-green-150' : lokasi.status === 'gagal' ? 'bg-red-50 border-red-150' : 'bg-amber-50 border-amber-150'}`}>
@@ -612,22 +667,67 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
             </div>
 
             {/* MODAL NOTIFIKASI MODERN DI TENGAH LAYAR */}
-            {modalData && (
+            {modalData && (() => {
+                const telat = modalData.keterangan && modalData.keterangan !== 'Normal';
+                return (
                 <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
                     <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-gray-100 text-center transform scale-100 transition-all">
-                        <div class="w-16 h-16 bg-green-150 text-green-600 rounded-full flex items-center justify-center mx-auto text-3xl font-bold mb-3">✓</div>
-                        <h3 class="text-xl font-black text-gray-900">ABSEN BERHASIL!</h3>
+                        <div class={`w-16 h-16 rounded-full flex items-center justify-center mx-auto text-3xl font-bold mb-3 ${telat ? 'bg-red-150 text-red-600' : 'bg-green-150 text-green-600'}`}>
+                            {telat ? '⚠️' : '✓'}
+                        </div>
+                        <h3 class="text-xl font-black text-gray-900">{telat ? 'ABSEN BERHASIL — TERLAMBAT' : 'ABSEN BERHASIL!'}</h3>
                         <p class="text-xs text-gray-400 mt-0.5 font-medium">Data absensi Anda telah masuk ke sistem utama</p>
+
+                        {telat && (
+                            <div class="mt-3 bg-red-50 border border-red-150 rounded-xl p-3 text-left">
+                                <p class="text-[11px] font-black uppercase text-red-700">⚠️ Anda Tercatat Terlambat</p>
+                                <p class="text-[11px] text-red-600 mt-0.5">Absen Masuk melewati batas jam 08:30 WIB. Mohon usahakan Absen Masuk sebelum 08:30 WIB besok.</p>
+                            </div>
+                        )}
 
                         <div class="my-4 bg-gray-50 rounded-xl p-3 text-left border border-gray-200 space-y-1.5 text-xs font-semibold">
                             <div class="flex justify-between"><span class="text-gray-400">Status Log:</span> <span class="text-blue-600 uppercase font-black">{modalData.status}</span></div>
                             <div class="flex justify-between"><span class="text-gray-400">Jam Log:</span> <span class="text-gray-800 font-mono font-bold">{modalData.waktu} WIB</span></div>
-                            <div class="flex justify-between"><span class="text-gray-400">Keterangan:</span> <span class={modalData.keterangan === 'Normal' ? 'text-green-600' : 'text-red-600'}>{modalData.keterangan}</span></div>
+                            <div class="flex justify-between"><span class="text-gray-400">Keterangan:</span> <span class={telat ? 'text-red-600 font-black' : 'text-green-600'}>{modalData.keterangan}</span></div>
                         </div>
 
                         <button onClick={onSelesai} class="w-full bg-gray-900 hover:bg-black text-white font-bold py-2.5 rounded-xl transition shadow-md text-sm">
                             Selesai & Lanjutkan
                         </button>
+                    </div>
+                </div>
+                );
+            })()}
+
+            {/* MODAL KONFIRMASI TERLAMBAT — pengganti window.confirm bawaan browser (yang tampilannya
+                kaku, tidak bisa distyle, dan beda-beda tiap browser), diseragamkan dengan gaya modal
+                "Absen Berhasil" di atas supaya lebih rapi & minimalis */}
+            {konfirmasiTelat && (
+                <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+                    <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-gray-100 text-center">
+                        <div class="w-16 h-16 rounded-full flex items-center justify-center mx-auto text-3xl mb-3 bg-red-150 text-red-600">
+                            ⚠️
+                        </div>
+                        <h3 class="text-lg font-black text-gray-900">Peringatan Terlambat</h3>
+                        <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">
+                            Sekarang jam <span class="font-bold text-gray-700">{konfirmasiTelat.jamText} WIB</span>, sudah melewati batas Absen Masuk (08:30 WIB).
+                        </p>
+
+                        <div class="my-4 bg-red-50 border border-red-150 rounded-xl p-3">
+                            <p class="text-[10px] font-black uppercase text-red-500 tracking-wide">Anda Akan Tercatat</p>
+                            <p class="text-lg font-black text-red-700 mt-0.5">TERLAMBAT {konfirmasiTelat.selisihMenit} Menit</p>
+                        </div>
+
+                        <p class="text-xs text-gray-500 mb-4">Lanjutkan Absen Masuk?</p>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <button onClick={onBatalkanTelat} class="bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-2.5 rounded-xl transition text-sm">
+                                Batal
+                            </button>
+                            <button onClick={onLanjutkanTelat} class="bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-xl transition shadow-md text-sm">
+                                Lanjutkan
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -747,6 +847,10 @@ function AppAbsensi() {
 
     // State baru untuk Modal Notification Kustom
     const [modalData, setModalData] = React.useState(null);
+
+    // Modal konfirmasi Absen Masuk yang sudah lewat batas jam 08:30 WIB
+    // (pengganti window.confirm bawaan browser yang tampilannya kaku & tidak bisa distyle)
+    const [konfirmasiTelat, setKonfirmasiTelat] = React.useState(null); // null | { jamText, selisihMenit, statusAbsen }
 
     // State lokasi GPS: wajib aktif sama seperti kamera sebelum bisa absen.
     // status: 'idle' | 'mencari' | 'siap' | 'gagal'
@@ -941,6 +1045,27 @@ function AppAbsensi() {
         if (statusAbsen === 'Pulang' && statusHariIni.sudahPulang) {
             return alert("⚠️ Anda sudah Absen Pulang hari ini.");
         }
+
+        // Peringatan tambahan kalau Absen Masuk dilakukan setelah batas 08:30 WIB —
+        // karyawan tetap bisa lanjut absen (tetap tercatat, backend yang jadi penentu akhir),
+        // tapi diberi kesempatan untuk sadar & konfirmasi dulu bahwa ini akan tercatat Terlambat.
+        // Pakai modal kustom (bukan window.confirm bawaan browser) supaya tampilannya konsisten
+        // dengan desain aplikasi & tidak jelek/kaku seperti popup default browser.
+        if (statusAbsen === 'Masuk') {
+            const batas = getStatusBatasMasukWIB();
+            if (batas.sudahLewat) {
+                setKonfirmasiTelat({ jamText: batas.jamText, selisihMenit: batas.selisihMenit, statusAbsen });
+                return;
+            }
+        }
+
+        await prosesAbsen(statusAbsen);
+    };
+
+    // Proses submit absen sesungguhnya (ambil foto dari kamera + kirim ke server).
+    // Dipisah dari handleAbsen supaya bisa dipanggil ulang setelah user menekan
+    // "Lanjutkan" di modal konfirmasi terlambat.
+    const prosesAbsen = async (statusAbsen) => {
         setLoading(true);
 
         try {
@@ -995,6 +1120,16 @@ function AppAbsensi() {
         }
     };
 
+    // User menekan "Lanjutkan" di modal konfirmasi terlambat → tutup modal, lanjut proses absen
+    const lanjutkanAbsenTelat = () => {
+        const statusAbsen = konfirmasiTelat && konfirmasiTelat.statusAbsen;
+        setKonfirmasiTelat(null);
+        if (statusAbsen) prosesAbsen(statusAbsen);
+    };
+
+    // User menekan "Batal" di modal konfirmasi terlambat → tutup modal, absen dibatalkan
+    const batalkanAbsenTelat = () => setKonfirmasiTelat(null);
+
     if (!isLoggedIn) {
         return (
             <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-100 w-full">
@@ -1034,6 +1169,9 @@ function AppAbsensi() {
                 modalData={modalData}
                 setModalData={setModalData}
                 onSelesai={() => { setModalData(null); setTabAktif('Menu'); }}
+                konfirmasiTelat={konfirmasiTelat}
+                onLanjutkanTelat={lanjutkanAbsenTelat}
+                onBatalkanTelat={batalkanAbsenTelat}
                 lokasi={lokasi}
                 cariLokasi={cariLokasi}
                 statusHariIni={statusHariIni}

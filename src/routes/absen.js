@@ -149,41 +149,37 @@ router.post('/absen', async (req, res) => {
     }
 
     let keterangan = "Normal";
-    // --- SEMENTARA DINONAKTIFKAN: perhitungan terlambat berdasarkan shift ---
-    // Absen sekarang tidak dibatasi jam berapapun, statusnya tetap "Masuk" dan
-    // keterangan selalu "Normal" (tidak ada status Terlambat). Nanti kalau mau
-    // dipakai lagi, tinggal uncomment blok di bawah ini.
-    //
-    // // Pengecekan status terlambat hanya dihitung saat karyawan melakukan "Absen Masuk"
-    // if (status === "Masuk") {
-    //   // PENTING: pakai jam WIB eksplisit (bukan jam lokal server) supaya perhitungan
-    //   // telat tidak kebalik/ngaco kalau server hosting berjalan di timezone UTC.
-    //   const { jam, menit } = getJamMenitWIB();
-    //
-    //   // Mengonversi waktu saat ini menjadi akumulasi total hitungan menit dari jam 00:00 dini hari (WIB)
-    //   const totalMenitSekarang = (jam * 60) + menit;
-    //   let batasMenitMasuk = 0;
-    //   // Aturan Waktu Shift Masuk Kerja
-    //   if (shift === "Shift 1") {
-    //     batasMenitMasuk = 7 * 60;   // Batas Jam 07:00 Pagi = 420 Menit
-    //   } else if (shift === "Shift 2") {
-    //     batasMenitMasuk = 15 * 60;  // Batas Jam 15:00 Sore = 900 Menit
-    //   } else if (shift === "Non-Shift") {
-    //     batasMenitMasuk = 9 * 60;   // Batas Jam 09:00 Pagi = 540 Menit
-    //   }
-    //   // Jika waktu absen saat ini melewati batas menit shift yang ditentukan
-    //   if (totalMenitSekarang > batasMenitMasuk) {
-    //     const selisihMenit = totalMenitSekarang - batasMenitMasuk;
-    //     const jamTelat = Math.floor(selisihMenit / 60);
-    //     const menitTelat = selisihMenit % 60;
-    //
-    //     if (jamTelat > 0) {
-    //       keterangan = `Terlambat (${jamTelat} Jam ${menitTelat} Menit)`;
-    //     } else {
-    //       keterangan = `Terlambat (${menitTelat} Menit)`;
-    //     }
-    //   }
-    // }
+    let menitTelatUntukRespons = 0;
+    // --- ATURAN JAM MASUK: batas absen masuk jam 08:30 WIB ---
+    // Kalau Absen Masuk dilakukan SETELAH 08:30 WIB, otomatis dicatat "Terlambat"
+    // lengkap dengan jumlah menit keterlambatannya. Berlaku untuk semua shift/Non-Shift
+    // selama fitur pilih shift masih dinonaktifkan di frontend (selalu kirim "Non-Shift").
+    const BATAS_JAM_MASUK = 8;
+    const BATAS_MENIT_MASUK = 30;
+    const BATAS_MENIT_TOTAL_MASUK = (BATAS_JAM_MASUK * 60) + BATAS_MENIT_MASUK; // 08:30 WIB = 510 menit
+
+    if (status === "Masuk") {
+      // PENTING: pakai jam WIB eksplisit (bukan jam lokal server) supaya perhitungan
+      // telat tidak kebalik/ngaco kalau server hosting berjalan di timezone UTC.
+      const { jam, menit } = getJamMenitWIB();
+
+      // Mengonversi waktu saat ini menjadi akumulasi total hitungan menit dari jam 00:00 dini hari (WIB)
+      const totalMenitSekarang = (jam * 60) + menit;
+
+      // Jika waktu absen saat ini melewati batas jam 08:30 WIB
+      if (totalMenitSekarang > BATAS_MENIT_TOTAL_MASUK) {
+        const selisihMenit = totalMenitSekarang - BATAS_MENIT_TOTAL_MASUK;
+        const jamTelat = Math.floor(selisihMenit / 60);
+        const menitTelat = selisihMenit % 60;
+        menitTelatUntukRespons = selisihMenit;
+
+        if (jamTelat > 0) {
+          keterangan = `Terlambat (${jamTelat} Jam ${menitTelat} Menit)`;
+        } else {
+          keterangan = `Terlambat (${menitTelat} Menit)`;
+        }
+      }
+    }
 
     // Upload foto (base64 dataURL dari kamera HP) ke Cloudinary DULU, sebelum disimpan ke MongoDB.
     // Cloudinary bisa langsung menerima string base64 sebagai sumber file (tidak perlu multer/multipart
@@ -214,7 +210,8 @@ router.post('/absen', async (req, res) => {
     // Mengembalikan objek data absensi yang utuh ke frontend agar parameter waktunya tidak bernilai 'undefined' atau 'Invalid Date'
     res.status(201).json({
       message: 'Absen berhasil dicatat!',
-      data: absenBaru
+      data: absenBaru,
+      menit_terlambat: menitTelatUntukRespons // 0 kalau tidak telat, dipakai frontend untuk alert
     });
   } catch (error) {
     res.status(500).json({ message: 'Gagal memproses data absensi', error: error.message });

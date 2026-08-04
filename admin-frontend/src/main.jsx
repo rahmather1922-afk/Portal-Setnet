@@ -93,6 +93,7 @@ const Avatar = ({ name, size = 36 }) => {
 //  teknisi -> TIDAK bisa masuk Portal Admin (hanya aplikasi absensi HP)
 //  admin   -> HANYA menu Dashboard Utama (tanpa card Tracking BAST & Finance) + Pemakaian Material
 //  gudang  -> sama seperti admin: Dashboard Utama (tanpa card Tracking BAST & Finance) + Pemakaian Material
+//  korlap  -> Dashboard Utama, Log Absensi, dan Pemakaian Material
 //  finance -> Dashboard Utama, Keuangan, Invoice, Tracking BAST
 //  hrd     -> akses PENUH (setara owner) termasuk approve Cuti/Izin/Sakit, KECUALI approve Kasbon (khusus owner)
 //  owner   -> akses penuh ke seluruh modul, termasuk approve Kasbon
@@ -100,6 +101,7 @@ const ROLES = {
   teknisi: { label: "Teknisi", badgeBg: "#F1F5F9", badgeFg: "#475467" },
   admin:   { label: "Staf Admin", badgeBg: "#E3F3F0", badgeFg: "#0B5148" },
   gudang:  { label: "Staf Gudang", badgeBg: "#FEF3E2", badgeFg: "#B45309" },  
+  korlap:  { label: "Korlap", badgeBg: "#E0F6FA", badgeFg: "#0E7490" },
   finance: { label: "Staf Finance", badgeBg: "#EDE9FE", badgeFg: "#6D28D9" },
   owner:   { label: "Owner", badgeBg: "#0B1220", badgeFg: "#FFFFFF" },
   hrd:       { label: "IT", badgeBg: "#FEF3E2", badgeFg: "#B45309" },
@@ -108,11 +110,11 @@ const ROLES = {
 const roleInfo = (r) => ROLES[r] || { label: r || "—", badgeBg: "var(--canvas)", badgeFg: "var(--ink-soft)" };
 // Urutan tingkatan jabatan (dari paling tinggi ke paling rendah), dipakai untuk mengurutkan
 // tabel Database Karyawan: tingkatan jabatan dulu, baru abjad nama di dalam tingkatan yang sama.
-const ROLE_RANK = { owner: 1, hrd: 2, finance: 3, admin: 4, gudang: 5, teknisi: 6, karyawan: 7 };
+const ROLE_RANK = { owner: 1, hrd: 2, finance: 3, admin: 4, gudang: 5, korlap: 6, teknisi: 7, karyawan: 8 };
 const roleRank = (r) => ROLE_RANK[r] ?? 99;
 
 // Role yang boleh masuk Portal Admin
-const PORTAL_ROLES = ["admin", "gudang", "finance", "owner", "hrd"];
+const PORTAL_ROLES = ["admin", "gudang", "korlap", "finance", "owner", "hrd"];
 
 // Role yang setara "owner" (akses penuh) — termasuk akun legacy 'hrd'.
 // CATATAN: hrd tetap "owner-like" untuk akses MENU, tapi approve Kasbon
@@ -121,14 +123,14 @@ const isOwnerLike = (role) => role === "owner" || role === "hrd";
 
 // Menu mana yang boleh diakses tiap role
 const MENU_ACCESS = {
-  dashboard: ["admin", "gudang", "finance", "owner", "hrd"],
+  dashboard: ["admin", "gudang", "korlap", "finance", "owner", "hrd"],
   crud:      ["owner", "hrd"], // <--- BERHASIL DIKUNCI HANYA UNTUK OWNER
-  log:       ["owner", "hrd"], // <--- Log Absensi: khusus Owner (admin/gudang/finance tidak lagi akses ini)
+  log:       ["korlap", "owner", "hrd"], // <--- Log Absensi: Owner/HRD + Korlap
   keuangan:  ["finance", "owner", "hrd"],
   invoice:   ["finance", "owner", "hrd"], // <--- Invoice/Penagihan: khusus Finance & Owner
   tracking:  ["finance", "owner", "hrd"], // <--- Tracking BAST: sekarang Finance juga bisa akses
   kasbon:    ["owner", "hrd"], // <--- Menu Kasbon & Cuti/Izin/Sakit; approve KASBON tetap dikunci khusus owner (lihat tombol ACC di bawah)
-  material:  ["admin", "gudang", "owner", "hrd"], // <--- Pemakaian Material: admin & gudang boleh kelola, finance tidak lagi akses
+  material:  ["admin", "gudang", "korlap", "owner", "hrd"], // <--- Pemakaian Material: admin, gudang & korlap boleh kelola, finance tidak lagi akses
   salary:    ["owner", "hrd"], // <--- Submenu "Salary" di bawah Master Data Karyawan: gaji pokok, limit kasbon manual, tandai gaji dibayar
 };
 const canAccess = (role, menuKey) => (MENU_ACCESS[menuKey] || []).includes(role);
@@ -136,7 +138,7 @@ const canAccess = (role, menuKey) => (MENU_ACCESS[menuKey] || []).includes(role)
 // Role yang boleh KELOLA material (CRUD master, input log pemakaian/stok) — mengikuti
 // MANAGE_ROLES di backend routes/material.js. Role lain di menu "material" (finance, hrd)
 // hanya bisa LIHAT daftar & laporan, tombol tambah/edit/hapus disembunyikan.
-const MATERIAL_MANAGE_ROLES = ["admin", "gudang", "owner", "hrd"]; // hrd akses penuh, ikut bisa kelola material
+const MATERIAL_MANAGE_ROLES = ["admin", "gudang", "korlap", "owner", "hrd"]; // hrd akses penuh, ikut bisa kelola material
 const canManageMaterial = (role) => MATERIAL_MANAGE_ROLES.includes(role);
 const fmtRupiah = (n) => "Rp " + Number(n || 0).toLocaleString("id-ID");
 
@@ -4775,6 +4777,7 @@ function DashboardAdmin({ session, onLogout }) {
                   <option value="teknisi">Teknisi (Hanya Aplikasi Absensi)</option>
                   <option value="admin">Staf Admin (Kelola Karyawan & Log)</option>
                   <option value="gudang">Staf Gudang (Lihat Dashboard & Log)</option>
+                  <option value="korlap">Korlap (Dashboard, Log Absensi & Material)</option>
                   <option value="finance">Staf Finance (Modul Keuangan)</option>
                   <option value="owner">Owner (Akses Penuh)</option>
                 </select>
@@ -5218,6 +5221,7 @@ function DashboardAdmin({ session, onLogout }) {
                           <option value="teknisi">Teknisi</option>
                           <option value="admin">Staf Admin</option>
                           <option value="gudang">Staf Gudang</option>
+                          <option value="korlap">Korlap</option>
                           <option value="finance">Staf Finance</option>
                           <option value="owner">Owner</option>
                         </select>

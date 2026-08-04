@@ -12,10 +12,10 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 // Role yang diizinkan dipilih saat import (harus sinkron dengan enum di model/aplikasi)
-const ROLE_VALID = ['teknisi', 'admin', 'gudang', 'finance', 'owner', 'hrd', 'karyawan'];
+const ROLE_VALID = ['teknisi', 'admin', 'gudang', 'korlap', 'finance', 'owner', 'hrd', 'karyawan'];
 
 // --- API ADMIN: MENAMPILKAN SELURUH LOG DATA REKAP ABSENSI ---
-router.get('/admin/rekap', requireRole('admin', 'gudang', 'finance', 'owner', 'hrd'), async (req, res) => {
+router.get('/admin/rekap', requireRole('admin', 'gudang', 'korlap', 'finance', 'owner', 'hrd'), async (req, res) => {
   try {
     // Mengambil data absensi ter-update berurutan dari yang paling baru masuk (descending order)
     const dataAbsen = await Absensi.find().sort({ waktu_absen: -1 });
@@ -26,7 +26,7 @@ router.get('/admin/rekap', requireRole('admin', 'gudang', 'finance', 'owner', 'h
 });
 
 // --- API ADMIN: MENAMPILKAN DAFTAR SELURUH KARYAWAN (filter opsional ?role=) ---
-router.get('/admin/karyawan', requireRole('admin', 'gudang', 'finance', 'owner', 'hrd'), async (req, res) => {
+router.get('/admin/karyawan', requireRole('admin', 'gudang', 'korlap', 'finance', 'owner', 'hrd'), async (req, res) => {
   try {
     const { role } = req.query;
     const filter = {};
