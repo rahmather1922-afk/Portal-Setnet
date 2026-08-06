@@ -147,7 +147,7 @@ function MenuDashboard({ userSession, onNavigate, onLogout }) {
                     </button>
                 </div>
                 <h1 class="text-white font-black text-lg leading-tight">{userSession.nama}</h1>
-                <p class="text-blue-200 text-xs font-mono font-bold mb-1">ID: {userSession.karyawan_id}</p>
+                <p class="text-blue-200 text-xs font-mono font-bold mb-1">ID: {userSession.karyawan_id}{(userSession.role || userSession.jabatan) ? ` · ${userSession.role || userSession.jabatan}` : ''}</p>
                 <p class="text-blue-100 text-xs">Selamat {sapaanWaktu()}, semoga pekerjaan hari ini lancar ya, selamat bekerja.</p>
             </div>
 

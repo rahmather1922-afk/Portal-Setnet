@@ -90,27 +90,40 @@ const Avatar = ({ name, size = 36 }) => {
 
 /* ---------------------------------- ROLE & ACCESS CONFIG ---------------------------------- */
 // Struktur hak akses SETNET (update pembagian tugas terbaru):
-//  teknisi -> TIDAK bisa masuk Portal Admin (hanya aplikasi absensi HP)
+//  teknisi_ib  -> Teknisi Instalasi Baru (IB) — TIDAK bisa masuk Portal Admin (hanya aplikasi absensi HP)
+//  teknisi_mt  -> Teknisi Maintenance (MT) — TIDAK bisa masuk Portal Admin (hanya aplikasi absensi HP)
+//  teknisi_onm -> Teknisi ONM / Operation & Maintenance — TIDAK bisa masuk Portal Admin (hanya aplikasi absensi HP)
 //  admin   -> HANYA menu Dashboard Utama (tanpa card Tracking BAST & Finance) + Pemakaian Material
 //  gudang  -> sama seperti admin: Dashboard Utama (tanpa card Tracking BAST & Finance) + Pemakaian Material
 //  korlap  -> Dashboard Utama, Log Absensi, dan Pemakaian Material
 //  finance -> Dashboard Utama, Keuangan, Invoice, Tracking BAST
 //  hrd     -> akses PENUH (setara owner) termasuk approve Cuti/Izin/Sakit, KECUALI approve Kasbon (khusus owner)
 //  owner   -> akses penuh ke seluruh modul, termasuk approve Kasbon
+//
+// CATATAN role Teknisi (dipecah jadi 3 sub-role per Agustus 2026, dulu cuma satu "teknisi"):
+//  - Teknisi IB  = tim yang mengerjakan Instalasi Baru (pasang baru pelanggan)
+//  - Teknisi MT  = tim Maintenance (perbaikan/gangguan pelanggan eksisting)
+//  - Teknisi ONM = tim Operation & Maintenance (perawatan rutin jaringan/infrastruktur)
+// Ketiganya tetap sama-sama TIDAK punya akses Portal Admin, cuma dipisah biar rekap & laporan
+// (mis. Pemakaian Material, filter role di tabel Database Karyawan) bisa dibaca per-jenis tim.
 const ROLES = {
-  teknisi: { label: "Teknisi", badgeBg: "#F1F5F9", badgeFg: "#475467" },
+  teknisi_ib:  { label: "Teknisi IB", badgeBg: "#F1F5F9", badgeFg: "#475467" },
+  teknisi_mt:  { label: "Teknisi MT", badgeBg: "#EAF0FE", badgeFg: "#3730A3" },
+  teknisi_onm: { label: "Teknisi ONM", badgeBg: "#FDECEC", badgeFg: "#B91C1C" },
   admin:   { label: "Staf Admin", badgeBg: "#E3F3F0", badgeFg: "#0B5148" },
   gudang:  { label: "Staf Gudang", badgeBg: "#FEF3E2", badgeFg: "#B45309" },  
   korlap:  { label: "Korlap", badgeBg: "#E0F6FA", badgeFg: "#0E7490" },
   finance: { label: "Staf Finance", badgeBg: "#EDE9FE", badgeFg: "#6D28D9" },
   owner:   { label: "Owner", badgeBg: "#0B1220", badgeFg: "#FFFFFF" },
   hrd:       { label: "IT", badgeBg: "#FEF3E2", badgeFg: "#B45309" },
+  // Role lama sebelum dipecah — dibiarkan ada supaya akun lama yang belum dipindah tetap tampil rapi.
+  teknisi: { label: "Teknisi (Legacy)", badgeBg: "#F1F5F9", badgeFg: "#475467" },
   karyawan: { label: "Teknisi (Legacy)", badgeBg: "#F1F5F9", badgeFg: "#475467" },
 };
 const roleInfo = (r) => ROLES[r] || { label: r || "—", badgeBg: "var(--canvas)", badgeFg: "var(--ink-soft)" };
 // Urutan tingkatan jabatan (dari paling tinggi ke paling rendah), dipakai untuk mengurutkan
 // tabel Database Karyawan: tingkatan jabatan dulu, baru abjad nama di dalam tingkatan yang sama.
-const ROLE_RANK = { owner: 1, hrd: 2, finance: 3, admin: 4, gudang: 5, korlap: 6, teknisi: 7, karyawan: 8 };
+const ROLE_RANK = { owner: 1, hrd: 2, finance: 3, admin: 4, gudang: 5, korlap: 6, teknisi_ib: 7, teknisi_mt: 7, teknisi_onm: 7, teknisi: 7, karyawan: 8 };
 const roleRank = (r) => ROLE_RANK[r] ?? 99;
 
 // Role yang boleh masuk Portal Admin
@@ -2055,7 +2068,7 @@ function DashboardAdmin({ session, onLogout }) {
   const [namaKaryawan, setNamaKaryawan] = useState("");
   const [passwordKaryawan, setPasswordKaryawan] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [roleKaryawan, setRoleKaryawan] = useState("teknisi");
+  const [roleKaryawan, setRoleKaryawan] = useState("teknisi_ib");
   const [nikKaryawan, setNikKaryawan] = useState("");
   const [tanggalLahirKaryawan, setTanggalLahirKaryawan] = useState("");
   const [noTelpKaryawan, setNoTelpKaryawan] = useState("");
@@ -2348,7 +2361,7 @@ function DashboardAdmin({ session, onLogout }) {
 
   const resetForm = () => {
     setIsEditing(false); setEditId(null); setKaryawanId(""); setNamaKaryawan("");
-    setPasswordKaryawan(""); setRoleKaryawan("teknisi"); setNikKaryawan(""); setTanggalLahirKaryawan(""); setNoTelpKaryawan(""); setCabangKaryawan(""); setAlamatKaryawan("");
+    setPasswordKaryawan(""); setRoleKaryawan("teknisi_ib"); setNikKaryawan(""); setTanggalLahirKaryawan(""); setNoTelpKaryawan(""); setCabangKaryawan(""); setAlamatKaryawan("");
     setFormErrors({}); setShowPassword(false); setKaryawanModalOpen(false);
   };
 
@@ -4774,14 +4787,16 @@ function DashboardAdmin({ session, onLogout }) {
               <div>
                 <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Tingkatan Hak Akses</label>
                 <select value={roleKaryawan} onChange={e => setRoleKaryawan(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
-                  <option value="teknisi">Teknisi (Hanya Aplikasi Absensi)</option>
+                  <option value="teknisi_ib">Teknisi IB (Instalasi Baru — Hanya Aplikasi Absensi)</option>
+                  <option value="teknisi_mt">Teknisi MT (Maintenance — Hanya Aplikasi Absensi)</option>
+                  <option value="teknisi_onm">Teknisi ONM (Operation & Maintenance — Hanya Aplikasi Absensi)</option>
                   <option value="admin">Staf Admin (Kelola Karyawan & Log)</option>
                   <option value="gudang">Staf Gudang (Lihat Dashboard & Log)</option>
                   <option value="korlap">Korlap (Dashboard, Log Absensi & Material)</option>
                   <option value="finance">Staf Finance (Modul Keuangan)</option>
                   <option value="owner">Owner (Akses Penuh)</option>
                 </select>
-                <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Teknisi hanya bisa login ke aplikasi absensi HP, tidak bisa masuk Portal Admin ini.</p>
+                <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Teknisi (IB/MT/ONM) hanya bisa login ke aplikasi absensi HP, tidak bisa masuk Portal Admin ini.</p>
               </div>
               <div>
                 <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Cabang</label>
@@ -5218,7 +5233,9 @@ function DashboardAdmin({ session, onLogout }) {
                         </div>
                         <select value={roleFilterKaryawan} onChange={e => setRoleFilterKaryawan(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
                           <option value="semua">Semua Role</option>
-                          <option value="teknisi">Teknisi</option>
+                          <option value="teknisi_ib">Teknisi IB</option>
+                          <option value="teknisi_mt">Teknisi MT</option>
+                          <option value="teknisi_onm">Teknisi ONM</option>
                           <option value="admin">Staf Admin</option>
                           <option value="gudang">Staf Gudang</option>
                           <option value="korlap">Korlap</option>

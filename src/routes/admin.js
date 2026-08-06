@@ -12,10 +12,17 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 // Role yang diizinkan dipilih saat import (harus sinkron dengan enum di model/aplikasi)
-const ROLE_VALID = ['teknisi', 'admin', 'gudang', 'korlap', 'finance', 'owner', 'hrd', 'karyawan'];
+// CATATAN: role "teknisi" dipecah jadi 3 sub-role per Agustus 2026 —
+//   teknisi_ib  = Teknisi Instalasi Baru (akun lama dengan role polos "teknisi" kini dianggap/ditampilkan sebagai Teknisi IB)
+//   teknisi_mt  = Teknisi Maintenance
+//   teknisi_onm = Teknisi Operation & Maintenance
+//   leader      = Leader lapangan yang mengawasi seluruh tim teknisi (IB/MT/ONM) — punya akses Portal Admin (read-only)
+// 'teknisi' lama tetap didaftarkan di sini (bukan dihapus) supaya baris Excel/data lama yang
+// masih pakai role lama tidak mendadak dianggap tidak valid oleh validator import.
+const ROLE_VALID = ['teknisi_ib', 'teknisi_mt', 'teknisi_onm', 'teknisi', 'leader', 'admin', 'gudang', 'korlap', 'finance', 'owner', 'hrd', 'karyawan'];
 
 // --- API ADMIN: MENAMPILKAN SELURUH LOG DATA REKAP ABSENSI ---
-router.get('/admin/rekap', requireRole('admin', 'gudang', 'korlap', 'finance', 'owner', 'hrd'), async (req, res) => {
+router.get('/admin/rekap', requireRole('admin', 'gudang', 'korlap', 'finance', 'owner', 'hrd', 'leader'), async (req, res) => {
   try {
     // Mengambil data absensi ter-update berurutan dari yang paling baru masuk (descending order)
     const dataAbsen = await Absensi.find().sort({ waktu_absen: -1 });
@@ -26,7 +33,7 @@ router.get('/admin/rekap', requireRole('admin', 'gudang', 'korlap', 'finance', '
 });
 
 // --- API ADMIN: MENAMPILKAN DAFTAR SELURUH KARYAWAN (filter opsional ?role=) ---
-router.get('/admin/karyawan', requireRole('admin', 'gudang', 'korlap', 'finance', 'owner', 'hrd'), async (req, res) => {
+router.get('/admin/karyawan', requireRole('admin', 'gudang', 'korlap', 'finance', 'owner', 'hrd', 'leader'), async (req, res) => {
   try {
     const { role } = req.query;
     const filter = {};
