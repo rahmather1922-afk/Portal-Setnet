@@ -116,18 +116,25 @@ const ROLES = {
   finance: { label: "Staf Finance", badgeBg: "#EDE9FE", badgeFg: "#6D28D9" },
   owner:   { label: "Owner", badgeBg: "#0B1220", badgeFg: "#FFFFFF" },
   hrd:       { label: "IT", badgeBg: "#FEF3E2", badgeFg: "#B45309" },
+  // Teknisi umum (belum/tidak dikategorikan ke sub-role IB/MT/ONM) — sama seperti teknisi_ib/mt/onm,
+  // TIDAK bisa masuk Portal Admin, hanya aplikasi absensi HP.
+  teknisi: { label: "Teknisi", badgeBg: "#F1F5F9", badgeFg: "#475467" },
+  // Leader lapangan yang mengawasi seluruh tim teknisi (IB/MT/ONM) — BISA masuk Portal Admin
+  // tapi read-only (lihat Dashboard & Log Absensi saja, lihat PORTAL_ROLES & MENU_ACCESS).
+  leader:  { label: "Leader", badgeBg: "#DCFCE7", badgeFg: "#166534" },
   // Role lama sebelum dipecah — dibiarkan ada supaya akun lama yang belum dipindah tetap tampil rapi.
-  teknisi: { label: "Teknisi (Legacy)", badgeBg: "#F1F5F9", badgeFg: "#475467" },
   karyawan: { label: "Teknisi (Legacy)", badgeBg: "#F1F5F9", badgeFg: "#475467" },
 };
 const roleInfo = (r) => ROLES[r] || { label: r || "—", badgeBg: "var(--canvas)", badgeFg: "var(--ink-soft)" };
 // Urutan tingkatan jabatan (dari paling tinggi ke paling rendah), dipakai untuk mengurutkan
 // tabel Database Karyawan: tingkatan jabatan dulu, baru abjad nama di dalam tingkatan yang sama.
-const ROLE_RANK = { owner: 1, hrd: 2, finance: 3, admin: 4, gudang: 5, korlap: 6, teknisi_ib: 7, teknisi_mt: 7, teknisi_onm: 7, teknisi: 7, karyawan: 8 };
+const ROLE_RANK = { owner: 1, hrd: 2, finance: 3, admin: 4, gudang: 5, korlap: 6, leader: 7, teknisi_ib: 8, teknisi_mt: 8, teknisi_onm: 8, teknisi: 8, karyawan: 9 };
 const roleRank = (r) => ROLE_RANK[r] ?? 99;
 
 // Role yang boleh masuk Portal Admin
-const PORTAL_ROLES = ["admin", "gudang", "korlap", "finance", "owner", "hrd"];
+// CATATAN: "leader" masuk read-only (lihat MENU_ACCESS di bawah — cuma dashboard & log absensi),
+// sinkron dengan backend routes/admin.js yang cuma buka GET /admin/rekap & GET /admin/karyawan untuk leader.
+const PORTAL_ROLES = ["admin", "gudang", "korlap", "finance", "owner", "hrd", "leader"];
 
 // Role yang setara "owner" (akses penuh) — termasuk akun legacy 'hrd'.
 // CATATAN: hrd tetap "owner-like" untuk akses MENU, tapi approve Kasbon
@@ -136,9 +143,9 @@ const isOwnerLike = (role) => role === "owner" || role === "hrd";
 
 // Menu mana yang boleh diakses tiap role
 const MENU_ACCESS = {
-  dashboard: ["admin", "gudang", "korlap", "finance", "owner", "hrd"],
+  dashboard: ["admin", "gudang", "korlap", "finance", "owner", "hrd", "leader"],
   crud:      ["owner", "hrd"], // <--- BERHASIL DIKUNCI HANYA UNTUK OWNER
-  log:       ["korlap", "owner", "hrd"], // <--- Log Absensi: Owner/HRD + Korlap
+  log:       ["korlap", "owner", "hrd", "leader"], // <--- Log Absensi: Owner/HRD + Korlap + Leader (read-only)
   keuangan:  ["finance", "owner", "hrd"],
   invoice:   ["finance", "owner", "hrd"], // <--- Invoice/Penagihan: khusus Finance & Owner
   tracking:  ["finance", "owner", "hrd"], // <--- Tracking BAST: sekarang Finance juga bisa akses
@@ -4787,16 +4794,18 @@ function DashboardAdmin({ session, onLogout }) {
               <div>
                 <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Tingkatan Hak Akses</label>
                 <select value={roleKaryawan} onChange={e => setRoleKaryawan(e.target.value)} className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
+                  <option value="teknisi">Teknisi (Umum — Hanya Aplikasi Absensi)</option>
                   <option value="teknisi_ib">Teknisi IB (Instalasi Baru — Hanya Aplikasi Absensi)</option>
                   <option value="teknisi_mt">Teknisi MT (Maintenance — Hanya Aplikasi Absensi)</option>
                   <option value="teknisi_onm">Teknisi ONM (Operation & Maintenance — Hanya Aplikasi Absensi)</option>
+                  <option value="leader">Leader (Lapangan — Portal Admin Read-Only)</option>
                   <option value="admin">Staf Admin (Kelola Karyawan & Log)</option>
                   <option value="gudang">Staf Gudang (Lihat Dashboard & Log)</option>
                   <option value="korlap">Korlap (Dashboard, Log Absensi & Material)</option>
                   <option value="finance">Staf Finance (Modul Keuangan)</option>
                   <option value="owner">Owner (Akses Penuh)</option>
                 </select>
-                <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Teknisi (IB/MT/ONM) hanya bisa login ke aplikasi absensi HP, tidak bisa masuk Portal Admin ini.</p>
+                <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Teknisi (Umum/IB/MT/ONM) hanya bisa login ke aplikasi absensi HP, tidak bisa masuk Portal Admin ini. Leader bisa masuk Portal Admin tapi hanya lihat Dashboard & Log Absensi.</p>
               </div>
               <div>
                 <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Cabang</label>
@@ -5233,9 +5242,11 @@ function DashboardAdmin({ session, onLogout }) {
                         </div>
                         <select value={roleFilterKaryawan} onChange={e => setRoleFilterKaryawan(e.target.value)} className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
                           <option value="semua">Semua Role</option>
+                          <option value="teknisi">Teknisi</option>
                           <option value="teknisi_ib">Teknisi IB</option>
                           <option value="teknisi_mt">Teknisi MT</option>
                           <option value="teknisi_onm">Teknisi ONM</option>
+                          <option value="leader">Leader</option>
                           <option value="admin">Staf Admin</option>
                           <option value="gudang">Staf Gudang</option>
                           <option value="korlap">Korlap</option>
