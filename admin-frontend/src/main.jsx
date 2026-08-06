@@ -294,6 +294,53 @@ const StatCard = ({ label, value, unit, tone, icon }) => {
   );
 };
 
+// Card ringkasan "Distribusi per Jabatan": menampilkan jumlah anggota tim untuk
+// setiap role (Owner, HRD, Admin, Teknisi IB/MT/ONM, dst.) lengkap dengan bar
+// proporsi & persentase terhadap total karyawan, supaya sebaran tim langsung
+// terbaca sekilas tanpa perlu buka filter tabel satu per satu.
+const RoleBreakdownCard = ({ items = [], total = 0 }) => {
+  const data = items.filter(it => it.count > 0);
+  return (
+    <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+      <div className="p-5 pb-4 flex items-start justify-between gap-3 border-b" style={{ borderColor: "var(--border)" }}>
+        <div>
+          <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Distribusi per Jabatan</h3>
+          <p className="text-[11px] mt-0.5" style={{ color: "var(--ink-soft)" }}>Sebaran jumlah anggota tim di setiap role, dari total {total} karyawan</p>
+        </div>
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--brand-grad)", color: "#fff", boxShadow: "var(--shadow-xs)" }}>
+          <IconUsers className="w-4.5 h-4.5" />
+        </div>
+      </div>
+
+      {data.length === 0 ? (
+        <div className="p-6 text-center text-xs" style={{ color: "var(--ink-soft)" }}>Belum ada data karyawan.</div>
+      ) : (
+        <div className="p-5 pt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3.5">
+          {data.map(it => {
+            const pct = total > 0 ? Math.round((it.count / total) * 100) : 0;
+            return (
+              <div key={it.role}>
+                <div className="flex items-center justify-between mb-1.5 gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: it.badgeFg }} />
+                    <span className="text-xs font-semibold truncate" style={{ color: "var(--ink)" }}>{it.label}</span>
+                  </div>
+                  <span className="text-xs font-bold shrink-0" style={{ color: "var(--ink)" }}>
+                    {it.count} <span className="font-medium" style={{ color: "var(--ink-soft)" }}>({pct}%)</span>
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full w-full overflow-hidden" style={{ background: "var(--canvas)" }}>
+                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: it.badgeFg }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const EmptyState = ({ title, subtitle, icon }) => (
   <div className="p-12 flex flex-col items-center justify-center text-center gap-2">
     <div className="w-11 h-11 rounded-full flex items-center justify-center mb-1" style={{ background: "var(--canvas)", color: "var(--ink-soft)" }}>{icon}</div>
@@ -2534,14 +2581,27 @@ function DashboardAdmin({ session, onLogout }) {
   const pagedKaryawan = filteredKaryawan.slice((pageKaryawan - 1) * pageSizeKaryawan, pageKaryawan * pageSizeKaryawan);
   useEffect(() => { setPageKaryawan(1); setSelectedKaryawanIds(new Set()); }, [searchKaryawan, roleFilterKaryawan, statusFilterKaryawan, sortKey, sortDir]);
 
-  // Ringkasan cepat Master Data Karyawan: total, Aktif, Non Aktif, dan jumlah role Owner
-  // (dipakai untuk baris StatCard di atas tabel "Database Karyawan")
+  // Ringkasan cepat Master Data Karyawan: total, Aktif, Non Aktif, jumlah role Owner,
+  // serta distribusi jumlah anggota per role/jabatan (dipakai untuk baris StatCard &
+  // card "Distribusi per Jabatan" di atas tabel "Database Karyawan")
   const karyawanSummary = useMemo(() => {
     const total = karyawanList.length;
     const aktif = karyawanList.filter(k => (k.status || "Aktif") !== "Non Aktif").length;
     const nonAktif = total - aktif;
     const ownerCount = karyawanList.filter(k => isOwnerLike(k.role)).length;
-    return { total, aktif, nonAktif, ownerCount };
+
+    // Hitung jumlah karyawan per role, lalu urutkan dari tingkatan jabatan tertinggi
+    // (ROLE_RANK) ke terendah supaya tampilannya konsisten dengan urutan tabel utama.
+    const counts = {};
+    karyawanList.forEach(k => {
+      const r = k.role || "—";
+      counts[r] = (counts[r] || 0) + 1;
+    });
+    const byRole = Object.entries(counts)
+      .map(([role, count]) => ({ role, count, ...roleInfo(role) }))
+      .sort((a, b) => roleRank(a.role) - roleRank(b.role) || b.count - a.count);
+
+    return { total, aktif, nonAktif, ownerCount, byRole };
   }, [karyawanList]);
 
   // Peta cepat karyawan_id -> data master (untuk menampilkan Jabatan & Cabang di Log Absensi)
@@ -5203,7 +5263,7 @@ function DashboardAdmin({ session, onLogout }) {
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
                       <h1 className="text-2xl font-bold font-display" style={{ color: "var(--ink)" }}>Master Data Karyawan</h1>
-                      <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>Profil lengkap seluruh anggota tim: identitas, NIK KTP, jabatan, cabang, dan hak akses</p>
+                      <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>Kelola identitas, NIK KTP, jabatan, cabang, dan hak akses seluruh anggota tim dalam satu tempat</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <button onClick={bukaModalTambahKaryawan}
@@ -5222,10 +5282,13 @@ function DashboardAdmin({ session, onLogout }) {
                   {/* RINGKASAN KARYAWAN */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <StatCard label="Total Karyawan" value={karyawanSummary.total} unit="orang" tone="brand" icon={<IconUsers className="w-5 h-5" />} />
-                    <StatCard label="Aktif" value={karyawanSummary.aktif} unit="orang" tone="green" icon={<IconCheck className="w-5 h-5" />} />
-                    <StatCard label="Non Aktif" value={karyawanSummary.nonAktif} unit="orang" tone="amber" icon={<IconAlert className="w-5 h-5" />} />
-                    <StatCard label="Owner" value={karyawanSummary.ownerCount} unit="akun" tone="brand" icon={<IconUsers className="w-5 h-5" />} />
+                    <StatCard label="Karyawan Aktif" value={karyawanSummary.aktif} unit="orang" tone="green" icon={<IconCheck className="w-5 h-5" />} />
+                    <StatCard label="Karyawan Non Aktif" value={karyawanSummary.nonAktif} unit="orang" tone="amber" icon={<IconAlert className="w-5 h-5" />} />
+                    <StatCard label="Akun Owner" value={karyawanSummary.ownerCount} unit="akun" tone="brand" icon={<IconUsers className="w-5 h-5" />} />
                   </div>
+
+                  {/* DISTRIBUSI PER JABATAN/ROLE */}
+                  <RoleBreakdownCard items={karyawanSummary.byRole} total={karyawanSummary.total} />
 
                   {/* TABLE */}
                   <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
