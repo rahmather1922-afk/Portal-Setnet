@@ -45,6 +45,8 @@ const IconCalendarDays = (p) => <Icon {...p} path={<><rect x="3" y="4.5" width="
 const IconFileText = (p) => <Icon {...p} path={<><path d="M6 2.5h9l3 3v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1Z"/><path d="M15 2.5v3a1 1 0 0 0 1 1h3"/><path d="M8.5 12h7"/><path d="M8.5 15.5h7"/><path d="M8.5 19h4"/></>} />;
 const IconHeartPulse = (p) => <Icon {...p} path={<><path d="M12 20.5s-7.5-4.6-9.8-9.4C.7 7.5 2.4 4 6 4c2 0 3.4 1.1 4 2.2C10.6 5.1 12 4 14 4c3.6 0 5.3 3.5 3.8 7.1-.5 1.1-1.2 2.1-2 3"/><path d="M3.5 12h3.2l1.6-2.6L10 15l1.7-4h2.4l1.4 2h3"/></>} />;
 const IconCopy = (p) => <Icon {...p} path={<><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></>} />;
+const IconShield = (p) => <Icon {...p} path={<><path d="M12 2.5 4.5 5.5v5.7c0 5 3.2 8.7 7.5 10.3 4.3-1.6 7.5-5.3 7.5-10.3V5.5Z"/><path d="m9 12 2 2 4-4.3"/></>} />;
+const IconWrench = (p) => <Icon {...p} path={<><path d="M14.7 6.3a4 4 0 0 0-5.4 4.9L3 17.5l1.5 1.5 6.3-6.3a4 4 0 0 0 4.9-5.4l-2.6 2.6-1.7-.4-.4-1.7Z"/></>} />;
 
 /* ---------------------------------- HELPERS ---------------------------------- */
 const AVATAR_BG_PALETTE = ["#E3F3F0","#FEF3E2","#EAF0FE","#FDECEC","#EDE9FE","#E0F6FA"];
@@ -126,6 +128,20 @@ const ROLES = {
   karyawan: { label: "Teknisi (Legacy)", badgeBg: "#F1F5F9", badgeFg: "#475467" },
 };
 const roleInfo = (r) => ROLES[r] || { label: r || "—", badgeBg: "var(--canvas)", badgeFg: "var(--ink-soft)" };
+// Ambil total keterlambatan dalam menit dari string keterangan absen (mis. "Terlambat 45 menit"
+// atau "Terlambat 1 jam 20 menit"). Dipakai untuk menentukan warna badge durasi di widget
+// "Karyawan Terlambat Hari Ini" pada Dashboard.
+const parseLateMinutes = (keterangan = "") => {
+  const jam = parseInt((keterangan.match(/(\d+)\s*jam/) || [])[1] || 0, 10);
+  const menit = parseInt((keterangan.match(/(\d+)\s*menit/) || [])[1] || 0, 10);
+  return jam * 60 + menit;
+};
+// Tone badge durasi terlambat: kuning (<15 menit) → oranye (15–60 menit) → merah (>60 menit).
+const lateDurationTone = (minutes) => {
+  if (minutes > 60) return { bg: "var(--red-soft)", fg: "var(--red)" };
+  if (minutes >= 15) return { bg: "var(--amber-soft)", fg: "var(--amber)" };
+  return { bg: "#FEF9C3", fg: "#854D0E" };
+};
 // Urutan tingkatan jabatan (dari paling tinggi ke paling rendah), dipakai untuk mengurutkan
 // tabel Database Karyawan: tingkatan jabatan dulu, baru abjad nama di dalam tingkatan yang sama.
 const ROLE_RANK = { owner: 1, hrd: 2, finance: 3, admin: 4, gudang: 5, korlap: 6, leader: 7, teknisi_ib: 8, teknisi_mt: 8, teknisi_onm: 8, teknisi: 8, karyawan: 9 };
@@ -280,26 +296,140 @@ const StatCard = ({ label, value, unit, tone, icon }) => {
     red: { bg: "linear-gradient(135deg,#EF4444,#B91C1C)", fg: "#fff" },
   }[tone] || { bg: "var(--brand-grad)", fg: "#fff" };
   return (
-    <div className="elev-card bg-white p-5 rounded-2xl border flex items-start justify-between" style={{ borderColor: "var(--border)" }}>
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--ink-soft)" }}>{label}</p>
-        <p className="text-3xl font-bold font-display mt-1.5" style={{ color: "var(--ink)" }}>
+    <div
+      className="elev-card bg-white p-5 rounded-2xl border flex items-start justify-between gap-3 transition-shadow hover:shadow-md"
+      style={{ borderColor: "var(--border)" }}
+    >
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-wider truncate" style={{ color: "var(--ink-soft)" }}>{label}</p>
+        <p className="text-[28px] leading-tight font-bold font-display mt-2" style={{ color: "var(--ink)" }}>
           {value} <span className="text-sm font-medium" style={{ color: "var(--ink-soft)" }}>{unit}</span>
         </p>
       </div>
-      <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: tones.bg, color: tones.fg, boxShadow: "var(--shadow-xs)" }}>
+      <div
+        className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
+        style={{ background: tones.bg, color: tones.fg, boxShadow: "var(--shadow-xs)" }}
+      >
         {icon}
       </div>
     </div>
   );
 };
 
-// Card ringkasan "Distribusi per Jabatan": menampilkan jumlah anggota tim untuk
-// setiap role (Owner, HRD, Admin, Teknisi IB/MT/ONM, dst.) lengkap dengan bar
-// proporsi & persentase terhadap total karyawan, supaya sebaran tim langsung
-// terbaca sekilas tanpa perlu buka filter tabel satu per satu.
+// Ikon representatif per role, dipakai di lingkaran icon Top Role Ranking Card
+// pada RoleBreakdownCard. Role yang belum dipetakan otomatis fallback ke IconUsers.
+const ROLE_ICON_MAP = {
+  owner: IconShield,
+  hrd: IconReport,
+  admin: IconFileText,
+  gudang: IconBox,
+  korlap: IconUsers,
+  finance: IconWallet,
+  teknisi: IconWrench,
+  teknisi_ib: IconWrench,
+  teknisi_mt: IconWrench,
+  teknisi_onm: IconWrench,
+  leader: IconTrendUp,
+  karyawan: IconWrench,
+};
+const roleIconFor = (role) => ROLE_ICON_MAP[role] || IconUsers;
+
+// Angka yang menghitung naik (count-up) dari 0 ke value saat `trigger` menjadi true.
+// Dipakai di RoleDonutChart (total di tengah) & Top Role Ranking Card (jumlah orang, %).
+const AnimatedNumber = ({ value = 0, trigger = false, duration = 900, suffix = "" }) => {
+  const [display, setDisplay] = useState(0);
+  useEffect(() => {
+    if (!trigger) { setDisplay(0); return; }
+    let raf;
+    const startTime = performance.now();
+    const tick = (now) => {
+      const progress = Math.min(1, (now - startTime) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.round(value * eased));
+      if (progress < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => raf && cancelAnimationFrame(raf);
+  }, [value, trigger, duration]);
+  return <>{display}{suffix}</>;
+};
+
+// Donut chart ringan berbasis SVG murni (tanpa library chart eksternal) untuk
+// menggambarkan proporsi tiap role terhadap total karyawan. Tiap segmen "digambar"
+// dengan animasi stroke-dasharray saat card pertama kali muncul di layar.
+const RoleDonutChart = ({ segments = [], total = 0, mounted = false, size = 180, strokeWidth = 24 }) => {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  let cumulative = 0;
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--canvas)" strokeWidth={strokeWidth} />
+        {segments.map((seg, i) => {
+          const pct = total > 0 ? seg.count / total : 0;
+          const segLength = pct * circumference;
+          const dashArray = mounted ? `${segLength} ${circumference - segLength}` : `0 ${circumference}`;
+          const dashOffset = -cumulative;
+          cumulative += segLength;
+          return (
+            <circle
+              key={seg.role}
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              fill="none"
+              stroke={seg.chartColor}
+              strokeWidth={strokeWidth}
+              strokeDasharray={dashArray}
+              strokeDashoffset={dashOffset}
+              style={{ transition: `stroke-dasharray 0.9s cubic-bezier(0.22,1,0.36,1) ${i * 90}ms` }}
+            />
+          );
+        })}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <span className="text-2xl font-black font-display leading-none" style={{ color: "var(--ink)" }}>
+          <AnimatedNumber value={total} trigger={mounted} />
+        </span>
+        <span className="text-[10px] font-semibold uppercase tracking-wide mt-1" style={{ color: "var(--ink-soft)" }}>Karyawan</span>
+      </div>
+    </div>
+  );
+};
+
+// Card ringkasan "Distribusi per Jabatan": menampilkan sebaran jumlah anggota tim
+// per role (Owner, HRD, Admin, Teknisi IB/MT/ONM, dst.) lewat donut chart + Top Role
+// Ranking Card. Diganti dari progress bar horizontal karena data ini adalah DISTRIBUSI
+// (bukan progress menuju target), jadi visualnya kini murni proporsional (donut) +
+// kartu ranking, supaya tidak lagi terbaca seolah-olah ada target yang sedang dikejar.
 const RoleBreakdownCard = ({ items = [], total = 0 }) => {
-  const data = items.filter(it => it.count > 0);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(false);
+    const t = setTimeout(() => setMounted(true), 80);
+    return () => clearTimeout(t);
+  }, [items, total]);
+
+  const data = items.filter(it => it.count > 0).slice().sort((a, b) => b.count - a.count);
+  const TOP_N = 6;
+  const top = data.slice(0, TOP_N);
+  const rest = data.slice(TOP_N);
+  const lainnyaCount = rest.reduce((sum, it) => sum + it.count, 0);
+
+  // Warna donut & angka % mengikuti warna badge role yang sudah ada di seluruh dashboard
+  // (hijau, navy, teal, amber, ungu). Untuk Owner (badge navy dgn teks putih), pakai
+  // warna navy solid supaya tetap terlihat di atas kartu putih. "Lainnya" pakai abu netral.
+  const display = [
+    ...top.map(it => ({ ...it, chartColor: it.badgeFg === "#FFFFFF" ? "var(--brand-dark)" : it.badgeFg })),
+    ...(lainnyaCount > 0 ? [{
+      role: "lainnya", label: "Lainnya", count: lainnyaCount,
+      badgeBg: "#F1F5F9", badgeFg: "#64748B", chartColor: "#94A3B8",
+    }] : []),
+  ];
+
+  const totalRole = data.length;
+  const roleTerbanyak = data[0]?.label || "—";
+
   return (
     <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
       <div className="p-5 pb-4 flex items-start justify-between gap-3 border-b" style={{ borderColor: "var(--border)" }}>
@@ -315,26 +445,121 @@ const RoleBreakdownCard = ({ items = [], total = 0 }) => {
       {data.length === 0 ? (
         <div className="p-6 text-center text-xs" style={{ color: "var(--ink-soft)" }}>Belum ada data karyawan.</div>
       ) : (
-        <div className="p-5 pt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3.5">
-          {data.map(it => {
-            const pct = total > 0 ? Math.round((it.count / total) * 100) : 0;
-            return (
-              <div key={it.role}>
-                <div className="flex items-center justify-between mb-1.5 gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: it.badgeFg }} />
-                    <span className="text-xs font-semibold truncate" style={{ color: "var(--ink)" }}>{it.label}</span>
-                  </div>
-                  <span className="text-xs font-bold shrink-0" style={{ color: "var(--ink)" }}>
-                    {it.count} <span className="font-medium" style={{ color: "var(--ink-soft)" }}>({pct}%)</span>
+        <>
+          {/* Info ringkas: Total Role, Jumlah Karyawan, Role Terbanyak */}
+          <div className="flex flex-wrap items-center gap-x-7 gap-y-2 px-5 py-3 border-b" style={{ borderColor: "var(--border)", background: "var(--canvas)" }}>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--ink-soft)" }}>Total Role</p>
+              <p className="text-sm font-black mt-0.5" style={{ color: "var(--ink)" }}><AnimatedNumber value={totalRole} trigger={mounted} /></p>
+            </div>
+            <span className="w-px h-8 hidden sm:block" style={{ background: "var(--border)" }} />
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--ink-soft)" }}>Jumlah Karyawan</p>
+              <p className="text-sm font-black mt-0.5" style={{ color: "var(--ink)" }}><AnimatedNumber value={total} trigger={mounted} /></p>
+            </div>
+            <span className="w-px h-8 hidden sm:block" style={{ background: "var(--border)" }} />
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--ink-soft)" }}>Role Terbanyak</p>
+              <p className="text-sm font-black mt-0.5 truncate" style={{ color: "var(--ink)" }}>{roleTerbanyak}</p>
+            </div>
+          </div>
+
+          {/* Desktop: donut kiri | ranking kanan. Tablet: donut atas, ranking bawah. Mobile: 1 kolom. */}
+          <div className="p-5 grid grid-cols-1 lg:grid-cols-[188px_1fr] gap-6 items-start">
+            <div className="flex flex-col items-center gap-3">
+              <RoleDonutChart segments={display} total={total} mounted={mounted} size={180} strokeWidth={24} />
+              <div className="flex flex-wrap justify-center gap-x-3 gap-y-1.5 max-w-[220px]">
+                {display.map(seg => (
+                  <span key={seg.role} className="inline-flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: "var(--ink-soft)" }}>
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: seg.chartColor }} />
+                    {seg.label}
                   </span>
-                </div>
-                <div className="h-1.5 rounded-full w-full overflow-hidden" style={{ background: "var(--canvas)" }}>
-                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: it.badgeFg }} />
-                </div>
+                ))}
               </div>
-            );
-          })}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {display.map((it, idx) => {
+                const pct = total > 0 ? Math.round((it.count / total) * 100) : 0;
+                const RoleIcon = roleIconFor(it.role);
+                return (
+                  <div key={it.role}
+                    className="group flex items-center gap-3 p-3.5 rounded-2xl border bg-white transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_-6px_rgba(15,23,42,0.14)]"
+                    style={{ borderColor: "var(--border)", boxShadow: "var(--shadow-xs)" }}>
+                    <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105"
+                      style={{ background: it.badgeBg, color: it.badgeFg }}>
+                      <RoleIcon className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-bold truncate" style={{ color: "var(--ink)" }}>{it.label}</p>
+                        <span className="text-[9px] font-black shrink-0 px-1.5 py-[1px] rounded-full" style={{ background: "var(--canvas)", color: "var(--ink-soft)" }}>#{idx + 1}</span>
+                      </div>
+                      <p className="text-[11px] mt-0.5" style={{ color: "var(--ink-soft)" }}>
+                        <AnimatedNumber value={it.count} trigger={mounted} /> Orang
+                      </p>
+                    </div>
+                    <p className="text-base font-black font-display shrink-0" style={{ color: it.chartColor }}>
+                      <AnimatedNumber value={pct} trigger={mounted} suffix="%" />
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+// Versi ringkas dari RoleBreakdownCard di atas, khusus dipakai di Dashboard Utama:
+// donut chart + legend (nama, jumlah, persentase) saja tanpa Top Role Ranking Card,
+// supaya pas ditaruh berdampingan dengan Grafik Kehadiran. Menggunakan ulang RoleDonutChart
+// & logika top-6+"Lainnya" yang sama persis dengan RoleBreakdownCard.
+const DashboardRoleDonutCard = ({ items = [], total = 0 }) => {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(false);
+    const t = setTimeout(() => setMounted(true), 80);
+    return () => clearTimeout(t);
+  }, [items, total]);
+
+  const data = items.filter(it => it.count > 0).slice().sort((a, b) => b.count - a.count);
+  const TOP_N = 6;
+  const top = data.slice(0, TOP_N);
+  const rest = data.slice(TOP_N);
+  const lainnyaCount = rest.reduce((sum, it) => sum + it.count, 0);
+  const display = [
+    ...top.map(it => ({ ...it, chartColor: it.badgeFg === "#FFFFFF" ? "var(--brand-dark)" : it.badgeFg })),
+    ...(lainnyaCount > 0 ? [{ role: "lainnya", label: "Lainnya", count: lainnyaCount, chartColor: "#94A3B8" }] : []),
+  ];
+
+  return (
+    <div className="elev-card bg-white rounded-2xl border p-6 flex flex-col" style={{ borderColor: "var(--border)" }}>
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Distribusi Jabatan</h3>
+          <p className="text-[11px] mt-0.5" style={{ color: "var(--ink-soft)" }}>Sebaran {total} karyawan per role</p>
+        </div>
+      </div>
+      {data.length === 0 ? (
+        <div className="py-10 text-center text-xs" style={{ color: "var(--ink-soft)" }}>Belum ada data karyawan.</div>
+      ) : (
+        <div className="flex-1 flex flex-col items-center">
+          <RoleDonutChart segments={display} total={total} mounted={mounted} size={168} strokeWidth={22} />
+          <div className="w-full mt-6 space-y-2.5">
+            {display.map(seg => {
+              const pct = total > 0 ? Math.round((seg.count / total) * 100) : 0;
+              return (
+                <div key={seg.role} className="flex items-center gap-2.5 text-[11px]">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: seg.chartColor }} />
+                  <span className="flex-1 truncate font-semibold" style={{ color: "var(--ink)" }}>{seg.label}</span>
+                  <span className="font-mono shrink-0" style={{ color: "var(--ink-soft)" }}><AnimatedNumber value={seg.count} trigger={mounted} /> ({pct}%)</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -2787,12 +3012,60 @@ function DashboardAdmin({ session, onLogout }) {
 
   // 5. Karyawan Terlambat Hari Ini
   const terlambatHariIni = useMemo(
-    () => masukHariIni.filter(a => (a.keterangan || "").startsWith("Terlambat")).sort((a, b) => new Date(a.waktu_absen) - new Date(b.waktu_absen)),
+    () =>
+      masukHariIni
+        .filter(a => (a.keterangan || "").startsWith("Terlambat"))
+        .sort((a, b) => new Date(a.waktu_absen) - new Date(b.waktu_absen))
+        .map(a => ({ ...a, _lateMinutes: parseLateMinutes(a.keterangan) })),
     [masukHariIni]
   );
 
   // 6. (Sebelumnya: Karyawan Ulang Tahun Hari Ini — sekarang card ini diganti menjadi
   // "Karyawan Belum Absen Hari Ini", lihat memo karyawanBelumAbsenHariIni di atas.)
+
+  // 7. Aktivitas Terbaru — rangkuman lintas modul (absensi, tracking BAST, invoice, cuti/izin/sakit,
+  // kasbon) untuk HARI INI, digabung & diurutkan dari yang paling baru. Tidak ada request/API baru —
+  // seluruhnya dirangkai ulang dari state yang memang sudah dimuat untuk halaman-halaman terkait.
+  const aktivitasTerbaruList = useMemo(() => {
+    const dariAbsensi = masukHariIni.map(a => ({
+      id: `absen-${a._id}`, tipe: "ABSENSI", icon: IconCheck,
+      badgeBg: "var(--brand-soft)", badgeFg: "var(--brand-dark)",
+      teks: `${a.nama} melakukan check in`, waktu: a.waktu_absen,
+    }));
+    const dariTracking = trackingList
+      .filter(t => t.tanggal && isSameDay(t.tanggal, new Date()))
+      .map(t => ({
+        id: `trk-${t._id}`, tipe: "TRACKING", icon: IconTracking,
+        badgeBg: "#EDE9FE", badgeFg: "#6D28D9",
+        teks: `Tracking BAST${t.woType ? ` ${t.woType}` : ""} baru dibuat${t.region ? ` — ${t.region}` : ""}`,
+        waktu: t.tanggal,
+      }));
+    const dariInvoice = invoiceList
+      .filter(inv => inv.tanggal && isSameDay(inv.tanggal, new Date()))
+      .map(inv => ({
+        id: `inv-${inv._id}`, tipe: "INVOICE", icon: IconInvoice,
+        badgeBg: "var(--amber-soft)", badgeFg: "var(--amber)",
+        teks: `Invoice ${inv.nomor} dibuat`, waktu: inv.tanggal,
+      }));
+    const dariCuti = pengajuanCISList
+      .filter(p => p.status === "Disetujui" && p.tanggal_pengajuan && isSameDay(p.tanggal_pengajuan, new Date()))
+      .map(p => ({
+        id: `cuti-${p._id}`, tipe: "CUTI", icon: IconCalendarDays,
+        badgeBg: "var(--green-soft)", badgeFg: "var(--green)",
+        teks: `Pengajuan ${p.jenis} disetujui — ${p.nama}`, waktu: p.tanggal_pengajuan,
+      }));
+    const dariKasbon = kasbonList
+      .filter(k => k.status === "Disetujui" && k.tanggal_pengajuan && isSameDay(k.tanggal_pengajuan, new Date()))
+      .map(k => ({
+        id: `kasbon-${k._id}`, tipe: "KASBON", icon: IconWallet,
+        badgeBg: "var(--amber-soft)", badgeFg: "var(--amber)",
+        teks: `Kasbon disetujui — ${k.nama}`, waktu: k.tanggal_pengajuan,
+      }));
+    return [...dariAbsensi, ...dariTracking, ...dariInvoice, ...dariCuti, ...dariKasbon]
+      .filter(x => x.waktu)
+      .sort((a, b) => new Date(b.waktu) - new Date(a.waktu))
+      .slice(0, 8);
+  }, [masukHariIni, trackingList, invoiceList, pengajuanCISList, kasbonList]);
 
   /* ---------------- MODUL KEUANGAN (Staf Finance & Owner) ---------------- */
   const [finEditId, setFinEditId] = useState(null);
@@ -5056,58 +5329,48 @@ function DashboardAdmin({ session, onLogout }) {
           ) : (
             <>
               {currentMenu === "dashboard" && (
-                <div className="space-y-6">
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                <div className="space-y-7">
+                  {/* ===== WELCOME HEADER ===== */}
+                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                     <div>
-                      <h1 className="text-2xl font-bold font-display" style={{ color: "var(--ink)" }}>Ringkasan Dashboard</h1>
-                      <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>Pantauan performa tim &amp; aktivitas hari ini secara real-time</p>
+                      <p className="text-xs font-semibold" style={{ color: "var(--ink-soft)" }}>Selamat datang kembali,</p>
+                      <h1 className="text-2xl sm:text-[26px] font-bold font-display mt-0.5 flex items-center gap-2" style={{ color: "var(--ink)" }}>
+                        {session.nama || "Admin"} <span>👋</span>
+                      </h1>
+                      <p className="text-xs mt-1.5" style={{ color: "var(--ink-soft)" }}>Kelola tim &amp; pantau aktivitas perusahaan dengan mudah.</p>
                     </div>
-                    <button onClick={() => muatSemuaData()} className="text-white font-semibold px-4 py-2 rounded-xl text-xs shadow-sm flex items-center gap-1.5 self-start sm:self-auto" style={{ background: "var(--brand)" }}>
-                      <IconRefresh className="w-3.5 h-3.5" /> Refresh
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <div className="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-xl border bg-white" style={{ borderColor: "var(--border)" }}>
+                        <IconCalendarDays className="w-4 h-4" style={{ color: "var(--brand)" }} />
+                        <div className="leading-tight">
+                          <p className="text-[11px] font-bold" style={{ color: "var(--ink)" }}>
+                            {new Date().toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}
+                          </p>
+                          <p className="text-[10px] font-mono" style={{ color: "var(--ink-soft)" }}>
+                            {new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} WIB
+                          </p>
+                        </div>
+                      </div>
+                      <button onClick={() => muatSemuaData()} className="text-white font-semibold px-4 py-2.5 rounded-xl text-xs shadow-sm flex items-center gap-1.5 shrink-0 hover:opacity-95 transition" style={{ background: "var(--brand)" }}>
+                        <IconRefresh className="w-3.5 h-3.5" /> Refresh
+                      </button>
+                    </div>
                   </div>
 
-                  {/* ===== 1. RINGKASAN ABSENSI HARI INI ===== */}
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <h2 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Ringkasan Absensi Hari Ini</h2>
-                      <span className="text-[11px] font-mono" style={{ color: "var(--ink-soft)" }}>{new Date().toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                      <StatCard label="Total Karyawan" value={karyawanList.length} unit="orang" tone="brand" icon={<IconUsers className="w-5 h-5" />} />
-                      <StatCard label="Sudah Hadir" value={hadirHariIniCount} unit="orang" tone="green" icon={<IconCheck className="w-5 h-5" />} />
-                      <StatCard label="Belum Absen" value={belumAbsenCount} unit="orang" tone="amber" icon={<IconAlert className="w-5 h-5" />} />
-                      <StatCard label="Absen Pulang" value={pulangHariIni.length} unit="tap" tone="amber" icon={<IconClock className="w-5 h-5" />} />
-                      <StatCard label="Tingkat Kehadiran" value={kehadiranHariIniPct} unit="%" tone="brand" icon={<IconTrendUp className="w-5 h-5" />} />
-                    </div>
+                  {/* ===== KPI CARDS ===== */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                    <StatCard label="Total Karyawan" value={karyawanList.length} unit="orang" tone="brand" icon={<IconUsers className="w-5 h-5" />} />
+                    <StatCard label="Sudah Hadir" value={hadirHariIniCount} unit="orang" tone="green" icon={<IconCheck className="w-5 h-5" />} />
+                    <StatCard label="Belum Absen" value={belumAbsenCount} unit="orang" tone="amber" icon={<IconAlert className="w-5 h-5" />} />
+                    <StatCard label="Absen Pulang" value={pulangHariIni.length} unit="tap" tone="amber" icon={<IconClock className="w-5 h-5" />} />
+                    <StatCard label="Tingkat Kehadiran" value={kehadiranHariIniPct} unit="%" tone="brand" icon={<IconTrendUp className="w-5 h-5" />} />
                   </div>
 
-                  {/* ===== 1b. RINGKASAN MATERIAL ===== */}
-                  {materialStatsDash && (
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <h2 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Ringkasan Material</h2>
-                        <button onClick={() => setCurrentMenu("material")} className="text-[11px] font-semibold" style={{ color: "var(--brand)" }}>Lihat detail →</button>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <StatCard label="Sudah Terpakai" value={materialStatsDash.terpakai} unit="unit" tone="green" icon={<IconCheck className="w-5 h-5" />} />
-                        <StatCard label="Di Tangan Teknisi" value={materialStatsDash.ditanganTeknisi} unit="unit (Idle)" tone="amber" icon={<IconAlert className="w-5 h-5" />} />
-                        <StatCard label="Stok Terkini (Gudang)" value={materialStatsDash.sisaStok} unit="unit" tone="brand" icon={<IconBox className="w-5 h-5" />} />
-                      </div>
-                      <p className="text-[11px] mt-2.5 leading-relaxed" style={{ color: "var(--ink-soft)" }}>
-                        Cara bacanya: stok yang <span className="font-bold">sudah diambil teknisi otomatis kepotong dari Stok Terkini (Gudang)</span>, tapi belum tentu langsung terpasang hari itu juga —
-                        selama masih berstatus <span className="font-bold">Idle</span>, unit itu tercatat di kartu <span className="font-bold">"Di Tangan Teknisi"</span> (masih "menggantung", belum jadi Terpakai).
-                        Begitu admin/gudang menandai unitnya Terpakai (lewat halaman "Stok di Tangan Teknisi"), angka itu baru pindah ke kartu <span className="font-bold">"Sudah Terpakai"</span>.
-                        Jadi kalau Stok Terkini (Gudang) kelihatan lebih kecil dari dugaan padahal belum semuanya Terpakai, cek dulu kartu "Di Tangan Teknisi" — biasanya di situ larinya.
-                      </p>
-                    </div>
-                  )}
-
+                  {/* ===== ATTENDANCE CHART + ROLE DISTRIBUTION CHART ===== */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* ===== 2. GRAFIK KEHADIRAN 7 HARI TERAKHIR ===== */}
-                    <div className="elev-card lg:col-span-2 bg-white rounded-2xl border p-5" style={{ borderColor: "var(--border)" }}>
-                      <h3 className="text-sm font-bold mb-1" style={{ color: "var(--ink)" }}>Grafik Kehadiran 7 Hari Terakhir</h3>
-                      <p className="text-[11px] mb-5" style={{ color: "var(--ink-soft)" }}>Jumlah karyawan absen masuk per hari</p>
+                    <div className="elev-card lg:col-span-2 bg-white rounded-2xl border p-6" style={{ borderColor: "var(--border)" }}>
+                      <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Grafik Kehadiran 7 Hari Terakhir</h3>
+                      <p className="text-[11px] mb-6 mt-1" style={{ color: "var(--ink-soft)" }}>Jumlah karyawan absen masuk per hari</p>
                       <div className="flex items-end justify-between gap-2 h-40">
                         {kehadiran7Hari.map((h, i) => (
                           <div key={i} className="flex-1 flex flex-col items-center justify-end h-full gap-1.5">
@@ -5124,18 +5387,82 @@ function DashboardAdmin({ session, onLogout }) {
                       </div>
                     </div>
 
-                    {/* ===== 5. KARYAWAN BELUM ABSEN HARI INI ===== */}
-                    <div className="elev-card bg-white rounded-2xl border flex flex-col" style={{ borderColor: "var(--border)" }}>
-                      <div className="p-4 border-b" style={{ borderColor: "var(--border)" }}>
-                        <div className="flex justify-between items-center mb-2.5">
-                          <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Karyawan Belum Absen Hari Ini</h3>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: "var(--amber-soft)", color: "var(--amber)" }}>{karyawanBelumAbsenFiltered.length}</span>
+                    {/* ===== ROLE DISTRIBUTION CHART ===== */}
+                    <DashboardRoleDonutCard items={karyawanSummary.byRole} total={karyawanSummary.total} />
+                  </div>
+
+                  {/* ===== KARYAWAN TERLAMBAT HARI INI (TABLE) + KARYAWAN BELUM ABSEN HARI INI ===== */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                    <div className="elev-card lg:col-span-2 bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                      <div className="p-5 border-b flex justify-between items-center" style={{ borderColor: "var(--border)" }}>
+                        <div>
+                          <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Karyawan Terlambat Hari Ini</h3>
+                          <p className="text-[11px] mt-0.5" style={{ color: "var(--ink-soft)" }}>Diurutkan berdasarkan jam absen masuk</p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <button onClick={() => setCurrentMenu("log")} className="text-[11px] font-semibold shrink-0 hover:underline" style={{ color: "var(--brand)" }}>Lihat semua log →</button>
+                      </div>
+                      {terlambatHariIni.length === 0 ? (
+                        <EmptyState title="Tidak ada yang terlambat" subtitle="Semua karyawan absen masuk tepat waktu hari ini." icon={<IconCheck className="w-5 h-5" />} />
+                      ) : (
+                        <div className="overflow-y-auto overflow-x-auto" style={{ maxHeight: 420 }}>
+                          <table className="w-full text-left border-collapse text-xs min-w-[560px]">
+                            <thead>
+                              <tr className="border-b font-bold uppercase tracking-wider sticky top-0 z-10" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                                <th className="p-3.5">Karyawan</th>
+                                <th className="p-3.5">Waktu Check In</th>
+                                <th className="p-3.5">Terlambat</th>
+                                <th className="p-3.5">Cabang</th>
+                                <th className="p-3.5">Keterangan</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
+                              {terlambatHariIni.map(a => {
+                                const tone = lateDurationTone(a._lateMinutes);
+                                const km = karyawanMap[a.karyawan_id];
+                                return (
+                                  <tr key={a._id} className="hover:bg-gray-50/60 transition">
+                                    <td className="p-3.5">
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                        <Avatar name={a.nama} size={30} />
+                                        <span className="font-semibold truncate" style={{ color: "var(--ink)" }}>{a.nama}</span>
+                                      </div>
+                                    </td>
+                                    <td className="p-3.5 font-mono whitespace-nowrap" style={{ color: "var(--ink-soft)" }}>
+                                      {new Date(a.waktu_absen).toLocaleString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" })}, {new Date(a.waktu_absen).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} WIB
+                                    </td>
+                                    <td className="p-3.5">
+                                      <span className="px-2.5 py-1 rounded-full font-bold text-[10px] uppercase tracking-wide whitespace-nowrap" style={{ background: tone.bg, color: tone.fg }}>
+                                        {a.keterangan.replace("Terlambat ", "")}
+                                      </span>
+                                    </td>
+                                    <td className="p-3.5 whitespace-nowrap" style={{ color: "var(--ink-soft)" }}>{km?.cabang || "—"}</td>
+                                    <td className="p-3.5">
+                                      <span className="px-2.5 py-1 rounded-full font-bold text-[10px] uppercase tracking-wide whitespace-nowrap" style={{ background: "var(--red-soft)", color: "var(--red)" }}>Terlambat</span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ===== KARYAWAN BELUM ABSEN HARI INI (Pengingat WA) ===== */}
+                    <div className="elev-card bg-white rounded-2xl border flex flex-col overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                      <div className="p-5 border-b" style={{ borderColor: "var(--border)" }}>
+                        <div className="flex justify-between items-start gap-2 mb-1">
+                          <div>
+                            <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Karyawan Belum Absen Hari Ini</h3>
+                            <p className="text-[11px] mt-0.5" style={{ color: "var(--ink-soft)" }}>Salin daftar untuk dikirim sebagai pengingat</p>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold shrink-0" style={{ background: "var(--amber-soft)", color: "var(--amber)" }}>{karyawanBelumAbsenFiltered.length}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-3.5">
                           <select
                             value={belumAbsenRoleFilter}
                             onChange={(e) => setBelumAbsenRoleFilter(e.target.value)}
-                            className="flex-1 min-w-0 text-[11px] font-semibold rounded-lg border px-2 py-1.5 bg-white"
+                            className="flex-1 min-w-0 text-[11px] font-semibold rounded-lg border px-2.5 py-2 bg-white outline-none"
                             style={{ borderColor: "var(--border)", color: "var(--ink)" }}
                           >
                             <option value="semua">Semua Role</option>
@@ -5146,7 +5473,7 @@ function DashboardAdmin({ session, onLogout }) {
                           <button
                             onClick={handleCopyBelumAbsen}
                             disabled={karyawanBelumAbsenFiltered.length === 0}
-                            className="flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg text-white shrink-0 disabled:opacity-50"
+                            className="flex items-center gap-1.5 text-[11px] font-bold px-3.5 py-2 rounded-lg text-white shrink-0 disabled:opacity-50 hover:opacity-95 transition"
                             style={{ background: "var(--brand)" }}
                             title="Salin daftar nama untuk dikirim ke grup WA"
                           >
@@ -5161,17 +5488,17 @@ function DashboardAdmin({ session, onLogout }) {
                           icon={<IconCheck className="w-5 h-5" />}
                         />
                       ) : (
-                        <ul className="divide-y overflow-y-auto" style={{ borderColor: "var(--border)", maxHeight: 260 }}>
+                        <ul className="divide-y divide-black/5 overflow-y-auto" style={{ maxHeight: 420 }}>
                           {karyawanBelumAbsenFiltered.map(k => {
                             const ri = roleInfo(k.role);
                             return (
-                              <li key={k._id} className="p-3.5 flex items-center gap-3">
-                                <Avatar name={k.nama} size={30} />
+                              <li key={k._id} className="px-5 py-3 flex items-center gap-3 hover:bg-gray-50/60 transition">
+                                <Avatar name={k.nama} size={32} />
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-bold truncate" style={{ color: "var(--ink)" }}>{k.nama}</p>
-                                  <p className="text-[10px] truncate" style={{ color: "var(--ink-soft)" }}>{k.cabang || "—"}</p>
+                                  <p className="text-[13px] font-semibold truncate" style={{ color: "var(--ink)" }}>{k.nama}</p>
+                                  <p className="text-[11px] truncate mt-0.5" style={{ color: "var(--ink-soft)" }}>{k.cabang || "—"}</p>
                                 </div>
-                                <span className="px-2 py-1 rounded-full font-bold text-[9px] uppercase text-right shrink-0" style={{ background: ri.badgeBg, color: ri.badgeFg }}>{ri.label}</span>
+                                <span className="px-2 py-1 rounded-full font-bold text-[9px] uppercase tracking-wide text-right shrink-0" style={{ background: ri.badgeBg, color: ri.badgeFg }}>{ri.label}</span>
                               </li>
                             );
                           })}
@@ -5180,22 +5507,74 @@ function DashboardAdmin({ session, onLogout }) {
                     </div>
                   </div>
 
+                  {/* ===== AKTIVITAS TERBARU ===== */}
+                  <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                    <div className="p-5 border-b" style={{ borderColor: "var(--border)" }}>
+                      <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Aktivitas Terbaru</h3>
+                      <p className="text-[11px] mt-0.5" style={{ color: "var(--ink-soft)" }}>Ringkasan aktivitas lintas modul hari ini</p>
+                    </div>
+                    {aktivitasTerbaruList.length === 0 ? (
+                      <EmptyState title="Belum ada aktivitas" subtitle="Aktivitas hari ini akan muncul di sini secara otomatis." icon={<IconClock className="w-5 h-5" />} />
+                    ) : (
+                      <ul className="divide-y divide-black/5 overflow-y-auto" style={{ maxHeight: 420 }}>
+                        {aktivitasTerbaruList.map(item => {
+                          const ItemIcon = item.icon;
+                          return (
+                            <li key={item.id} className="px-5 py-3.5 flex items-center gap-3.5 hover:bg-gray-50/60 transition">
+                              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: item.badgeBg, color: item.badgeFg }}>
+                                <ItemIcon className="w-4 h-4" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[13px] font-semibold truncate" style={{ color: "var(--ink)" }}>{item.teks}</p>
+                                <p className="text-[11px] font-mono mt-0.5" style={{ color: "var(--ink-soft)" }}>{new Date(item.waktu).toLocaleString("id-ID")} WIB</p>
+                              </div>
+                              <span className="px-2.5 py-1 rounded-full font-bold text-[9px] uppercase tracking-wide shrink-0" style={{ background: "var(--canvas)", color: "var(--ink-soft)" }}>{item.tipe}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+
+                  {/* ===== RINGKASAN MATERIAL / TRACKING BAST / FINANCE (tetap ada, dipindah ke bawah
+                       supaya area atas konsisten dengan layout referensi; data & akses role tidak berubah) ===== */}
+                  {materialStatsDash && (
+                    <div>
+                      <div className="flex items-center justify-between mb-3.5">
+                        <h2 className="text-[13px] font-bold tracking-wide" style={{ color: "var(--ink)" }}>Ringkasan Material</h2>
+                        <button onClick={() => setCurrentMenu("material")} className="text-[11px] font-semibold hover:underline" style={{ color: "var(--brand)" }}>Lihat detail →</button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <StatCard label="Sudah Terpakai" value={materialStatsDash.terpakai} unit="unit" tone="green" icon={<IconCheck className="w-5 h-5" />} />
+                        <StatCard label="Di Tangan Teknisi" value={materialStatsDash.ditanganTeknisi} unit="unit (Idle)" tone="amber" icon={<IconAlert className="w-5 h-5" />} />
+                        <StatCard label="Stok Terkini (Gudang)" value={materialStatsDash.sisaStok} unit="unit" tone="brand" icon={<IconBox className="w-5 h-5" />} />
+                      </div>
+                      <div className="rounded-xl p-3.5 mt-3" style={{ background: "var(--canvas)" }}>
+                        <p className="text-[11px] leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+                          Cara bacanya: stok yang <span className="font-bold" style={{ color: "var(--ink)" }}>sudah diambil teknisi otomatis kepotong dari Stok Terkini (Gudang)</span>, tapi belum tentu langsung terpasang hari itu juga —
+                          selama masih berstatus <span className="font-bold" style={{ color: "var(--ink)" }}>Idle</span>, unit itu tercatat di kartu <span className="font-bold" style={{ color: "var(--ink)" }}>"Di Tangan Teknisi"</span> (masih "menggantung", belum jadi Terpakai).
+                          Begitu admin/gudang menandai unitnya Terpakai (lewat halaman "Stok di Tangan Teknisi"), angka itu baru pindah ke kartu <span className="font-bold" style={{ color: "var(--ink)" }}>"Sudah Terpakai"</span>.
+                          Jadi kalau Stok Terkini (Gudang) kelihatan lebih kecil dari dugaan padahal belum semuanya Terpakai, cek dulu kartu "Di Tangan Teknisi" — biasanya di situ larinya.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   {(trackingStatsDash || financeStatsDash) && (
                     <div className={`grid grid-cols-1 ${trackingStatsDash && financeStatsDash ? "lg:grid-cols-2" : ""} gap-6`}>
-                      {/* ===== 3. STATISTIK TRACKING BAST ===== */}
                       {trackingStatsDash && (
-                        <div className="elev-card bg-white rounded-2xl border p-5" style={{ borderColor: "var(--border)" }}>
-                          <div className="flex justify-between items-center mb-4">
+                        <div className="elev-card bg-white rounded-2xl border p-6" style={{ borderColor: "var(--border)" }}>
+                          <div className="flex justify-between items-center mb-5">
                             <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Statistik Tracking BAST</h3>
-                            <button onClick={() => setCurrentMenu("tracking")} className="text-[11px] font-semibold" style={{ color: "var(--brand)" }}>Lihat detail →</button>
+                            <button onClick={() => setCurrentMenu("tracking")} className="text-[11px] font-semibold hover:underline" style={{ color: "var(--brand)" }}>Lihat detail →</button>
                           </div>
                           <div className="grid grid-cols-2 gap-3">
                             {TRACKING_STATUS.map(s => {
                               const tone = trackingStatusTone(s);
                               return (
-                                <div key={s} className="rounded-xl p-3" style={{ background: tone.bg }}>
+                                <div key={s} className="rounded-xl p-3.5" style={{ background: tone.bg }}>
                                   <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: tone.fg }}>{s}</p>
-                                  <p className="text-xl font-bold font-display mt-1" style={{ color: tone.fg }}>{trackingStatsDash.perStatus[s] || 0} <span className="text-[11px] font-medium">dok</span></p>
+                                  <p className="text-xl font-bold font-display mt-1.5" style={{ color: tone.fg }}>{trackingStatsDash.perStatus[s] || 0} <span className="text-[11px] font-medium">dok</span></p>
                                 </div>
                               );
                             })}
@@ -5207,54 +5586,30 @@ function DashboardAdmin({ session, onLogout }) {
                         </div>
                       )}
 
-                      {/* ===== 4. RINGKASAN FINANCE ===== */}
                       {financeStatsDash && (
-                        <div className="elev-card bg-white rounded-2xl border p-5" style={{ borderColor: "var(--border)" }}>
-                          <div className="flex justify-between items-center mb-4">
+                        <div className="elev-card bg-white rounded-2xl border p-6" style={{ borderColor: "var(--border)" }}>
+                          <div className="flex justify-between items-center mb-5">
                             <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Ringkasan Finance</h3>
-                            <button onClick={() => setCurrentMenu("keuangan")} className="text-[11px] font-semibold" style={{ color: "var(--brand)" }}>Lihat detail →</button>
+                            <button onClick={() => setCurrentMenu("keuangan")} className="text-[11px] font-semibold hover:underline" style={{ color: "var(--brand)" }}>Lihat detail →</button>
                           </div>
                           <div className="grid grid-cols-3 gap-3">
-                            <div className="rounded-xl p-3" style={{ background: "var(--green-soft)" }}>
+                            <div className="rounded-xl p-3.5" style={{ background: "var(--green-soft)" }}>
                               <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--green)" }}>Uang Masuk</p>
-                              <p className="text-sm font-bold font-display mt-1" style={{ color: "var(--green)" }}>{fmtRupiah(financeStatsDash.masuk)}</p>
+                              <p className="text-sm font-bold font-display mt-1.5" style={{ color: "var(--green)" }}>{fmtRupiah(financeStatsDash.masuk)}</p>
                             </div>
-                            <div className="rounded-xl p-3" style={{ background: "var(--amber-soft)" }}>
+                            <div className="rounded-xl p-3.5" style={{ background: "var(--amber-soft)" }}>
                               <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--amber)" }}>Uang Keluar</p>
-                              <p className="text-sm font-bold font-display mt-1" style={{ color: "var(--amber)" }}>{fmtRupiah(financeStatsDash.keluar)}</p>
+                              <p className="text-sm font-bold font-display mt-1.5" style={{ color: "var(--amber)" }}>{fmtRupiah(financeStatsDash.keluar)}</p>
                             </div>
-                            <div className="rounded-xl p-3" style={{ background: "var(--brand-soft)" }}>
+                            <div className="rounded-xl p-3.5" style={{ background: "var(--brand-soft)" }}>
                               <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--brand-dark)" }}>Saldo</p>
-                              <p className="text-sm font-bold font-display mt-1" style={{ color: "var(--brand-dark)" }}>{fmtRupiah(financeStatsDash.saldo)}</p>
+                              <p className="text-sm font-bold font-display mt-1.5" style={{ color: "var(--brand-dark)" }}>{fmtRupiah(financeStatsDash.saldo)}</p>
                             </div>
                           </div>
                         </div>
                       )}
                     </div>
                   )}
-
-                  <div className="elev-card bg-white rounded-2xl border" style={{ borderColor: "var(--border)" }}>
-                    <div className="p-4 border-b flex justify-between items-center" style={{ borderColor: "var(--border)" }}>
-                      <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Karyawan Terlambat Hari Ini</h3>
-                      <button onClick={() => setCurrentMenu("log")} className="text-[11px] font-semibold" style={{ color: "var(--brand)" }}>Lihat semua log →</button>
-                    </div>
-                    {terlambatHariIni.length === 0 ? (
-                      <EmptyState title="Tidak ada yang terlambat" subtitle="Semua karyawan absen masuk tepat waktu hari ini." icon={<IconCheck className="w-5 h-5" />} />
-                    ) : (
-                      <ul className="divide-y" style={{ borderColor: "var(--border)" }}>
-                        {terlambatHariIni.map(a => (
-                          <li key={a._id} className="p-3.5 flex items-center gap-3">
-                            <Avatar name={a.nama} size={32} />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-bold truncate" style={{ color: "var(--ink)" }}>{a.nama}</p>
-                              <p className="text-[11px] font-mono" style={{ color: "var(--ink-soft)" }}>{new Date(a.waktu_absen).toLocaleString("id-ID")} WIB</p>
-                            </div>
-                            <span className="px-2.5 py-1 rounded-full font-bold text-[10px] uppercase" style={{ background: "var(--amber-soft)", color: "var(--amber)" }}>{a.keterangan.replace("Terlambat ", "")}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
                 </div>
               )}
 
@@ -5286,9 +5641,6 @@ function DashboardAdmin({ session, onLogout }) {
                     <StatCard label="Karyawan Non Aktif" value={karyawanSummary.nonAktif} unit="orang" tone="amber" icon={<IconAlert className="w-5 h-5" />} />
                     <StatCard label="Akun Owner" value={karyawanSummary.ownerCount} unit="akun" tone="brand" icon={<IconUsers className="w-5 h-5" />} />
                   </div>
-
-                  {/* DISTRIBUSI PER JABATAN/ROLE */}
-                  <RoleBreakdownCard items={karyawanSummary.byRole} total={karyawanSummary.total} />
 
                   {/* TABLE */}
                   <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
