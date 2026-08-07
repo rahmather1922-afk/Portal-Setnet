@@ -10,6 +10,7 @@ const trackingRoutes = require('./src/routes/tracking');
 const kasbonRoutes = require('./src/routes/kasbon');
 const pengajuanRoutes = require('./src/routes/pengajuan');
 const materialRoutes = require('./src/routes/material');
+const assetRoutes = require('./src/routes/asset');
 const salaryRoutes = require('./src/routes/salary');
 
 const app = express();
@@ -39,6 +40,7 @@ app.use('/api', trackingRoutes);
 app.use('/api', kasbonRoutes);
 app.use('/api', pengajuanRoutes);
 app.use('/api', materialRoutes);
+app.use('/api', assetRoutes);
 app.use('/api', salaryRoutes);
 
 

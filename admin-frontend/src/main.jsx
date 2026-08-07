@@ -167,6 +167,7 @@ const MENU_ACCESS = {
   tracking:  ["finance", "owner", "hrd"], // <--- Tracking BAST: sekarang Finance juga bisa akses
   kasbon:    ["owner", "hrd"], // <--- Menu Kasbon & Cuti/Izin/Sakit; approve KASBON tetap dikunci khusus owner (lihat tombol ACC di bawah)
   material:  ["admin", "gudang", "korlap", "owner", "hrd"], // <--- Pemakaian Material: admin, gudang & korlap boleh kelola, finance tidak lagi akses
+  asset:     ["admin", "gudang", "korlap", "owner", "hrd"], // <--- Aset & Alat Teknisi: role sama persis dengan Pemakaian Material
   salary:    ["owner", "hrd"], // <--- Submenu "Salary" di bawah Master Data Karyawan: gaji pokok, limit kasbon manual, tandai gaji dibayar
 };
 const canAccess = (role, menuKey) => (MENU_ACCESS[menuKey] || []).includes(role);
@@ -176,6 +177,25 @@ const canAccess = (role, menuKey) => (MENU_ACCESS[menuKey] || []).includes(role)
 // hanya bisa LIHAT daftar & laporan, tombol tambah/edit/hapus disembunyikan.
 const MATERIAL_MANAGE_ROLES = ["admin", "gudang", "korlap", "owner", "hrd"]; // hrd akses penuh, ikut bisa kelola material
 const canManageMaterial = (role) => MATERIAL_MANAGE_ROLES.includes(role);
+// Role yang boleh KELOLA Aset (CRUD master, serah terima/pengembalian) — mengikuti
+// MANAGE_ROLES di backend routes/asset.js, persis sama dengan hak kelola Material.
+const ASSET_MANAGE_ROLES = ["admin", "gudang", "korlap", "owner", "hrd"];
+const canManageAsset = (role) => ASSET_MANAGE_ROLES.includes(role);
+// Preset kategori & jenis Aset — mempercepat input, tapi field "nama" tetap teks bebas
+// jadi admin/gudang boleh isi jenis alat lain di luar daftar ini.
+const ASET_KATEGORI_PRESETS = ["Kendaraan", "Alat Fiber Optic", "Lainnya"];
+const ASET_NAMA_PRESETS = ["Mobil", "Motor", "OPM (Optical Power Meter)", "OTDR", "Laser Fiber (Fiber Cleaver)", "Splicer (Fusion Splicer)", "Tang Crimping", "Tangga Fiber"];
+const asetStatusTone = (s) => ({
+  "Tersedia": { bg: "var(--green-soft)", fg: "var(--green)" },
+  "Dipakai": { bg: "var(--brand-soft)", fg: "var(--brand-dark)" },
+  "Maintenance": { bg: "var(--amber-soft)", fg: "var(--amber)" },
+  "Hilang": { bg: "var(--red-soft)", fg: "var(--red)" },
+}[s] || { bg: "var(--canvas)", fg: "var(--ink-soft)" });
+const asetKondisiTone = (k) => ({
+  "Baik": { bg: "var(--green-soft)", fg: "var(--green)" },
+  "Rusak Ringan": { bg: "var(--amber-soft)", fg: "var(--amber)" },
+  "Rusak Berat": { bg: "var(--red-soft)", fg: "var(--red)" },
+}[k] || { bg: "var(--canvas)", fg: "var(--ink-soft)" });
 const fmtRupiah = (n) => "Rp " + Number(n || 0).toLocaleString("id-ID");
 
 // Status kepegawaian: Aktif (masih bekerja) / Non Aktif (sudah tidak bekerja).
@@ -2466,6 +2486,40 @@ function DashboardAdmin({ session, onLogout }) {
   const [materialReport, setMaterialReport] = useState({ perMaterial: [], perTeam: [] });
   const [reportLoading, setReportLoading] = useState(false);
 
+  // ==================== STATE MODUL ASET & ALAT TEKNISI ====================
+  const [assetList, setAssetList] = useState([]);
+  const [assetLogList, setAssetLogList] = useState([]);
+  const [searchAsset, setSearchAsset] = useState("");
+  const [asetKategoriFilter, setAsetKategoriFilter] = useState("semua");
+  const [asetStatusFilter, setAsetStatusFilter] = useState("semua");
+  const [pageAsset, setPageAsset] = useState(1);
+  const [pageSizeAsset, setPageSizeAsset] = useState(10);
+  // modal Tambah/Edit Aset
+  const [asetModalOpen, setAsetModalOpen] = useState(false);
+  const [asetEditId, setAsetEditId] = useState(null);
+  const [asetKategori, setAsetKategori] = useState("Alat Fiber Optic");
+  const [asetNama, setAsetNama] = useState("");
+  const [asetKodeAset, setAsetKodeAset] = useState("");
+  const [asetMerek, setAsetMerek] = useState("");
+  const [asetKondisi, setAsetKondisi] = useState("Baik");
+  const [asetKeterangan, setAsetKeterangan] = useState("");
+  const [asetFormErrors, setAsetFormErrors] = useState({});
+  const [asetSubmitting, setAsetSubmitting] = useState(false);
+  // modal Serah Terima
+  const [serahTerimaTarget, setSerahTerimaTarget] = useState(null);
+  const [stTeknisiNama, setStTeknisiNama] = useState("");
+  const [stTanggal, setStTanggal] = useState(() => new Date().toISOString().slice(0, 10));
+  const [stKeterangan, setStKeterangan] = useState("");
+  const [stSubmitting, setStSubmitting] = useState(false);
+  // konfirmasi Pengembalian
+  const [pengembalianTarget, setPengembalianTarget] = useState(null);
+  const [pengembalianKondisi, setPengembalianKondisi] = useState("Baik");
+  const [pengembalianSubmitting, setPengembalianSubmitting] = useState(false);
+  // konfirmasi Hapus Aset
+  const [asetDeleteTarget, setAsetDeleteTarget] = useState(null);
+  // modal Riwayat per aset
+  const [riwayatAsetTarget, setRiwayatAsetTarget] = useState(null);
+
   // form: master material
   const [materialModalOpen, setMaterialModalOpen] = useState(false); // modal Tambah/Edit Material + Tambah Stok, biar tabel Master Data Material bisa full width
   const [matEditId, setMatEditId] = useState(null);
@@ -2581,6 +2635,10 @@ function DashboardAdmin({ session, onLogout }) {
         calls.push(fetch(`${MATERIAL_API}/pemakaian-material`, { headers: authHeaders() }));
         calls.push(fetch(`${MATERIAL_API}/material/stok`, { headers: authHeaders() }));
       }
+      if (canAccess(session.role, "asset")) {
+        calls.push(fetch(`${MATERIAL_API}/asset`, { headers: authHeaders() }));
+        calls.push(fetch(`${MATERIAL_API}/asset/log`, { headers: authHeaders() }));
+      }
       const results = await Promise.all(calls);
       const dataKaryawan = await results[0].json();
       const dataAbsen = await results[1].json();
@@ -2616,6 +2674,12 @@ function DashboardAdmin({ session, onLogout }) {
         setPemakaianList(Array.isArray(dataPemakaian) ? dataPemakaian : []);
         const dataStokLog = await results[idx++].json();
         setStokLogList(Array.isArray(dataStokLog) ? dataStokLog : []);
+      }
+      if (canAccess(session.role, "asset")) {
+        const dataAsset = await results[idx++].json();
+        setAssetList(Array.isArray(dataAsset) ? dataAsset : []);
+        const dataAssetLog = await results[idx++].json();
+        setAssetLogList(Array.isArray(dataAssetLog) ? dataAssetLog : []);
       }
       setOnline(true);
       setLastSync(new Date());
@@ -3754,6 +3818,7 @@ function DashboardAdmin({ session, onLogout }) {
     { key: "tracking", label: "Tracking BAST", icon: IconTracking },
     { key: "kasbon", label: "Kasbon & Cuti", icon: IconWallet },
     { key: "material", label: "Pemakaian Material", icon: IconBox },
+    { key: "asset", label: "Aset & Alat Teknisi", icon: IconWrench },
   ].filter(item => canAccess(session.role, item.key));
 
   // ==================== HANDLER: KASBON & PENGAJUAN CUTI/IZIN/SAKIT ====================
@@ -4158,6 +4223,108 @@ function DashboardAdmin({ session, onLogout }) {
     } catch { notify("Gagal terhubung ke server", "error"); }
     finally { setMatDeleteTarget(null); }
   };
+
+  // ==================== HANDLER MODUL ASET & ALAT TEKNISI ====================
+  const resetFormAsset = () => {
+    setAsetEditId(null); setAsetKategori("Alat Fiber Optic"); setAsetNama(""); setAsetKodeAset("");
+    setAsetMerek(""); setAsetKondisi("Baik"); setAsetKeterangan(""); setAsetFormErrors({});
+    setAsetModalOpen(false);
+  };
+  const pemicuEditAsset = (a) => {
+    setAsetEditId(a._id); setAsetKategori(a.kategori); setAsetNama(a.nama); setAsetKodeAset(a.kode_aset || "");
+    setAsetMerek(a.merek || ""); setAsetKondisi(a.kondisi || "Baik"); setAsetKeterangan(a.keterangan || "");
+    setAsetFormErrors({}); setAsetModalOpen(true);
+  };
+  const validateAsset = () => {
+    const errs = {};
+    if (!asetNama.trim()) errs.nama = "Nama/jenis aset wajib diisi";
+    setAsetFormErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+  const handleSubmitAsset = async (e) => {
+    e.preventDefault();
+    if (!validateAsset()) return;
+    setAsetSubmitting(true);
+    try {
+      const bodyData = { kategori: asetKategori, nama: asetNama.trim(), kode_aset: asetKodeAset.trim(), merek: asetMerek.trim(), kondisi: asetKondisi, keterangan: asetKeterangan };
+      const url = asetEditId ? `${MATERIAL_API}/asset/${asetEditId}` : `${MATERIAL_API}/asset`;
+      const res = await fetch(url, { method: asetEditId ? "PUT" : "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
+      const resData = await res.json().catch(() => ({}));
+      if (res.ok) {
+        notify(resData.message || (asetEditId ? "Aset berhasil diperbarui" : "Aset baru berhasil ditambahkan"));
+        resetFormAsset(); muatSemuaData(true);
+      } else notify(resData.message || "Gagal menyimpan aset", "error");
+    } catch { notify("Gagal terhubung ke server", "error"); }
+    finally { setAsetSubmitting(false); }
+  };
+  const hapusAsset = async () => {
+    if (!asetDeleteTarget) return;
+    try {
+      const res = await fetch(`${MATERIAL_API}/asset/${asetDeleteTarget._id}`, { method: "DELETE", headers: authHeaders() });
+      const resData = await res.json().catch(() => ({}));
+      if (res.ok) { notify("Aset berhasil dihapus"); muatSemuaData(true); }
+      else notify(resData.message || "Gagal menghapus aset", "error");
+    } catch { notify("Gagal terhubung ke server", "error"); }
+    finally { setAsetDeleteTarget(null); }
+  };
+  const bukaSerahTerima = (a) => {
+    setSerahTerimaTarget(a); setStTeknisiNama(""); setStTanggal(new Date().toISOString().slice(0, 10)); setStKeterangan("");
+  };
+  const submitSerahTerima = async () => {
+    if (!serahTerimaTarget) return;
+    if (!stTeknisiNama.trim()) { notify("Nama teknisi wajib diisi", "error"); return; }
+    setStSubmitting(true);
+    try {
+      const res = await fetch(`${MATERIAL_API}/asset/${serahTerimaTarget._id}/serah-terima`, {
+        method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ teknisi_nama: stTeknisiNama.trim(), tanggal: stTanggal, keterangan: stKeterangan }),
+      });
+      const resData = await res.json().catch(() => ({}));
+      if (res.ok) { notify(resData.message || "Serah terima aset berhasil dicatat"); setSerahTerimaTarget(null); muatSemuaData(true); }
+      else notify(resData.message || "Gagal mencatat serah terima aset", "error");
+    } catch { notify("Gagal terhubung ke server", "error"); }
+    finally { setStSubmitting(false); }
+  };
+  const bukaPengembalian = (a) => { setPengembalianTarget(a); setPengembalianKondisi(a.kondisi || "Baik"); };
+  const submitPengembalian = async () => {
+    if (!pengembalianTarget) return;
+    setPengembalianSubmitting(true);
+    try {
+      const res = await fetch(`${MATERIAL_API}/asset/${pengembalianTarget._id}/pengembalian`, {
+        method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ kondisi: pengembalianKondisi }),
+      });
+      const resData = await res.json().catch(() => ({}));
+      if (res.ok) { notify(resData.message || "Aset berhasil dikembalikan"); setPengembalianTarget(null); muatSemuaData(true); }
+      else notify(resData.message || "Gagal mencatat pengembalian aset", "error");
+    } catch { notify("Gagal terhubung ke server", "error"); }
+    finally { setPengembalianSubmitting(false); }
+  };
+  const filteredAsset = useMemo(() => {
+    const q = searchAsset.trim().toLowerCase();
+    return assetList.filter(a => {
+      const matchQ = !q || a.nama.toLowerCase().includes(q) || (a.kode_aset || "").toLowerCase().includes(q) || (a.dipegang_oleh_nama || "").toLowerCase().includes(q);
+      const matchKategori = asetKategoriFilter === "semua" || a.kategori === asetKategoriFilter;
+      const matchStatus = asetStatusFilter === "semua" || a.status === asetStatusFilter;
+      return matchQ && matchKategori && matchStatus;
+    });
+  }, [assetList, searchAsset, asetKategoriFilter, asetStatusFilter]);
+  useEffect(() => { setPageAsset(1); }, [searchAsset, asetKategoriFilter, asetStatusFilter]);
+  const totalPagesAsset = Math.max(1, Math.ceil(filteredAsset.length / pageSizeAsset));
+  const pagedAsset = useMemo(() => {
+    const start = (pageAsset - 1) * pageSizeAsset;
+    return filteredAsset.slice(start, start + pageSizeAsset);
+  }, [filteredAsset, pageAsset, pageSizeAsset]);
+  const asetStats = useMemo(() => ({
+    total: assetList.length,
+    tersedia: assetList.filter(a => a.status === "Tersedia").length,
+    dipakai: assetList.filter(a => a.status === "Dipakai").length,
+    maintenance: assetList.filter(a => a.status === "Maintenance" || a.status === "Hilang").length,
+  }), [assetList]);
+  const riwayatAsetRows = useMemo(() => {
+    if (!riwayatAsetTarget) return [];
+    return assetLogList.filter(l => String(l.aset_id) === String(riwayatAsetTarget._id));
+  }, [assetLogList, riwayatAsetTarget]);
 
   // ---- Tambah Stok (restock) untuk material yang SUDAH ADA — dipakai di panel Edit tab
   // Master Material, menggantikan tab "Stok Masuk/Kembali" yang lama. Selalu tipe "Penambahan";
@@ -4891,6 +5058,161 @@ function DashboardAdmin({ session, onLogout }) {
         onConfirm={hapusPemakaian}
         onCancel={() => setPmkDeleteTarget(null)}
       />
+      <ConfirmModal
+        open={!!asetDeleteTarget}
+        title="Hapus aset ini?"
+        description={asetDeleteTarget ? `Aset "${asetDeleteTarget.nama}"${asetDeleteTarget.kode_aset ? ` (${asetDeleteTarget.kode_aset})` : ""} akan dihapus permanen beserta riwayatnya.` : ""}
+        onConfirm={hapusAsset}
+        onCancel={() => setAsetDeleteTarget(null)}
+      />
+
+      {asetModalOpen && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.45)" }} onClick={() => !asetSubmitting && resetFormAsset()}>
+          <form onSubmit={handleSubmitAsset} className="modal-in bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b" style={{ borderColor: "var(--border)" }}>
+              <h3 className="font-bold font-display text-sm" style={{ color: "var(--ink)" }}>{asetEditId ? "Edit Aset" : "Tambah Aset Baru"}</h3>
+              <p className="text-[11px] mt-0.5" style={{ color: "var(--ink-soft)" }}>Satu baris = satu unit fisik (mis. 1 Splicer, 1 Motor)</p>
+            </div>
+            <div className="p-5 space-y-3.5 max-h-[70vh] overflow-y-auto">
+              <div>
+                <label className="text-xs font-semibold block mb-1.5" style={{ color: "var(--ink)" }}>Kategori</label>
+                <select value={asetKategori} onChange={e => setAsetKategori(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
+                  {ASET_KATEGORI_PRESETS.map(k => <option key={k} value={k}>{k}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold block mb-1.5" style={{ color: "var(--ink)" }}>Nama/Jenis Aset</label>
+                <input list="aset-nama-presets" type="text" placeholder="Contoh: OPM (Optical Power Meter)" value={asetNama} onChange={e => setAsetNama(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: asetFormErrors.nama ? "var(--red)" : "var(--border)" }} />
+                <datalist id="aset-nama-presets">{ASET_NAMA_PRESETS.map(n => <option key={n} value={n} />)}</datalist>
+                {asetFormErrors.nama && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{asetFormErrors.nama}</p>}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold block mb-1.5" style={{ color: "var(--ink)" }}>Kode Aset / Plat Nomor</label>
+                  <input type="text" placeholder="Opsional" value={asetKodeAset} onChange={e => setAsetKodeAset(e.target.value)}
+                    className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1.5" style={{ color: "var(--ink)" }}>Merek</label>
+                  <input type="text" placeholder="Opsional" value={asetMerek} onChange={e => setAsetMerek(e.target.value)}
+                    className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold block mb-1.5" style={{ color: "var(--ink)" }}>Kondisi</label>
+                <select value={asetKondisi} onChange={e => setAsetKondisi(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
+                  <option value="Baik">Baik</option>
+                  <option value="Rusak Ringan">Rusak Ringan</option>
+                  <option value="Rusak Berat">Rusak Berat</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold block mb-1.5" style={{ color: "var(--ink)" }}>Keterangan</label>
+                <textarea rows={2} placeholder="Opsional" value={asetKeterangan} onChange={e => setAsetKeterangan(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium resize-none" style={{ borderColor: "var(--border)" }} />
+              </div>
+            </div>
+            <div className="p-5 border-t flex gap-2" style={{ borderColor: "var(--border)" }}>
+              <button type="button" onClick={resetFormAsset} className="flex-1 py-2.5 rounded-xl border font-semibold text-xs hover:bg-gray-50" style={{ borderColor: "var(--border)" }}>Batal</button>
+              <button type="submit" disabled={asetSubmitting} className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white disabled:opacity-60" style={{ background: "var(--brand)" }}>
+                {asetSubmitting ? "Menyimpan..." : asetEditId ? "Simpan Perubahan" : "Tambah Aset"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      {serahTerimaTarget && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.45)" }} onClick={() => !stSubmitting && setSerahTerimaTarget(null)}>
+          <div className="modal-in bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b" style={{ borderColor: "var(--border)" }}>
+              <h3 className="font-bold font-display text-sm" style={{ color: "var(--ink)" }}>Serah Terima Aset</h3>
+              <p className="text-[11px] mt-0.5" style={{ color: "var(--ink-soft)" }}>"{serahTerimaTarget.nama}" akan diserahkan ke teknisi di bawah ini</p>
+            </div>
+            <div className="p-5 space-y-3.5">
+              <div>
+                <label className="text-xs font-semibold block mb-1.5" style={{ color: "var(--ink)" }}>Nama Teknisi</label>
+                <input type="text" placeholder="Nama teknisi/team penerima" value={stTeknisiNama} onChange={e => setStTeknisiNama(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold block mb-1.5" style={{ color: "var(--ink)" }}>Tanggal</label>
+                <input type="date" value={stTanggal} onChange={e => setStTanggal(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold block mb-1.5" style={{ color: "var(--ink)" }}>Keterangan</label>
+                <textarea rows={2} placeholder="Opsional" value={stKeterangan} onChange={e => setStKeterangan(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium resize-none" style={{ borderColor: "var(--border)" }} />
+              </div>
+            </div>
+            <div className="p-5 border-t flex gap-2" style={{ borderColor: "var(--border)" }}>
+              <button type="button" onClick={() => setSerahTerimaTarget(null)} className="flex-1 py-2.5 rounded-xl border font-semibold text-xs hover:bg-gray-50" style={{ borderColor: "var(--border)" }}>Batal</button>
+              <button type="button" onClick={submitSerahTerima} disabled={stSubmitting} className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white disabled:opacity-60" style={{ background: "var(--brand)" }}>
+                {stSubmitting ? "Menyimpan..." : "Serahkan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {pengembalianTarget && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.45)" }} onClick={() => !pengembalianSubmitting && setPengembalianTarget(null)}>
+          <div className="modal-in bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b" style={{ borderColor: "var(--border)" }}>
+              <h3 className="font-bold font-display text-sm" style={{ color: "var(--ink)" }}>Kembalikan Aset ke Gudang</h3>
+              <p className="text-[11px] mt-0.5" style={{ color: "var(--ink-soft)" }}>"{pengembalianTarget.nama}" dari {pengembalianTarget.dipegang_oleh_nama || "teknisi"} akan ditandai Tersedia kembali</p>
+            </div>
+            <div className="p-5 space-y-3.5">
+              <div>
+                <label className="text-xs font-semibold block mb-1.5" style={{ color: "var(--ink)" }}>Kondisi Saat Kembali</label>
+                <select value={pengembalianKondisi} onChange={e => setPengembalianKondisi(e.target.value)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium bg-white" style={{ borderColor: "var(--border)" }}>
+                  <option value="Baik">Baik</option>
+                  <option value="Rusak Ringan">Rusak Ringan</option>
+                  <option value="Rusak Berat">Rusak Berat</option>
+                </select>
+              </div>
+            </div>
+            <div className="p-5 border-t flex gap-2" style={{ borderColor: "var(--border)" }}>
+              <button type="button" onClick={() => setPengembalianTarget(null)} className="flex-1 py-2.5 rounded-xl border font-semibold text-xs hover:bg-gray-50" style={{ borderColor: "var(--border)" }}>Batal</button>
+              <button type="button" onClick={submitPengembalian} disabled={pengembalianSubmitting} className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white disabled:opacity-60" style={{ background: "var(--brand)" }}>
+                {pengembalianSubmitting ? "Menyimpan..." : "Kembalikan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {riwayatAsetTarget && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.45)" }} onClick={() => setRiwayatAsetTarget(null)}>
+          <div className="modal-in bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
+              <div>
+                <h3 className="font-bold font-display text-sm" style={{ color: "var(--ink)" }}>Riwayat Aset</h3>
+                <p className="text-[11px] mt-0.5" style={{ color: "var(--ink-soft)" }}>{riwayatAsetTarget.nama}{riwayatAsetTarget.kode_aset ? ` · ${riwayatAsetTarget.kode_aset}` : ""}</p>
+              </div>
+              <button onClick={() => setRiwayatAsetTarget(null)} className="p-1.5 rounded-lg hover:bg-gray-100"><IconX className="w-4 h-4" style={{ color: "var(--ink-soft)" }} /></button>
+            </div>
+            <div className="p-5 max-h-[60vh] overflow-y-auto space-y-3">
+              {riwayatAsetRows.length === 0 && (
+                <EmptyState title="Belum ada riwayat" subtitle="Aset ini belum pernah diserahterimakan ke teknisi." icon={<IconClock className="w-5 h-5" />} />
+              )}
+              {riwayatAsetRows.map(l => (
+                <div key={l._id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: "var(--border)" }}>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: l.tipe === "Serah Terima" ? "var(--brand-soft)" : "var(--green-soft)", color: l.tipe === "Serah Terima" ? "var(--brand-dark)" : "var(--green)" }}>
+                    <IconClock className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-bold text-xs" style={{ color: "var(--ink)" }}>{l.tipe} {l.teknisi_nama ? `· ${l.teknisi_nama}` : ""}</p>
+                    <p className="text-[11px] mt-0.5" style={{ color: "var(--ink-soft)" }}>{new Date(l.tanggal).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })}{l.keterangan ? ` — ${l.keterangan}` : ""}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       <ConfirmModal
         open={!!statusUbahTarget}
         title={statusUbahTarget?.status === "Non Aktif" ? "Aktifkan kembali karyawan ini?" : "Non-aktifkan karyawan ini?"}
@@ -8095,6 +8417,110 @@ function DashboardAdmin({ session, onLogout }) {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {currentMenu === "asset" && canAccess(session.role, "asset") && (
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h1 className="text-2xl font-bold font-display" style={{ color: "var(--ink)" }}>Aset & Alat Teknisi</h1>
+                      <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>Data inventaris kendaraan & alat fiber optic (OPM, OTDR, Laser, Splicer, dll) beserta siapa yang sedang memegangnya</p>
+                    </div>
+                    {canManageAsset(session.role) && (
+                      <button onClick={() => { resetFormAsset(); setAsetModalOpen(true); }}
+                        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-semibold text-xs text-white shrink-0" style={{ background: "var(--brand)" }}>
+                        <IconPlus className="w-4 h-4" /> Tambah Aset
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <StatCard label="Total Aset" value={asetStats.total} unit="unit" tone="brand" icon={<IconWrench className="w-5 h-5" />} />
+                    <StatCard label="Tersedia di Gudang" value={asetStats.tersedia} unit="unit" tone="green" icon={<IconBox className="w-5 h-5" />} />
+                    <StatCard label="Sedang Dipakai" value={asetStats.dipakai} unit="unit" tone="amber" icon={<IconUsers className="w-5 h-5" />} />
+                    <StatCard label="Maintenance/Hilang" value={asetStats.maintenance} unit="unit" tone="red" icon={<IconAlert className="w-5 h-5" />} />
+                  </div>
+
+                  <div className="bg-white rounded-2xl border" style={{ borderColor: "var(--border)" }}>
+                    <div className="p-4 flex flex-col sm:flex-row gap-2.5 border-b" style={{ borderColor: "var(--border)" }}>
+                      <div className="relative flex-1">
+                        <IconSearch className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--ink-soft)" }} />
+                        <input type="text" placeholder="Cari nama aset, kode, atau nama teknisi pemegang..." value={searchAsset} onChange={e => setSearchAsset(e.target.value)}
+                          className="w-full pl-9 pr-3 py-2.5 border rounded-xl outline-none text-sm" style={{ borderColor: "var(--border)" }} />
+                      </div>
+                      <select value={asetKategoriFilter} onChange={e => setAsetKategoriFilter(e.target.value)}
+                        className="px-3 py-2.5 border rounded-xl outline-none text-xs font-semibold bg-white" style={{ borderColor: "var(--border)" }}>
+                        <option value="semua">Semua Kategori</option>
+                        {ASET_KATEGORI_PRESETS.map(k => <option key={k} value={k}>{k}</option>)}
+                      </select>
+                      <select value={asetStatusFilter} onChange={e => setAsetStatusFilter(e.target.value)}
+                        className="px-3 py-2.5 border rounded-xl outline-none text-xs font-semibold bg-white" style={{ borderColor: "var(--border)" }}>
+                        <option value="semua">Semua Status</option>
+                        <option value="Tersedia">Tersedia</option>
+                        <option value="Dipakai">Dipakai</option>
+                        <option value="Maintenance">Maintenance</option>
+                        <option value="Hilang">Hilang</option>
+                      </select>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead>
+                          <tr className="border-b" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                            <th className="p-3.5 font-semibold">Kategori</th>
+                            <th className="p-3.5 font-semibold">Nama Aset</th>
+                            <th className="p-3.5 font-semibold">Kode/Plat</th>
+                            <th className="p-3.5 font-semibold">Kondisi</th>
+                            <th className="p-3.5 font-semibold">Status</th>
+                            <th className="p-3.5 font-semibold">Dipegang Oleh</th>
+                            {canManageAsset(session.role) && <th className="p-3.5 font-semibold text-right">Aksi</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pagedAsset.length === 0 && (
+                            <tr><td colSpan={canManageAsset(session.role) ? 7 : 6}>
+                              <EmptyState title="Belum ada aset" subtitle="Tambahkan unit aset/alat pertama lewat tombol Tambah Aset di atas." icon={<IconWrench className="w-5 h-5" />} />
+                            </td></tr>
+                          )}
+                          {pagedAsset.map(a => (
+                            <tr key={a._id} className="border-b last:border-0 hover:bg-gray-50/60" style={{ borderColor: "var(--border)" }}>
+                              <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{a.kategori}</td>
+                              <td className="p-3.5 font-bold" style={{ color: "var(--ink)" }}>
+                                {a.nama}
+                                {a.merek && <span className="block font-normal text-[10px] mt-0.5" style={{ color: "var(--ink-soft)" }}>{a.merek}</span>}
+                              </td>
+                              <td className="p-3.5 font-mono" style={{ color: "var(--ink-soft)" }}>{a.kode_aset || "—"}</td>
+                              <td className="p-3.5">
+                                <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide" style={{ background: asetKondisiTone(a.kondisi).bg, color: asetKondisiTone(a.kondisi).fg }}>{a.kondisi}</span>
+                              </td>
+                              <td className="p-3.5">
+                                <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide" style={{ background: asetStatusTone(a.status).bg, color: asetStatusTone(a.status).fg }}>{a.status}</span>
+                              </td>
+                              <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{a.dipegang_oleh_nama || "—"}</td>
+                              {canManageAsset(session.role) && (
+                                <td className="p-3.5">
+                                  <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                    {a.status === "Tersedia" && (
+                                      <button onClick={() => bukaSerahTerima(a)} className="px-2.5 py-1.5 rounded-lg font-semibold text-[10px] text-white" style={{ background: "var(--brand)" }}>Serah Terima</button>
+                                    )}
+                                    {a.status === "Dipakai" && (
+                                      <button onClick={() => bukaPengembalian(a)} className="px-2.5 py-1.5 rounded-lg border font-semibold text-[10px]" style={{ borderColor: "var(--border)", color: "var(--ink)" }}>Kembalikan</button>
+                                    )}
+                                    <button onClick={() => setRiwayatAsetTarget(a)} className="p-1.5 rounded-lg border hover:bg-gray-50" style={{ borderColor: "var(--border)" }} title="Riwayat"><IconClock className="w-3.5 h-3.5" style={{ color: "var(--ink-soft)" }} /></button>
+                                    <button onClick={() => pemicuEditAsset(a)} className="p-1.5 rounded-lg border hover:bg-gray-50" style={{ borderColor: "var(--border)" }} title="Edit"><IconEdit className="w-3.5 h-3.5" style={{ color: "var(--ink-soft)" }} /></button>
+                                    <button onClick={() => setAsetDeleteTarget(a)} className="p-1.5 rounded-lg border hover:bg-gray-50" style={{ borderColor: "var(--border)" }} title="Hapus"><IconTrash className="w-3.5 h-3.5" style={{ color: "var(--red)" }} /></button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <Pagination page={pageAsset} setPage={setPageAsset} totalPages={totalPagesAsset} totalItems={filteredAsset.length}
+                      pageSize={pageSizeAsset} pageSizeOptions={[10, 20, 50, 100]}
+                      onPageSizeChange={(n) => { setPageSizeAsset(n); setPageAsset(1); }} />
+                  </div>
                 </div>
               )}
 
