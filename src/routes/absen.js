@@ -247,6 +247,26 @@ router.get('/absen/status-hari-ini/:karyawan_id', async (req, res) => {
   }
 });
 
+// --- API CEK STATUS AKTIF AKUN (dipakai frontend untuk POLLING selama karyawan sudah login) ---
+// Sesi HP disimpan di localStorage dan tidak otomatis tahu kalau Owner menonaktifkan akunnya
+// dari Portal Admin sementara HP masih terbuka. Endpoint ini sengaja dibuat ringan (tidak query
+// data absensi apa pun) supaya aman dipanggil berkala tanpa membebani server.
+router.get('/absen/cek-status-akun/:karyawan_id', async (req, res) => {
+  try {
+    const { karyawan_id } = req.params;
+    const akun = await Karyawan.findOne({ karyawan_id }).select('status');
+
+    // Akun sudah tidak ada sama sekali (misal dihapus) diperlakukan sama seperti Non Aktif
+    if (!akun) {
+      return res.status(200).json({ aktif: false, status: 'Non Aktif' });
+    }
+
+    res.status(200).json({ aktif: akun.status === 'Aktif', status: akun.status });
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal memeriksa status akun', error: error.message });
+  }
+});
+
 // --- API RIWAYAT ABSENSI MILIK SATU KARYAWAN (dipakai halaman "Kehadiran Bulan Ini" & "Riwayat Absensi" di app mobile) ---
 router.get('/absen/mine/:karyawan_id', async (req, res) => {
   try {

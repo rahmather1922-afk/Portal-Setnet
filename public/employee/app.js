@@ -207,8 +207,11 @@ function MenuDashboard({ userSession, onNavigate, onLogout }) {
                     const t = new Date(p.tanggal_mulai);
                     return t.getMonth() === bulanIni && t.getFullYear() === tahunIni;
                 });
-                const cuti = diBulanIni.filter(p => p.jenis === 'Cuti').length;
-                const izin = diBulanIni.filter(p => p.jenis === 'Izin').length;
+                // Hanya pengajuan yang statusnya SUDAH Disetujui yang dihitung ke rekap.
+                // Pengajuan yang masih Pending atau sudah Ditolak Owner tidak boleh ikut
+                // terhitung, karena kartu ini merepresentasikan Cuti/Izin yang benar-benar terpakai.
+                const cuti = diBulanIni.filter(p => p.jenis === 'Cuti' && p.status === 'Disetujui').length;
+                const izin = diBulanIni.filter(p => p.jenis === 'Izin' && p.status === 'Disetujui').length;
                 setRekap(prev => ({ ...prev, cuti, izin }));
             } catch (err) { /* diam-diam gagal */ }
         })();
@@ -971,6 +974,22 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
 // Diset 90 menit (di tengah rentang 1-2 jam yang diminta).
 const IDLE_LOGOUT_MS = 90 * 60 * 1000;
 
+// Batas waktu MENINGGALKAN aplikasi (pindah tab, minimize browser, kunci HP, atau tutup tab)
+// sebelum sesi dianggap habis dan wajib login ulang. Disamakan dengan IDLE_LOGOUT_MS (90 menit)
+// supaya perilakunya konsisten: diam 90 menit di halaman ATAU pergi 90 menit lalu balik lagi,
+// keduanya sama-sama wajib login ulang.
+const BACKGROUND_LOGOUT_MS = IDLE_LOGOUT_MS; // 90 menit
+const LAST_ACTIVE_KEY = 'setnet_absensi_last_active';
+const simpanWaktuAktifTerakhir = () => {
+    try { localStorage.setItem(LAST_ACTIVE_KEY, String(Date.now())); } catch (err) { /* abaikan */ }
+};
+const ambilWaktuAktifTerakhir = () => {
+    try {
+        const v = localStorage.getItem(LAST_ACTIVE_KEY);
+        return v ? Number(v) : null;
+    } catch (err) { return null; }
+};
+
 // ==================== TAB: NOTIFIKASI (KASBON / CUTI / IZIN / SAKIT YANG SUDAH DIPUTUSKAN) ====================
 function NotifikasiPanel({ userSession, onBack }) {
     const [daftar, setDaftar] = React.useState([]);
@@ -1174,19 +1193,29 @@ function AppAbsensi() {
         );
     }, []);
 
-    // Pulihkan sesi login dari penyimpanan lokal saat halaman di-refresh,
-    // supaya karyawan tidak perlu login ulang tiap kali me-refresh halaman.
+    // Pulihkan sesi login dari penyimpanan lokal saat halaman di-refresh/dibuka lagi,
+    // supaya karyawan tidak perlu login ulang tiap kali me-refresh halaman — KECUALI kalau
+    // aplikasi sudah ditinggalkan (tab disembunyikan/ditutup) lebih dari BACKGROUND_LOGOUT_MS,
+    // dalam hal ini sesi dianggap habis dan karyawan wajib login ulang.
     React.useEffect(() => {
         try {
             const tersimpan = localStorage.getItem(SESSION_KEY);
             if (tersimpan) {
                 const karyawan = JSON.parse(tersimpan);
                 if (karyawan && karyawan.karyawan_id) {
-                    setUserSession(karyawan);
-                    setIsLoggedIn(true);
+                    const waktuTerakhir = ambilWaktuAktifTerakhir();
+                    const sudahDitinggalkanLama = waktuTerakhir !== null && (Date.now() - waktuTerakhir >= BACKGROUND_LOGOUT_MS);
+                    if (sudahDitinggalkanLama) {
+                        try { localStorage.removeItem(SESSION_KEY); } catch (err) { /* abaikan */ }
+                        setPesan('⏰ Sesi Anda berakhir karena meninggalkan aplikasi terlalu lama. Silakan login kembali.');
+                    } else {
+                        setUserSession(karyawan);
+                        setIsLoggedIn(true);
+                    }
                 }
             }
         } catch (err) { /* penyimpanan lokal tidak tersedia/rusak, anggap belum login */ }
+        simpanWaktuAktifTerakhir();
     }, []);
 
     const handleLogin = async (e) => {
@@ -1205,6 +1234,7 @@ function AppAbsensi() {
                 setIsLoggedIn(true);
                 setTabAktif('Menu');
                 try { localStorage.setItem(SESSION_KEY, JSON.stringify(data.karyawan)); } catch (err) { /* abaikan jika penyimpanan lokal tidak tersedia */ }
+                simpanWaktuAktifTerakhir();
             } else {
                 setPesan(`❌ ${data.message}`);
             }
@@ -1228,7 +1258,7 @@ function AppAbsensi() {
 
     // Logout otomatis (paksa, tanpa modal konfirmasi) karena user meninggalkan halaman
     // tanpa aktivitas apa pun selama IDLE_LOGOUT_MS. User harus login ulang setelah ini.
-    const handleAutoLogout = React.useCallback(() => {
+    const handleAutoLogout = React.useCallback((pesanKeluar) => {
         matikanKamera();
         setIsLoggedIn(false);
         setUserSession(null);
@@ -1237,8 +1267,61 @@ function AppAbsensi() {
         setPassword('');
         setShowLogoutConfirm(false);
         try { localStorage.removeItem(SESSION_KEY); } catch (err) { /* abaikan jika penyimpanan lokal tidak tersedia */ }
-        setPesan('⏰ Sesi Anda berakhir karena tidak ada aktivitas. Silakan login kembali.');
+        setPesan(pesanKeluar || '⏰ Sesi Anda berakhir karena tidak ada aktivitas. Silakan login kembali.');
     }, []);
+
+    // Ref selalu menyimpan userSession TERBARU, dipakai di dalam polling status akun
+    // (setInterval/listener di bawah dibuat sekali saat login, jadi tidak ikut ter-update
+    // otomatis mengikuti closure kalau userSession berubah — makanya pakai ref).
+    const userSessionRef = React.useRef(null);
+    React.useEffect(() => { userSessionRef.current = userSession; }, [userSession]);
+
+    // Cek ke server apakah akun karyawan ini MASIH Aktif. Kalau ternyata sudah dinonaktifkan
+    // Owner (lewat Portal Admin) sementara HP masih dalam keadaan login, paksa logout otomatis
+    // dengan pesan yang jelas — bukan menunggu idle timeout 90 menit atau baru ketahuan saat
+    // submit absen ditolak.
+    const cekStatusAkunAktif = React.useCallback(async () => {
+        const sesiSaatIni = userSessionRef.current;
+        if (!sesiSaatIni) return;
+        try {
+            const res = await fetch(`${API_BASE}/absen/cek-status-akun/${sesiSaatIni.karyawan_id}`);
+            const data = await res.json();
+            if (data && data.aktif === false) {
+                handleAutoLogout('🚫 Akun Anda telah dinonaktifkan oleh Owner. Silakan hubungi HRD/Owner jika ini keliru.');
+            }
+        } catch (err) { /* diam-diam gagal (misal offline) — jangan paksa logout hanya karena koneksi bermasalah */ }
+    }, [handleAutoLogout]);
+
+    // Jalankan pengecekan berkala selama login:
+    // 1) Status akun (Aktif/Non Aktif) — tiap 30 detik & tiap kembali fokus ke halaman.
+    // 2) Durasi "meninggalkan aplikasi" — begitu tab disembunyikan, catat waktunya; begitu
+    //    tab terlihat lagi, kalau sudah ≥90 menit sejak tab disembunyikan, paksa logout.
+    React.useEffect(() => {
+        if (!isLoggedIn) return;
+        cekStatusAkunAktif();
+        const interval = setInterval(cekStatusAkunAktif, 30 * 1000);
+        const onVisible = () => {
+            if (document.visibilityState === 'visible') {
+                const waktuTerakhir = ambilWaktuAktifTerakhir();
+                const sudahDitinggalkanLama = waktuTerakhir !== null && (Date.now() - waktuTerakhir >= BACKGROUND_LOGOUT_MS);
+                if (sudahDitinggalkanLama) {
+                    handleAutoLogout('⏰ Sesi Anda berakhir karena meninggalkan aplikasi terlalu lama. Silakan login kembali.');
+                    return;
+                }
+                simpanWaktuAktifTerakhir();
+                cekStatusAkunAktif();
+            } else {
+                // Tab baru saja disembunyikan (pindah tab / minimize / kunci HP) — catat
+                // waktu ini sebagai titik awal "ditinggalkan", dipakai saat tab dibuka lagi.
+                simpanWaktuAktifTerakhir();
+            }
+        };
+        document.addEventListener('visibilitychange', onVisible);
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', onVisible);
+        };
+    }, [isLoggedIn, cekStatusAkunAktif, handleAutoLogout]);
 
     // Pantau aktivitas user (klik, ketik, sentuh, scroll) selama sudah login.
     // Setiap ada aktivitas, timer idle direset. Kalau timer habis (tidak ada
