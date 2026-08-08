@@ -51,31 +51,114 @@ function getStatusBatasMasukWIB(date = new Date()) {
     return { sudahLewat, selisihMenit, jamText };
 }
 
+// Helper: string jam:menit:detik WIB berjalan, dipakai untuk jam digital di halaman Absensi.
+function getJamBerjalanWIB(date = new Date()) {
+    const { jam, menit, detik } = getJamMenitWIB(date);
+    return `${String(jam).padStart(2, '0')}:${String(menit).padStart(2, '0')}:${String(detik).padStart(2, '0')}`;
+}
+
+// ==================== ICON SYSTEM ====================
+// Set ikon garis (line-icon) sederhana buatan sendiri, dipakai sebagai pengganti emoji
+// sebagai sistem ikon utama UI (navigasi, status, aksi). Emoji hanya dipakai sesekali
+// di dalam teks/modal, bukan sebagai ikon utama.
+function Ic({ children, className = 'w-5 h-5' }) {
+    return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={className}>
+            {children}
+        </svg>
+    );
+}
+const IconHome = (p) => <Ic {...p}><path d="M4 11 12 4l8 7" /><path d="M6 9.5V20h4v-6h4v6h4V9.5" /></Ic>;
+const IconCamera = (p) => <Ic {...p}><rect x="3" y="7" width="18" height="13" rx="2.5" /><path d="M8 7l1.4-2.5h5.2L16 7" /><circle cx="12" cy="13.5" r="3.4" /></Ic>;
+const IconForm = (p) => <Ic {...p}><rect x="6" y="3.5" width="12" height="17" rx="2" /><path d="M9 3.5V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v.5" /><path d="M9 10h6M9 13.5h6M9 17h3" /></Ic>;
+const IconHistory = (p) => <Ic {...p}><circle cx="12" cy="13" r="8" /><path d="M12 9v4l3 2" /><path d="M9 2h6" /></Ic>;
+const IconBell = (p) => <Ic {...p}><path d="M6 10a6 6 0 0 1 12 0c0 4 1.5 5.5 1.5 5.5H4.5S6 14 6 10Z" /><path d="M10 19a2 2 0 0 0 4 0" /></Ic>;
+const IconChevronLeft = (p) => <Ic {...p}><polyline points="15 6 9 12 15 18" /></Ic>;
+const IconChevronRight = (p) => <Ic {...p}><polyline points="9 6 15 12 9 18" /></Ic>;
+const IconCheckCircle = (p) => <Ic {...p}><circle cx="12" cy="12" r="9" /><polyline points="8 12.5 11 15.5 16 9" /></Ic>;
+const IconAlertTriangle = (p) => <Ic {...p}><path d="M12 4.2 21.5 20H2.5Z" /><line x1="12" y1="10" x2="12" y2="14.2" /><circle cx="12" cy="17.1" r="0.9" fill="currentColor" stroke="none" /></Ic>;
+const IconMapPin = (p) => <Ic {...p}><path d="M12 21s7-6.7 7-11.5A7 7 0 1 0 5 9.5C5 14.3 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.4" /></Ic>;
+const IconLogOut = (p) => <Ic {...p}><path d="M9 4.5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h3" /><polyline points="15 8 19 12 15 16" /><line x1="19" y1="12" x2="9" y2="12" /></Ic>;
+const IconClock = (p) => <Ic {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7.5V12l3.2 1.8" /></Ic>;
+const IconX = (p) => <Ic {...p}><line x1="6" y1="6" x2="18" y2="18" /><line x1="6" y1="18" x2="18" y2="6" /></Ic>;
+const IconWallet = (p) => <Ic {...p}><rect x="3" y="6" width="18" height="13" rx="2.2" /><path d="M3 10.5h18" /><circle cx="16.2" cy="14" r="0.9" fill="currentColor" stroke="none" /></Ic>;
+const IconCalendarOff = (p) => <Ic {...p}><rect x="3.5" y="4.5" width="17" height="16" rx="2" /><path d="M3.5 9.5h17" /><path d="M8 3v3M16 3v3" /></Ic>;
+
 function StatusBadge({ status }) {
     const map = {
         Pending: 'bg-amber-100 text-amber-700',
         Disetujui: 'bg-green-100 text-green-700',
         Ditolak: 'bg-red-100 text-red-700'
     };
-    return <span class={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${map[status] || 'bg-gray-100 text-gray-600'}`}>{status}</span>;
+    return <span class={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide ${map[status] || 'bg-gray-100 text-gray-600'}`}>{status}</span>;
 }
 
 // Header kecil dipakai di semua sub-halaman (tombol kembali ke menu utama)
-function SubHeader({ title, onBack }) {
+function SubHeader({ title, subtitle, onBack }) {
     return (
-        <div class="flex items-center gap-2 mb-4">
-            <button onClick={onBack} type="button" class="w-9 h-9 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm text-gray-600 hover:bg-gray-50 transition">
-                ←
+        <div class="flex items-center gap-3 mb-4">
+            <button onClick={onBack} type="button" aria-label="Kembali" class="w-11 h-11 shrink-0 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm text-gray-600 active:scale-95 active:bg-gray-50 transition">
+                <IconChevronLeft className="w-5 h-5" />
             </button>
-            <h2 class="text-base font-black text-gray-900">{title}</h2>
+            <div class="min-w-0">
+                <h2 class="text-base font-black text-gray-900 leading-tight">{title}</h2>
+                {subtitle && <p class="text-[11px] font-semibold text-gray-400 truncate">{subtitle}</p>}
+            </div>
         </div>
     );
 }
 
-// ==================== MENU UTAMA (DASHBOARD) ====================
+// ==================== NAVIGASI BAWAH (MOBILE BOTTOM NAV) ====================
+const NAV_ITEMS = [
+    { key: 'Menu', label: 'Home', Icon: IconHome },
+    { key: 'Absensi', label: 'Absensi', Icon: IconCamera },
+    { key: 'Form', label: 'Form', Icon: IconForm },
+    { key: 'Riwayat', label: 'Riwayat', Icon: IconHistory },
+    { key: 'Notifikasi', label: 'Notifikasi', Icon: IconBell },
+];
+
+function BottomNav({ tabAktif, onNavigate, notifBelumDibaca }) {
+    return (
+        <nav
+            class="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-150 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        >
+            <div class="max-w-2xl mx-auto grid grid-cols-5">
+                {NAV_ITEMS.map(item => {
+                    const aktif = tabAktif === item.key;
+                    return (
+                        <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => onNavigate(item.key)}
+                            aria-label={item.label}
+                            aria-current={aktif ? 'page' : undefined}
+                            class="relative flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] active:bg-gray-50 transition"
+                        >
+                            <span class={`relative flex items-center justify-center ${aktif ? 'text-blue-600' : 'text-gray-400'}`}>
+                                <item.Icon className="w-5 h-5" />
+                                {item.key === 'Notifikasi' && notifBelumDibaca > 0 && (
+                                    <span class="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-1 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center leading-none">
+                                        {notifBelumDibaca > 9 ? '9+' : notifBelumDibaca}
+                                    </span>
+                                )}
+                            </span>
+                            <span class={`text-[10px] font-bold ${aktif ? 'text-blue-600' : 'text-gray-400'}`}>{item.label}</span>
+                            {aktif && <span class="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-blue-600" />}
+                        </button>
+                    );
+                })}
+            </div>
+        </nav>
+    );
+}
+
+// ==================== HOME / DASHBOARD ====================
 function MenuDashboard({ userSession, onNavigate, onLogout }) {
-    const [rekap, setRekap] = React.useState({ hadir: 0, terlambat: 0 });
+    const [rekap, setRekap] = React.useState({ hadir: 0, terlambat: 0, cuti: 0, izin: 0 });
+    const [hariIni, setHariIni] = React.useState({ masuk: null, pulang: null, keterangan: null });
     const [notifBelumDibaca, setNotifBelumDibaca] = React.useState(0);
+    const [statusHariIni, setStatusHariIni] = React.useState(null);
     const now = new Date();
 
     React.useEffect(() => {
@@ -97,14 +180,58 @@ function MenuDashboard({ userSession, onNavigate, onLogout }) {
                 const hadir = new Set(tanggalMasuk.map(i => new Date(i.waktu_absen || i.tanggal).toDateString())).size;
                 const terlambat = tanggalMasuk.filter(i => i.keterangan && i.keterangan !== 'Normal').length;
 
-                setRekap({ hadir, terlambat });
+                setRekap(prev => ({ ...prev, hadir, terlambat }));
+
+                // Catatan hari ini (untuk kartu "Absensi Hari Ini" di Home)
+                const hariIniStr = now.toDateString();
+                const catatanHariIni = data.filter(item => new Date(item.waktu_absen || item.tanggal).toDateString() === hariIniStr);
+                const masuk = catatanHariIni.find(i => i.status === 'Masuk') || null;
+                const pulang = catatanHariIni.find(i => i.status === 'Pulang') || null;
+                setHariIni({ masuk, pulang, keterangan: masuk ? masuk.keterangan : null });
             } catch (err) { /* diam-diam gagal, rekap tetap 0 */ }
         })();
         return () => { batal = true; };
     }, []);
 
+    // Rekap Cuti & Izin bulan berjalan, dari data pengajuan yang sudah ada (tidak menambah endpoint baru)
+    React.useEffect(() => {
+        let batal = false;
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/pengajuan/mine/${userSession.karyawan_id}`);
+                const data = await res.json();
+                if (batal || !Array.isArray(data)) return;
+                const bulanIni = now.getMonth();
+                const tahunIni = now.getFullYear();
+                const diBulanIni = data.filter(p => {
+                    const t = new Date(p.tanggal_mulai);
+                    return t.getMonth() === bulanIni && t.getFullYear() === tahunIni;
+                });
+                const cuti = diBulanIni.filter(p => p.jenis === 'Cuti').length;
+                const izin = diBulanIni.filter(p => p.jenis === 'Izin').length;
+                setRekap(prev => ({ ...prev, cuti, izin }));
+            } catch (err) { /* diam-diam gagal */ }
+        })();
+        return () => { batal = true; };
+    }, [userSession.karyawan_id]);
+
+    // Status absen hari ini (dipakai untuk kartu status + CTA utama), sumber sama dengan halaman Absensi
+    React.useEffect(() => {
+        let batal = false;
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/absen/status-hari-ini/${userSession.karyawan_id}`);
+                const data = await res.json();
+                if (!batal) setStatusHariIni(data);
+            } catch (err) {
+                if (!batal) setStatusHariIni({ sudahMasuk: false, sudahPulang: false, shift: null });
+            }
+        })();
+        return () => { batal = true; };
+    }, [userSession.karyawan_id]);
+
     // Ambil jumlah notifikasi (kasbon + cuti/izin/sakit) yang sudah diputuskan Owner/HRD
-    // tapi belum dibaca karyawan, untuk badge titik merah di ikon lonceng.
+    // tapi belum dibaca karyawan, untuk badge di ikon lonceng & nav bawah.
     React.useEffect(() => {
         let batal = false;
         (async () => {
@@ -125,61 +252,132 @@ function MenuDashboard({ userSession, onNavigate, onLogout }) {
         return () => { batal = true; };
     }, [userSession.karyawan_id]);
 
-    const MENU_ITEMS = [
-        { key: 'Absensi', label: 'Absensi', icon: '📷', bg: 'bg-blue-100 text-blue-600' },
-        { key: 'Form', label: 'Form', icon: '📝', bg: 'bg-violet-100 text-violet-600' },
-        { key: 'Riwayat', label: 'Riwayat Absensi', icon: '🕒', bg: 'bg-amber-100 text-amber-600' },
-        { key: 'Logout', label: 'Logout', icon: '🚪', bg: 'bg-red-100 text-red-600' },
+    const QUICK_MENU = [
+        { key: 'Absensi', label: 'Absensi', Icon: IconCamera, bg: 'bg-blue-50 text-blue-600' },
+        { key: 'Form', label: 'Form', Icon: IconForm, bg: 'bg-violet-50 text-violet-600' },
+        { key: 'Riwayat', label: 'Riwayat', Icon: IconHistory, bg: 'bg-amber-50 text-amber-600' },
+        { key: 'Notifikasi', label: 'Notifikasi', Icon: IconBell, bg: 'bg-rose-50 text-rose-600' },
     ];
+
+    const sudahMasuk = !!(statusHariIni && statusHariIni.sudahMasuk);
+    const sudahPulang = !!(statusHariIni && statusHariIni.sudahPulang);
+    let statusLabel = 'Belum Absen';
+    let statusTone = 'bg-gray-100 text-gray-500';
+    if (sudahMasuk && sudahPulang) { statusLabel = 'Absensi Selesai'; statusTone = 'bg-blue-100 text-blue-700'; }
+    else if (sudahMasuk) { statusLabel = 'Sudah Absen Masuk'; statusTone = 'bg-green-100 text-green-700'; }
+    else if (hariIni.keterangan && hariIni.keterangan !== 'Normal') { statusLabel = 'Terlambat'; statusTone = 'bg-red-100 text-red-700'; }
+
+    let ctaLabel = 'ABSEN MASUK';
+    let ctaTone = 'bg-green-600 active:bg-green-700';
+    if (sudahMasuk && !sudahPulang) { ctaLabel = 'ABSEN PULANG'; ctaTone = 'bg-amber-500 active:bg-amber-600'; }
+    if (sudahMasuk && sudahPulang) { ctaLabel = 'ABSENSI HARI INI SELESAI'; ctaTone = 'bg-gray-300'; }
+
+    const tanggalHariIni = now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
     return (
         <div class="w-full">
-            <div class="bg-blue-900 rounded-2xl px-5 pt-5 pb-8 shadow-xl relative overflow-hidden">
-                <div class="flex items-center justify-between mb-4">
-                    <span class="text-white font-black tracking-wide text-sm">SETNET <span class="text-blue-300">Mobile</span></span>
-                    <button type="button" onClick={() => onNavigate('Notifikasi')} class="relative w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white text-sm">
-                        🔔
-                        {notifBelumDibaca > 0 && (
-                            <span class="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 border border-blue-900 text-white text-[9px] font-black flex items-center justify-center">
-                                {notifBelumDibaca > 9 ? '9+' : notifBelumDibaca}
-                            </span>
-                        )}
-                    </button>
+            {/* HEADER */}
+            <div class="bg-blue-900 px-5 pt-5 pb-10 rounded-b-3xl shadow-lg relative overflow-hidden">
+                <div class="absolute -right-8 -top-10 w-40 h-40 rounded-full bg-blue-800/40"></div>
+                <div class="absolute -left-10 top-16 w-28 h-28 rounded-full bg-blue-800/30"></div>
+                <div class="relative flex items-center justify-between mb-5">
+                    <span class="text-white font-black tracking-wide text-sm">SETNET <span class="text-blue-300 font-bold">Mobile</span></span>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onClick={() => onNavigate('Notifikasi')} aria-label="Notifikasi" class="relative w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white active:bg-white/20 transition">
+                            <IconBell className="w-5 h-5" />
+                            {notifBelumDibaca > 0 && (
+                                <span class="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded-full bg-red-500 border-2 border-blue-900 text-white text-[9px] font-black flex items-center justify-center">
+                                    {notifBelumDibaca > 9 ? '9+' : notifBelumDibaca}
+                                </span>
+                            )}
+                        </button>
+                        <button type="button" onClick={onLogout} aria-label="Logout" class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white active:bg-white/20 transition">
+                            <IconLogOut className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
-                <h1 class="text-white font-black text-lg leading-tight">{userSession.nama}</h1>
-                <p class="text-blue-200 text-xs font-mono font-bold mb-1">ID: {userSession.karyawan_id}{(userSession.role || userSession.jabatan) ? ` · ${userSession.role || userSession.jabatan}` : ''}</p>
-                <p class="text-blue-100 text-xs">Selamat {sapaanWaktu()}, semoga pekerjaan hari ini lancar ya, selamat bekerja.</p>
+                <p class="relative text-blue-200 text-xs font-semibold mb-0.5">Selamat {sapaanWaktu()},</p>
+                <h1 class="relative text-white font-black text-xl leading-tight">{userSession.nama}</h1>
+                <p class="relative text-blue-200 text-xs font-mono font-bold mt-1">ID: {userSession.karyawan_id}{(userSession.role || userSession.jabatan) ? ` · ${userSession.role || userSession.jabatan}` : ''}</p>
             </div>
 
-            <div class="bg-white -mt-5 rounded-2xl shadow-lg border border-gray-100 p-5 relative z-10">
-                <h3 class="text-xs font-black text-gray-500 uppercase mb-3 tracking-wide">Pilih Menu</h3>
-                <div class="grid grid-cols-4 gap-2 mb-6">
-                    {MENU_ITEMS.map(item => (
-                        <button key={item.key} type="button"
-                            onClick={() => item.key === 'Logout' ? onLogout() : onNavigate(item.key)}
-                            class="flex flex-col items-center gap-1.5 group">
-                            <span class={`w-12 h-12 rounded-full flex items-center justify-center text-xl ${item.bg} group-active:scale-95 transition`}>
-                                {item.icon}
-                            </span>
-                            <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">{item.label}</span>
-                        </button>
-                    ))}
+            <div class="px-4 -mt-6 relative z-10 space-y-4">
+                {/* KARTU ABSENSI HARI INI */}
+                <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wide">{tanggalHariIni}</p>
+                        <span class={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${statusTone}`}>{statusLabel}</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <div class="bg-gray-50 border border-gray-150 rounded-xl p-3">
+                            <p class="text-[10px] font-bold text-gray-400 uppercase mb-1">Jam Masuk</p>
+                            <p class="text-lg font-black text-gray-900 font-mono">{hariIni.masuk ? new Date(hariIni.masuk.waktu_absen).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}</p>
+                        </div>
+                        <div class="bg-gray-50 border border-gray-150 rounded-xl p-3">
+                            <p class="text-[10px] font-bold text-gray-400 uppercase mb-1">Jam Pulang</p>
+                            <p class="text-lg font-black text-gray-900 font-mono">{hariIni.pulang ? new Date(hariIni.pulang.waktu_absen).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'}</p>
+                        </div>
+                    </div>
+
+                    <p class="text-[10px] text-gray-400 font-semibold mb-3 text-center">Batas Absen Masuk pukul 08:30 WIB</p>
+
+                    <button
+                        type="button"
+                        onClick={() => onNavigate('Absensi')}
+                        disabled={sudahMasuk && sudahPulang}
+                        class={`w-full text-white font-extrabold py-3.5 rounded-xl shadow-md transition text-sm flex items-center justify-center gap-2 ${ctaTone}`}
+                    >
+                        <IconCamera className="w-4 h-4" />
+                        {ctaLabel}
+                    </button>
                 </div>
 
-                <div class="flex items-center justify-between mb-2">
-                    <h3 class="text-xs font-black text-gray-500 uppercase tracking-wide">Kehadiran Bulan Ini</h3>
-                    <button type="button" onClick={() => onNavigate('Riwayat')} class="text-[11px] font-bold text-blue-600">Lainnya</button>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                        <p class="text-[10px] font-bold text-blue-500 uppercase mb-2">Kehadiran</p>
-                        <p class="text-2xl font-black text-blue-700">{rekap.hadir}</p>
-                        <p class="text-[10px] text-blue-400 font-semibold">Total Kehadiran</p>
+                {/* MENU CEPAT */}
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                    <h3 class="text-xs font-black text-gray-500 uppercase mb-3 tracking-wide">Menu Cepat</h3>
+                    <div class="grid grid-cols-4 gap-2">
+                        {QUICK_MENU.map(item => (
+                            <button key={item.key} type="button" onClick={() => onNavigate(item.key)} class="flex flex-col items-center gap-1.5 active:opacity-70 transition">
+                                <span class={`relative w-12 h-12 rounded-2xl flex items-center justify-center ${item.bg}`}>
+                                    <item.Icon className="w-5 h-5" />
+                                    {item.key === 'Notifikasi' && notifBelumDibaca > 0 && (
+                                        <span class="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 border border-white text-white text-[9px] font-black flex items-center justify-center">
+                                            {notifBelumDibaca > 9 ? '9+' : notifBelumDibaca}
+                                        </span>
+                                    )}
+                                </span>
+                                <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">{item.label}</span>
+                            </button>
+                        ))}
                     </div>
-                    <div class="bg-amber-50 border border-amber-100 rounded-xl p-3">
-                        <p class="text-[10px] font-bold text-amber-600 uppercase mb-2">Terlambat</p>
-                        <p class="text-2xl font-black text-amber-700">{rekap.terlambat}</p>
-                        <p class="text-[10px] text-amber-500 font-semibold">Total Terlambat</p>
+                </div>
+
+                {/* REKAP BULANAN */}
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-xs font-black text-gray-500 uppercase tracking-wide">Rekap Bulan Ini</h3>
+                        <button type="button" onClick={() => onNavigate('Riwayat')} class="text-[11px] font-bold text-blue-600 flex items-center gap-0.5">
+                            Lainnya <IconChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                            <p class="text-[10px] font-bold text-blue-500 uppercase mb-1.5">Kehadiran</p>
+                            <p class="text-2xl font-black text-blue-700">{rekap.hadir}</p>
+                        </div>
+                        <div class="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                            <p class="text-[10px] font-bold text-amber-600 uppercase mb-1.5">Terlambat</p>
+                            <p class="text-2xl font-black text-amber-700">{rekap.terlambat}</p>
+                        </div>
+                        <div class="bg-violet-50 border border-violet-100 rounded-xl p-3">
+                            <p class="text-[10px] font-bold text-violet-600 uppercase mb-1.5">Cuti</p>
+                            <p class="text-2xl font-black text-violet-700">{rekap.cuti}</p>
+                        </div>
+                        <div class="bg-rose-50 border border-rose-100 rounded-xl p-3">
+                            <p class="text-[10px] font-bold text-rose-600 uppercase mb-1.5">Izin</p>
+                            <p class="text-2xl font-black text-rose-700">{rekap.izin}</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -244,14 +442,18 @@ function RiwayatAbsensiPanel({ userSession, onBack }) {
     const bulanIniAdalahSekarang = bulanAktif === sekarang.getMonth() && tahunAktif === sekarang.getFullYear();
 
     return (
-        <div class="bg-white p-5 rounded-2xl shadow-xl border border-gray-100 w-full">
-            <SubHeader title="Riwayat Absensi" onBack={onBack} />
+        <div class="w-full pb-6">
+            <SubHeader title="Riwayat Absensi" subtitle={userSession.nama} onBack={onBack} />
 
-            <div class="flex items-center justify-between bg-gray-50 border border-gray-150 rounded-xl px-3 py-2 mb-4">
-                <button type="button" onClick={() => gantiBulan(-1)} class="w-7 h-7 rounded-full bg-white border border-gray-200 text-gray-600 font-bold text-sm">‹</button>
+            <div class="flex items-center justify-between bg-white border border-gray-150 rounded-xl px-3 py-2.5 mb-4 shadow-sm">
+                <button type="button" onClick={() => gantiBulan(-1)} aria-label="Bulan sebelumnya" class="w-9 h-9 flex items-center justify-center rounded-full bg-gray-50 border border-gray-200 text-gray-600 active:bg-gray-100">
+                    <IconChevronLeft className="w-4 h-4" />
+                </button>
                 <span class="text-xs font-black text-gray-700 uppercase">{labelBulan}</span>
-                <button type="button" onClick={() => gantiBulan(1)} disabled={bulanIniAdalahSekarang}
-                    class={`w-7 h-7 rounded-full border font-bold text-sm ${bulanIniAdalahSekarang ? 'bg-gray-100 border-gray-150 text-gray-300' : 'bg-white border-gray-200 text-gray-600'}`}>›</button>
+                <button type="button" onClick={() => gantiBulan(1)} disabled={bulanIniAdalahSekarang} aria-label="Bulan berikutnya"
+                    class={`w-9 h-9 flex items-center justify-center rounded-full border ${bulanIniAdalahSekarang ? 'bg-gray-50 border-gray-150 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-600 active:bg-gray-100'}`}>
+                    <IconChevronRight className="w-4 h-4" />
+                </button>
             </div>
 
             <div class="grid grid-cols-2 gap-3 mb-5">
@@ -266,28 +468,28 @@ function RiwayatAbsensiPanel({ userSession, onBack }) {
             </div>
 
             <h3 class="text-xs font-black text-gray-500 uppercase mb-2">Detail Harian</h3>
-            <div class="space-y-2 max-h-80 overflow-y-auto">
-                {loading && <p class="text-xs text-gray-400 text-center py-4">Memuat riwayat...</p>}
+            <div class="space-y-2">
+                {loading && <p class="text-xs text-gray-400 text-center py-8">Memuat riwayat...</p>}
                 {!loading && gagal && (
-                    <div class="text-center py-4">
+                    <div class="text-center py-8">
                         <p class="text-xs text-red-500 mb-2">Gagal memuat riwayat absensi.</p>
                         <button type="button" onClick={muatRiwayat} class="text-xs font-bold text-blue-600 underline">Coba Lagi</button>
                     </div>
                 )}
                 {!loading && !gagal && daftarHarian.length === 0 && (
-                    <p class="text-xs text-gray-400 text-center py-4">Belum ada absensi di bulan ini.</p>
+                    <p class="text-xs text-gray-400 text-center py-8">Belum ada absensi di bulan ini.</p>
                 )}
                 {!loading && daftarHarian.map(h => (
-                    <div key={h.tanggal.toDateString()} class="bg-gray-50 border border-gray-150 rounded-xl p-3">
-                        <div class="flex justify-between items-center mb-1.5">
+                    <div key={h.tanggal.toDateString()} class="bg-white border border-gray-150 rounded-xl p-3.5 shadow-sm">
+                        <div class="flex justify-between items-center mb-2">
                             <span class="text-xs font-black text-gray-800">{h.tanggal.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}</span>
                             {h.masuk && h.masuk.keterangan && (
                                 <span class={`text-[10px] font-black uppercase ${h.masuk.keterangan === 'Normal' ? 'text-green-600' : 'text-red-600'}`}>{h.masuk.keterangan}</span>
                             )}
                         </div>
-                        <div class="flex gap-4 text-[11px] font-semibold text-gray-500">
-                            <span>Masuk: <b class="text-gray-800 font-mono">{h.masuk ? new Date(h.masuk.waktu_absen).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}</b></span>
-                            <span>Pulang: <b class="text-gray-800 font-mono">{h.pulang ? new Date(h.pulang.waktu_absen).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}</b></span>
+                        <div class="flex gap-5 text-[11px] font-semibold text-gray-500">
+                            <span class="flex items-center gap-1"><IconClock className="w-3.5 h-3.5 text-gray-300" /> Masuk: <b class="text-gray-800 font-mono">{h.masuk ? new Date(h.masuk.waktu_absen).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}</b></span>
+                            <span class="flex items-center gap-1"><IconClock className="w-3.5 h-3.5 text-gray-300" /> Pulang: <b class="text-gray-800 font-mono">{h.pulang ? new Date(h.pulang.waktu_absen).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}</b></span>
                         </div>
                     </div>
                 ))}
@@ -401,91 +603,97 @@ function PengajuanPanel({ userSession, onBack }) {
         finally { setLoading(false); }
     };
 
-    const JENIS_LIST = ['Kasbon', 'Cuti', 'Izin', 'Sakit'];
+    const JENIS_LIST = [
+        { key: 'Kasbon', Icon: IconWallet },
+        { key: 'Cuti', Icon: IconCalendarOff },
+        { key: 'Izin', Icon: IconForm },
+        { key: 'Sakit', Icon: IconAlertTriangle },
+    ];
 
     return (
-        <div class="bg-white p-5 rounded-2xl shadow-xl border border-gray-100 w-full">
-            <SubHeader title="Form Pengajuan" onBack={onBack} />
+        <div class="w-full pb-6">
+            <SubHeader title="Form Pengajuan" subtitle={userSession.nama} onBack={onBack} />
 
-            <div class="grid grid-cols-4 gap-1.5 mb-4">
+            <div class="grid grid-cols-4 gap-1.5 mb-4 bg-gray-100 rounded-2xl p-1.5">
                 {JENIS_LIST.map(j => (
-                    <button key={j} type="button" onClick={() => { setJenisAktif(j); setPesan(''); }}
-                        class={`py-2 rounded-lg text-[11px] font-bold border transition ${jenisAktif === j ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}>
-                        {j}
+                    <button key={j.key} type="button" onClick={() => { setJenisAktif(j.key); setPesan(''); }}
+                        class={`flex flex-col items-center gap-1 py-2 rounded-xl text-[11px] font-bold transition min-h-[44px] justify-center ${jenisAktif === j.key ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>
+                        <j.Icon className="w-4 h-4" />
+                        {j.key}
                     </button>
                 ))}
             </div>
 
-            {pesan && <div class="p-2.5 rounded-xl text-xs font-bold mb-3 text-center bg-gray-50 border border-gray-150">{pesan}</div>}
+            {pesan && <div class="p-3 rounded-xl text-xs font-bold mb-3 text-center bg-gray-50 border border-gray-150">{pesan}</div>}
 
             {jenisAktif === 'Kasbon' ? (
                 <div>
                     {limitInfo && (
-                        <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-4 text-xs font-semibold text-blue-900 space-y-1">
+                        <div class="bg-blue-50 border border-blue-100 rounded-xl p-3.5 mb-4 text-xs font-semibold text-blue-900 space-y-1.5">
                             <div class="flex justify-between"><span>Limit Kasbon Anda</span><span>{formatRupiah(limitInfo.limit)}</span></div>
                             <div class="flex justify-between"><span>Sedang Terpakai</span><span>{formatRupiah(limitInfo.terpakai)}</span></div>
-                            <div class="flex justify-between font-black"><span>Sisa Limit</span><span>{formatRupiah(limitInfo.sisa)}</span></div>
+                            <div class="flex justify-between font-black border-t border-blue-100 pt-1.5"><span>Sisa Limit</span><span>{formatRupiah(limitInfo.sisa)}</span></div>
                         </div>
                     )}
-                    <form onSubmit={ajukanKasbon} class="space-y-3 mb-5">
+                    <form onSubmit={ajukanKasbon} class="space-y-3.5 mb-5">
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Jumlah Kasbon (Rp)</label>
-                            <input type="number" min="1" placeholder="cth: 500000" value={jumlahKasbon} onChange={e => setJumlahKasbon(e.target.value)} class="w-full px-4 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold" />
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Jumlah Kasbon (Rp)</label>
+                            <input type="number" min="1" placeholder="cth: 500000" value={jumlahKasbon} onChange={e => setJumlahKasbon(e.target.value)} class="w-full px-4 py-3 border border-gray-250 rounded-xl outline-none text-sm font-semibold focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
                         </div>
-                        <div class="grid grid-cols-2 gap-3">
+                        <div class="grid grid-cols-1 gap-3.5">
                             <div>
-                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Region</label>
-                                <select value={regionKasbon} onChange={e => setRegionKasbon(e.target.value)} class="w-full px-3 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold bg-white">
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Region</label>
+                                <select value={regionKasbon} onChange={e => setRegionKasbon(e.target.value)} class="w-full px-3.5 py-3 border border-gray-250 rounded-xl outline-none text-sm font-semibold bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
                                     <option value="">Pilih region</option>
                                     {KASBON_REGION_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Vendor</label>
-                                <select value={vendorKasbon} onChange={e => setVendorKasbon(e.target.value)} class="w-full px-3 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold bg-white">
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Vendor</label>
+                                <select value={vendorKasbon} onChange={e => setVendorKasbon(e.target.value)} class="w-full px-3.5 py-3 border border-gray-250 rounded-xl outline-none text-sm font-semibold bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
                                     <option value="">Pilih vendor</option>
                                     {KASBON_VENDOR_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
                                 </select>
                             </div>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Alasan / Keperluan</label>
-                            <textarea placeholder="Jelaskan keperluan kasbon..." value={alasanKasbon} onChange={e => setAlasanKasbon(e.target.value)} class="w-full px-4 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold" rows="2"></textarea>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Alasan / Keperluan</label>
+                            <textarea placeholder="Jelaskan keperluan kasbon..." value={alasanKasbon} onChange={e => setAlasanKasbon(e.target.value)} class="w-full px-4 py-3 border border-gray-250 rounded-xl outline-none text-sm font-semibold focus:border-blue-400 focus:ring-2 focus:ring-blue-100" rows="2"></textarea>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Metode Pembayaran</label>
-                            <div class="grid grid-cols-2 gap-1.5">
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Metode Pembayaran</label>
+                            <div class="grid grid-cols-2 gap-2">
                                 {['E-Wallet', 'Transfer Bank'].map(m => (
                                     <button key={m} type="button" onClick={() => { setMetodeBayarKasbon(m); setPenyediaBayarKasbon(''); }}
-                                        class={`py-2 rounded-lg text-[11px] font-bold border transition ${metodeBayarKasbon === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}>
+                                        class={`py-2.5 rounded-lg text-[11px] font-bold border transition min-h-[44px] ${metodeBayarKasbon === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}>
                                         {m}
                                     </button>
                                 ))}
                             </div>
                         </div>
-                        <div class="grid grid-cols-2 gap-3">
+                        <div class="grid grid-cols-1 gap-3.5">
                             <div>
-                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">{metodeBayarKasbon === 'E-Wallet' ? 'Penyedia E-Wallet' : 'Nama Bank'}</label>
-                                <select value={penyediaBayarKasbon} onChange={e => setPenyediaBayarKasbon(e.target.value)} class="w-full px-3 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold bg-white">
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">{metodeBayarKasbon === 'E-Wallet' ? 'Penyedia E-Wallet' : 'Nama Bank'}</label>
+                                <select value={penyediaBayarKasbon} onChange={e => setPenyediaBayarKasbon(e.target.value)} class="w-full px-3.5 py-3 border border-gray-250 rounded-xl outline-none text-sm font-semibold bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
                                     <option value="">{metodeBayarKasbon === 'E-Wallet' ? 'Pilih e-wallet' : 'Pilih bank'}</option>
                                     {(metodeBayarKasbon === 'E-Wallet' ? KASBON_EWALLET_OPTIONS : KASBON_BANK_OPTIONS).map(p => <option key={p} value={p}>{p}</option>)}
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">{metodeBayarKasbon === 'E-Wallet' ? 'No. E-Wallet' : 'No. Rekening'}</label>
-                                <input type="text" inputmode="numeric" placeholder={metodeBayarKasbon === 'E-Wallet' ? 'cth: 08123456789' : 'cth: 1234567890'} value={noRekKasbon} onChange={e => setNoRekKasbon(e.target.value)} class="w-full px-3 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold" />
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">{metodeBayarKasbon === 'E-Wallet' ? 'No. E-Wallet' : 'No. Rekening'}</label>
+                                <input type="text" inputmode="numeric" placeholder={metodeBayarKasbon === 'E-Wallet' ? 'cth: 08123456789' : 'cth: 1234567890'} value={noRekKasbon} onChange={e => setNoRekKasbon(e.target.value)} class="w-full px-3.5 py-3 border border-gray-250 rounded-xl outline-none text-sm font-semibold focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
                             </div>
                         </div>
-                        <button type="submit" disabled={loading} class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition disabled:bg-gray-400 text-sm">
+                        <button type="submit" disabled={loading} class="w-full bg-blue-600 active:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-400 text-sm">
                             {loading ? 'Mengirim...' : 'AJUKAN KASBON'}
                         </button>
                     </form>
 
                     <h3 class="text-xs font-black text-gray-500 uppercase mb-2">Riwayat Kasbon</h3>
-                    <div class="space-y-2 max-h-64 overflow-y-auto">
-                        {riwayatKasbon.length === 0 && <p class="text-xs text-gray-400 text-center py-3">Belum ada pengajuan kasbon.</p>}
+                    <div class="space-y-2">
+                        {riwayatKasbon.length === 0 && <p class="text-xs text-gray-400 text-center py-4">Belum ada pengajuan kasbon.</p>}
                         {riwayatKasbon.map(k => (
-                            <div key={k._id} class="bg-gray-50 border border-gray-150 rounded-xl p-3">
+                            <div key={k._id} class="bg-white border border-gray-150 rounded-xl p-3.5 shadow-sm">
                                 <div class="flex justify-between items-start mb-1">
                                     <span class="font-black text-sm text-gray-900">{formatRupiah(k.jumlah)}</span>
                                     <StatusBadge status={k.status} />
@@ -506,33 +714,33 @@ function PengajuanPanel({ userSession, onBack }) {
                 </div>
             ) : (
                 <div>
-                    <form onSubmit={ajukanCutiIzinSakit} class="space-y-3 mb-5">
+                    <form onSubmit={ajukanCutiIzinSakit} class="space-y-3.5 mb-5">
                         <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Tgl Mulai</label>
-                                <input type="date" value={tglMulai} onChange={e => setTglMulai(e.target.value)} class="w-full px-3 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold" />
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Tgl Mulai</label>
+                                <input type="date" value={tglMulai} onChange={e => setTglMulai(e.target.value)} class="w-full px-3 py-3 border border-gray-250 rounded-xl outline-none text-sm font-semibold focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
                             </div>
                             <div>
-                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Tgl Selesai</label>
-                                <input type="date" value={tglSelesai} onChange={e => setTglSelesai(e.target.value)} class="w-full px-3 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold" />
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Tgl Selesai</label>
+                                <input type="date" value={tglSelesai} onChange={e => setTglSelesai(e.target.value)} class="w-full px-3 py-3 border border-gray-250 rounded-xl outline-none text-sm font-semibold focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
                             </div>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Alasan</label>
-                            <textarea placeholder={`Jelaskan alasan ${jenisAktif.toLowerCase()}...`} value={alasanCIS} onChange={e => setAlasanCIS(e.target.value)} class="w-full px-4 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold" rows="2"></textarea>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Alasan</label>
+                            <textarea placeholder={`Jelaskan alasan ${jenisAktif.toLowerCase()}...`} value={alasanCIS} onChange={e => setAlasanCIS(e.target.value)} class="w-full px-4 py-3 border border-gray-250 rounded-xl outline-none text-sm font-semibold focus:border-blue-400 focus:ring-2 focus:ring-blue-100" rows="2"></textarea>
                         </div>
-                        <button type="submit" disabled={loading} class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition disabled:bg-gray-400 text-sm">
+                        <button type="submit" disabled={loading} class="w-full bg-blue-600 active:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-400 text-sm">
                             {loading ? 'Mengirim...' : `AJUKAN ${jenisAktif.toUpperCase()}`}
                         </button>
                     </form>
 
                     <h3 class="text-xs font-black text-gray-500 uppercase mb-2">Riwayat {jenisAktif}</h3>
-                    <div class="space-y-2 max-h-64 overflow-y-auto">
+                    <div class="space-y-2">
                         {riwayatPengajuan.filter(p => p.jenis === jenisAktif).length === 0 && (
-                            <p class="text-xs text-gray-400 text-center py-3">Belum ada pengajuan {jenisAktif.toLowerCase()}.</p>
+                            <p class="text-xs text-gray-400 text-center py-4">Belum ada pengajuan {jenisAktif.toLowerCase()}.</p>
                         )}
                         {riwayatPengajuan.filter(p => p.jenis === jenisAktif).map(p => (
-                            <div key={p._id} class="bg-gray-50 border border-gray-150 rounded-xl p-3">
+                            <div key={p._id} class="bg-white border border-gray-150 rounded-xl p-3.5 shadow-sm">
                                 <div class="flex justify-between items-start mb-1">
                                     <span class="font-bold text-xs text-gray-800">
                                         {new Date(p.tanggal_mulai).toLocaleDateString('id-ID')} — {new Date(p.tanggal_selesai).toLocaleDateString('id-ID')}
@@ -555,10 +763,14 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
     const gpsSiap = lokasi.status === 'siap';
     const tombolDasarTerkunci = loading || !gpsSiap || statusHariIniLoading;
 
-    // Jam WIB berjalan (update tiap detik), dipakai untuk peringatan batas Absen Masuk 08:30 WIB.
+    // Jam WIB berjalan (update tiap detik): dipakai untuk jam digital & peringatan batas Absen Masuk 08:30 WIB.
+    const [waktuSekarang, setWaktuSekarang] = React.useState(() => new Date());
     const [statusBatasMasuk, setStatusBatasMasuk] = React.useState(() => getStatusBatasMasukWIB());
     React.useEffect(() => {
-        const timer = setInterval(() => setStatusBatasMasuk(getStatusBatasMasukWIB()), 1000);
+        const timer = setInterval(() => {
+            setWaktuSekarang(new Date());
+            setStatusBatasMasuk(getStatusBatasMasukWIB());
+        }, 1000);
         return () => clearInterval(timer);
     }, []);
 
@@ -579,21 +791,31 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
     };
 
     return (
-        <div class="bg-white p-5 rounded-2xl shadow-xl border border-gray-100 text-center w-full relative">
-            <SubHeader title="Absensi" onBack={onBack} />
-            <p class="text-xs font-mono font-bold text-gray-400 mb-4">{userSession.nama} · ID: {userSession.karyawan_id}</p>
+        <div class="w-full pb-6 relative">
+            <SubHeader title="Absensi" subtitle={`${userSession.nama} · ID: ${userSession.karyawan_id}`} onBack={onBack} />
 
-            <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden mb-4 shadow-inner border border-gray-200">
+            {/* JAM DIGITAL BERJALAN */}
+            <div class="bg-blue-900 rounded-2xl px-5 py-4 mb-4 text-center shadow-md">
+                <p class="text-3xl font-black text-white font-mono tracking-wider tabular-nums">{getJamBerjalanWIB(waktuSekarang)}</p>
+                <p class="text-[11px] text-blue-200 font-semibold mt-0.5">{waktuSekarang.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} WIB</p>
+            </div>
+
+            <div class="relative w-full aspect-video bg-black rounded-2xl overflow-hidden mb-4 shadow-inner border border-gray-200">
                 <video ref={videoRef} autoPlay playsInline muted class="w-full h-full object-cover transform -scale-x-100"></video>
-                <div class="absolute bottom-2 left-2 bg-black/60 text-[10px] text-white px-2 py-0.5 rounded font-mono font-bold">📷 LIVE CAMERA ACTIVE</div>
+                <div class="absolute bottom-2 left-2 flex items-center gap-1.5 bg-black/60 text-[10px] text-white pl-1.5 pr-2 py-1 rounded-full font-mono font-bold">
+                    <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> LIVE CAMERA ACTIVE
+                </div>
             </div>
 
             {/* PERINGATAN BATAS JAM ABSEN MASUK 08:30 WIB — hanya tampil sebelum karyawan Absen Masuk hari ini */}
             {!statusHariIniLoading && !statusHariIni.sudahMasuk && (
-                <div class={`mb-4 text-left rounded-xl p-3 border flex items-center justify-between gap-2 ${statusBatasMasuk.sudahLewat ? 'bg-red-50 border-red-150' : 'bg-blue-50 border-blue-150'}`}>
+                <div class={`mb-3 text-left rounded-xl p-3 border flex items-start gap-2.5 ${statusBatasMasuk.sudahLewat ? 'bg-red-50 border-red-150' : 'bg-blue-50 border-blue-150'}`}>
+                    <span class={`shrink-0 mt-0.5 ${statusBatasMasuk.sudahLewat ? 'text-red-600' : 'text-blue-600'}`}>
+                        {statusBatasMasuk.sudahLewat ? <IconAlertTriangle className="w-4 h-4" /> : <IconClock className="w-4 h-4" />}
+                    </span>
                     <div class="min-w-0">
                         <p class={`text-[11px] font-black uppercase ${statusBatasMasuk.sudahLewat ? 'text-red-700' : 'text-blue-700'}`}>
-                            {statusBatasMasuk.sudahLewat ? '⚠️ Sudah Lewat Jam Absen Masuk' : '⏰ Batas Absen Masuk 08:30 WIB'}
+                            {statusBatasMasuk.sudahLewat ? 'Sudah Lewat Jam Absen Masuk' : 'Batas Absen Masuk 08:30 WIB'}
                         </p>
                         <p class="text-[10px] text-gray-500">
                             {statusBatasMasuk.sudahLewat
@@ -605,31 +827,41 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
             )}
 
             {/* STATUS GPS: wajib aktif sebelum bisa absen, sama seperti kamera */}
-            <div class={`mb-4 text-left rounded-xl p-3 border flex items-center justify-between gap-2 ${gpsSiap ? 'bg-green-50 border-green-150' : lokasi.status === 'gagal' ? 'bg-red-50 border-red-150' : 'bg-amber-50 border-amber-150'}`}>
-                <div class="min-w-0">
+            <div class={`mb-3 text-left rounded-xl p-3 border flex items-start gap-2.5 ${gpsSiap ? 'bg-green-50 border-green-150' : lokasi.status === 'gagal' ? 'bg-red-50 border-red-150' : 'bg-amber-50 border-amber-150'}`}>
+                <span class={`shrink-0 mt-0.5 ${gpsSiap ? 'text-green-600' : lokasi.status === 'gagal' ? 'text-red-600' : 'text-amber-600'}`}>
+                    <IconMapPin className="w-4 h-4" />
+                </span>
+                <div class="min-w-0 flex-1">
                     <p class={`text-[11px] font-black uppercase ${gpsSiap ? 'text-green-700' : lokasi.status === 'gagal' ? 'text-red-700' : 'text-amber-700'}`}>
-                        {gpsSiap ? '📍 Lokasi Aktif' : lokasi.status === 'mencari' ? '📍 Mencari lokasi...' : lokasi.status === 'gagal' ? '📍 Lokasi Gagal / Ditolak' : '📍 Menunggu Lokasi'}
+                        {gpsSiap ? 'Lokasi Terverifikasi' : lokasi.status === 'mencari' ? 'Memeriksa lokasi Anda...' : lokasi.status === 'gagal' ? 'Lokasi Gagal Diverifikasi' : 'Menunggu Lokasi'}
                     </p>
                     <p class="text-[10px] text-gray-500 truncate">
-                        {gpsSiap ? (lokasi.alamat || `${lokasi.latitude.toFixed(5)}, ${lokasi.longitude.toFixed(5)}`) : 'Aktifkan izin lokasi GPS untuk bisa absen.'}
+                        {gpsSiap
+                            ? (lokasi.alamat || `${lokasi.latitude.toFixed(5)}, ${lokasi.longitude.toFixed(5)}`)
+                            : lokasi.status === 'gagal'
+                                ? 'Izin lokasi diperlukan untuk bisa absen. Aktifkan GPS lalu coba lagi.'
+                                : 'Aktifkan izin lokasi GPS untuk bisa absen.'}
                     </p>
                 </div>
                 {!gpsSiap && (
-                    <button type="button" onClick={cariLokasi} class="shrink-0 text-[10px] font-bold text-blue-600 underline">Coba Lagi</button>
+                    <button type="button" onClick={cariLokasi} class="shrink-0 text-[10px] font-bold text-blue-600 underline py-1">Coba Lagi</button>
                 )}
             </div>
 
             {/* STATUS ABSEN HARI INI: kasih tahu karyawan sudah sampai tahap mana */}
             {!statusHariIniLoading && (statusHariIni.sudahMasuk || statusHariIni.sudahPulang) && (
-                <div class={`mb-4 text-left rounded-xl p-3 border ${statusHariIni.sudahPulang ? 'bg-blue-50 border-blue-150' : 'bg-green-50 border-green-150'}`}>
-                    <p class={`text-[11px] font-black uppercase ${statusHariIni.sudahPulang ? 'text-blue-700' : 'text-green-700'}`}>
-                        {statusHariIni.sudahPulang ? '✅ Absensi Hari Ini Selesai' : '✅ Sudah Absen Masuk'}
-                    </p>
-                    <p class="text-[10px] text-gray-500">
-                        {statusHariIni.sudahPulang
-                            ? 'Anda sudah Absen Masuk dan Absen Pulang hari ini. Sampai jumpa besok!'
-                            : 'Tinggal klik Absen Pulang saat selesai kerja.'}
-                    </p>
+                <div class={`mb-4 text-left rounded-xl p-3 border flex items-start gap-2.5 ${statusHariIni.sudahPulang ? 'bg-blue-50 border-blue-150' : 'bg-green-50 border-green-150'}`}>
+                    <span class={`shrink-0 mt-0.5 ${statusHariIni.sudahPulang ? 'text-blue-600' : 'text-green-600'}`}><IconCheckCircle className="w-4 h-4" /></span>
+                    <div class="min-w-0">
+                        <p class={`text-[11px] font-black uppercase ${statusHariIni.sudahPulang ? 'text-blue-700' : 'text-green-700'}`}>
+                            {statusHariIni.sudahPulang ? 'Absensi Hari Ini Selesai' : 'Sudah Absen Masuk'}
+                        </p>
+                        <p class="text-[10px] text-gray-500">
+                            {statusHariIni.sudahPulang
+                                ? 'Anda sudah Absen Masuk dan Absen Pulang hari ini. Sampai jumpa besok!'
+                                : 'Tinggal klik Absen Pulang saat selesai kerja.'}
+                        </p>
+                    </div>
                 </div>
             )}
 
@@ -658,10 +890,10 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
             */}
 
             <div class="grid grid-cols-2 gap-3">
-                <button onClick={() => handleAbsen('Masuk')} disabled={masukTerkunci} class="bg-green-600 hover:bg-green-700 text-white font-extrabold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-300 disabled:cursor-not-allowed text-sm">
+                <button onClick={() => handleAbsen('Masuk')} disabled={masukTerkunci} class="bg-green-600 active:bg-green-700 text-white font-extrabold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-300 disabled:cursor-not-allowed text-sm">
                     {loading ? 'Memproses...' : statusHariIni.sudahMasuk ? '✓ SUDAH ABSEN MASUK' : 'ABSEN MASUK'}
                 </button>
-                <button onClick={() => handleAbsen('Pulang')} disabled={pulangTerkunci} class="bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-300 disabled:cursor-not-allowed text-sm">
+                <button onClick={() => handleAbsen('Pulang')} disabled={pulangTerkunci} class="bg-amber-500 active:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-300 disabled:cursor-not-allowed text-sm">
                     {loading ? 'Memproses...' : statusHariIni.sudahPulang ? '✓ SUDAH ABSEN PULANG' : 'ABSEN PULANG'}
                 </button>
             </div>
@@ -670,17 +902,17 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
             {modalData && (() => {
                 const telat = modalData.keterangan && modalData.keterangan !== 'Normal';
                 return (
-                <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-                    <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-gray-100 text-center transform scale-100 transition-all">
-                        <div class={`w-16 h-16 rounded-full flex items-center justify-center mx-auto text-3xl font-bold mb-3 ${telat ? 'bg-red-150 text-red-600' : 'bg-green-150 text-green-600'}`}>
-                            {telat ? '⚠️' : '✓'}
+                <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-gray-100 text-center">
+                        <div class={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 ${telat ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                            {telat ? <IconAlertTriangle className="w-8 h-8" /> : <IconCheckCircle className="w-8 h-8" />}
                         </div>
-                        <h3 class="text-xl font-black text-gray-900">{telat ? 'ABSEN BERHASIL — TERLAMBAT' : 'ABSEN BERHASIL!'}</h3>
+                        <h3 class="text-xl font-black text-gray-900">{telat ? 'Absen Berhasil — Terlambat' : 'Absensi Tercatat'}</h3>
                         <p class="text-xs text-gray-400 mt-0.5 font-medium">Data absensi Anda telah masuk ke sistem utama</p>
 
                         {telat && (
                             <div class="mt-3 bg-red-50 border border-red-150 rounded-xl p-3 text-left">
-                                <p class="text-[11px] font-black uppercase text-red-700">⚠️ Anda Tercatat Terlambat</p>
+                                <p class="text-[11px] font-black uppercase text-red-700">Anda Tercatat Terlambat</p>
                                 <p class="text-[11px] text-red-600 mt-0.5">Absen Masuk melewati batas jam 08:30 WIB. Mohon usahakan Absen Masuk sebelum 08:30 WIB besok.</p>
                             </div>
                         )}
@@ -691,7 +923,7 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
                             <div class="flex justify-between"><span class="text-gray-400">Keterangan:</span> <span class={telat ? 'text-red-600 font-black' : 'text-green-600'}>{modalData.keterangan}</span></div>
                         </div>
 
-                        <button onClick={onSelesai} class="w-full bg-gray-900 hover:bg-black text-white font-bold py-2.5 rounded-xl transition shadow-md text-sm">
+                        <button onClick={onSelesai} class="w-full bg-gray-900 active:bg-black text-white font-bold py-3 rounded-xl transition shadow-md text-sm">
                             Selesai & Lanjutkan
                         </button>
                     </div>
@@ -701,12 +933,12 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
 
             {/* MODAL KONFIRMASI TERLAMBAT — pengganti window.confirm bawaan browser (yang tampilannya
                 kaku, tidak bisa distyle, dan beda-beda tiap browser), diseragamkan dengan gaya modal
-                "Absen Berhasil" di atas supaya lebih rapi & minimalis */}
+                "Absensi Tercatat" di atas supaya lebih rapi & minimalis */}
             {konfirmasiTelat && (
-                <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+                <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                     <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-gray-100 text-center">
-                        <div class="w-16 h-16 rounded-full flex items-center justify-center mx-auto text-3xl mb-3 bg-red-150 text-red-600">
-                            ⚠️
+                        <div class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 bg-red-100 text-red-600">
+                            <IconAlertTriangle className="w-8 h-8" />
                         </div>
                         <h3 class="text-lg font-black text-gray-900">Peringatan Terlambat</h3>
                         <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">
@@ -721,10 +953,10 @@ function AbsensiPanel({ userSession, onBack, videoRef, selectedShift, setSelecte
                         <p class="text-xs text-gray-500 mb-4">Lanjutkan Absen Masuk?</p>
 
                         <div class="grid grid-cols-2 gap-3">
-                            <button onClick={onBatalkanTelat} class="bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-2.5 rounded-xl transition text-sm">
+                            <button onClick={onBatalkanTelat} class="bg-gray-100 active:bg-gray-200 text-gray-600 font-bold py-2.5 rounded-xl transition text-sm">
                                 Batal
                             </button>
-                            <button onClick={onLanjutkanTelat} class="bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-xl transition shadow-md text-sm">
+                            <button onClick={onLanjutkanTelat} class="bg-red-600 active:bg-red-700 text-white font-bold py-2.5 rounded-xl transition shadow-md text-sm">
                                 Lanjutkan
                             </button>
                         </div>
@@ -790,37 +1022,49 @@ function NotifikasiPanel({ userSession, onBack }) {
     React.useEffect(() => { muatNotifikasi(); }, [muatNotifikasi]);
 
     return (
-        <div class="bg-white p-5 rounded-2xl shadow-xl border border-gray-100 w-full">
-            <SubHeader title="Notifikasi" onBack={onBack} />
-            <div class="space-y-2 max-h-[28rem] overflow-y-auto">
-                {loading && <p class="text-xs text-gray-400 text-center py-4">Memuat notifikasi...</p>}
+        <div class="w-full pb-6">
+            <SubHeader title="Notifikasi" subtitle={userSession.nama} onBack={onBack} />
+            <div class="space-y-2">
+                {loading && <p class="text-xs text-gray-400 text-center py-8">Memuat notifikasi...</p>}
                 {!loading && gagal && (
-                    <div class="text-center py-4">
+                    <div class="text-center py-8">
                         <p class="text-xs text-red-500 mb-2">Gagal memuat notifikasi.</p>
                         <button type="button" onClick={muatNotifikasi} class="text-xs font-bold text-blue-600 underline">Coba Lagi</button>
                     </div>
                 )}
                 {!loading && !gagal && daftar.length === 0 && (
-                    <p class="text-xs text-gray-400 text-center py-6">Belum ada notifikasi. Notifikasi akan muncul di sini setelah pengajuan Kasbon/Cuti/Izin/Sakit Anda di-ACC atau ditolak Owner.</p>
-                )}
-                {!loading && daftar.map(n => (
-                    <div key={`${n.tipe}-${n._id}`} class={`rounded-xl p-3 border ${n.notif_dibaca ? 'bg-gray-50 border-gray-150' : 'bg-blue-50 border-blue-150'}`}>
-                        <div class="flex justify-between items-start mb-1">
-                            <span class="font-black text-xs text-gray-800 uppercase">{n.jenisLabel}</span>
-                            <StatusBadge status={n.status} />
+                    <div class="text-center py-10">
+                        <div class="w-12 h-12 rounded-full bg-gray-100 text-gray-300 flex items-center justify-center mx-auto mb-3">
+                            <IconBell className="w-6 h-6" />
                         </div>
-                        <p class="text-xs text-gray-600 font-semibold mb-1">{n.detail}</p>
-                        <p class={`text-[11px] font-bold ${n.status === 'Disetujui' ? 'text-green-600' : 'text-red-600'}`}>
-                            {n.status === 'Disetujui'
-                                ? `✅ Pengajuan ${n.jenisLabel} Anda telah di-ACC Owner`
-                                : `❌ Pengajuan ${n.jenisLabel} Anda ditolak Owner`}
-                        </p>
-                        {n.catatan_admin && <p class="text-[10px] text-gray-500 mt-1">Catatan: {n.catatan_admin}</p>}
-                        {n.tanggal_keputusan && (
-                            <p class="text-[10px] font-mono text-gray-400 mt-1">{new Date(n.tanggal_keputusan).toLocaleString('id-ID')}</p>
-                        )}
+                        <p class="text-xs text-gray-400 px-6">Belum ada notifikasi. Notifikasi akan muncul di sini setelah pengajuan Kasbon/Cuti/Izin/Sakit Anda di-ACC atau ditolak Owner.</p>
                     </div>
-                ))}
+                )}
+                {!loading && daftar.map(n => {
+                    const disetujui = n.status === 'Disetujui';
+                    return (
+                        <div key={`${n.tipe}-${n._id}`} class={`rounded-xl p-3.5 border-l-4 shadow-sm ${n.notif_dibaca ? 'bg-white border-gray-200' : disetujui ? 'bg-green-50 border-green-500' : 'bg-red-50 border-red-500'}`}>
+                            <div class="flex justify-between items-start mb-1.5 gap-2">
+                                <span class="flex items-center gap-1.5 font-black text-xs text-gray-800 uppercase">
+                                    {!n.notif_dibaca && <span class="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0"></span>}
+                                    {n.jenisLabel}
+                                </span>
+                                <StatusBadge status={n.status} />
+                            </div>
+                            <p class="text-xs text-gray-600 font-semibold mb-1.5">{n.detail}</p>
+                            <p class={`text-[11px] font-bold flex items-center gap-1 ${disetujui ? 'text-green-600' : 'text-red-600'}`}>
+                                {disetujui ? <IconCheckCircle className="w-3.5 h-3.5" /> : <IconX className="w-3.5 h-3.5" />}
+                                {disetujui
+                                    ? `Pengajuan ${n.jenisLabel} Anda telah di-ACC Owner`
+                                    : `Pengajuan ${n.jenisLabel} Anda ditolak Owner`}
+                            </p>
+                            {n.catatan_admin && <p class="text-[10px] text-gray-500 mt-1.5">Catatan: {n.catatan_admin}</p>}
+                            {n.tanggal_keputusan && (
+                                <p class="text-[10px] font-mono text-gray-400 mt-1.5">{new Date(n.tanggal_keputusan).toLocaleString('id-ID')}</p>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );
@@ -861,6 +1105,29 @@ function AppAbsensi() {
     // tombol "Absen Pulang" sampai karyawan sudah absen masuk dulu.
     const [statusHariIni, setStatusHariIni] = React.useState({ sudahMasuk: false, sudahPulang: false, shift: null });
     const [statusHariIniLoading, setStatusHariIniLoading] = React.useState(true);
+
+    // Badge jumlah notifikasi belum dibaca, dipakai di Bottom Nav (dihitung ulang tiap kembali ke Menu)
+    const [notifBelumDibacaNav, setNotifBelumDibacaNav] = React.useState(0);
+    React.useEffect(() => {
+        if (!isLoggedIn || !userSession) return;
+        let batal = false;
+        (async () => {
+            try {
+                const [resKasbon, resPengajuan] = await Promise.all([
+                    fetch(`${API_BASE}/kasbon/notifikasi/${userSession.karyawan_id}`),
+                    fetch(`${API_BASE}/pengajuan/notifikasi/${userSession.karyawan_id}`)
+                ]);
+                const dataKasbon = await resKasbon.json();
+                const dataPengajuan = await resPengajuan.json();
+                if (batal) return;
+                const belumDibaca =
+                    (Array.isArray(dataKasbon) ? dataKasbon.filter(k => !k.notif_dibaca).length : 0) +
+                    (Array.isArray(dataPengajuan) ? dataPengajuan.filter(p => !p.notif_dibaca).length : 0);
+                setNotifBelumDibacaNav(belumDibaca);
+            } catch (err) { /* diam-diam gagal, badge tetap 0 */ }
+        })();
+        return () => { batal = true; };
+    }, [isLoggedIn, userSession, tabAktif]);
 
     const muatStatusHariIni = React.useCallback(async () => {
         if (!userSession) return;
@@ -1132,25 +1399,27 @@ function AppAbsensi() {
 
     if (!isLoggedIn) {
         return (
-            <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-100 w-full">
-                <div class="text-center mb-6">
-                    <h1 class="text-3xl font-extrabold text-blue-600 tracking-wider">SETNET</h1>
-                    <p class="text-sm text-gray-400 mt-1">Portal Absensi Karyawan & Teknisi</p>
+            <div class="min-h-screen w-full flex items-center justify-center bg-gray-50 px-5">
+                <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-100 w-full max-w-sm">
+                    <div class="text-center mb-6">
+                        <h1 class="text-3xl font-extrabold text-blue-600 tracking-wider">SETNET</h1>
+                        <p class="text-sm text-gray-400 mt-1">Portal Absensi Karyawan & Teknisi</p>
+                    </div>
+                    {pesan && <div class="p-3 rounded-xl text-xs font-bold mb-4 text-center bg-red-100 text-red-800">{pesan}</div>}
+                    <form onSubmit={handleLogin} class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">ID Karyawan</label>
+                            <input type="text" placeholder="Masukkan ID" value={karyawanId} onChange={e => setKaryawanId(e.target.value)} class="w-full px-4 py-3 border border-gray-250 rounded-xl outline-none text-sm font-semibold focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Password</label>
+                            <input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} class="w-full px-4 py-3 border border-gray-250 rounded-xl outline-none text-sm font-semibold focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
+                        </div>
+                        <button type="submit" disabled={loading} class="w-full bg-blue-600 active:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition disabled:bg-gray-400 text-sm">
+                            {loading ? 'Memvalidasi...' : 'MASUK KE SISTEM'}
+                        </button>
+                    </form>
                 </div>
-                {pesan && <div class="p-3 rounded-xl text-xs font-bold mb-4 text-center bg-red-100 text-red-800">{pesan}</div>}
-                <form onSubmit={handleLogin} class="space-y-4">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">ID Karyawan</label>
-                        <input type="text" placeholder="Masukkan ID" value={karyawanId} onChange={e => setKaryawanId(e.target.value)} class="w-full px-4 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold" />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Password</label>
-                        <input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} class="w-full px-4 py-2.5 border border-gray-250 rounded-xl outline-none text-sm font-semibold" />
-                    </div>
-                    <button type="submit" disabled={loading} class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition disabled:bg-gray-400 text-sm">
-                        {loading ? 'Memvalidasi...' : 'MASUK KE SISTEM'}
-                    </button>
-                </form>
             </div>
         );
     }
@@ -1189,28 +1458,36 @@ function AppAbsensi() {
     }
 
     return (
-        <React.Fragment>
-            {konten}
+        <div class="min-h-screen w-full bg-gray-50">
+            <div class="max-w-2xl mx-auto" style={{ paddingBottom: 'calc(72px + env(safe-area-inset-bottom, 0px))' }}>
+                <div class={tabAktif === 'Menu' ? '' : 'px-4 pt-4'}>
+                    {konten}
+                </div>
+            </div>
+
+            <BottomNav tabAktif={tabAktif} onNavigate={setTabAktif} notifBelumDibaca={notifBelumDibacaNav} />
 
             {/* MODAL KONFIRMASI LOGOUT */}
             {showLogoutConfirm && (
                 <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                     <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-gray-100 text-center">
-                        <div class="w-14 h-14 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto text-2xl mb-3">🚪</div>
+                        <div class="w-14 h-14 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <IconLogOut className="w-6 h-6" />
+                        </div>
                         <h3 class="text-lg font-black text-gray-900">Keluar dari Akun?</h3>
                         <p class="text-xs text-gray-400 mt-1 mb-5">Anda perlu login kembali dengan ID Karyawan &amp; Password untuk mengakses sistem absensi.</p>
                         <div class="grid grid-cols-2 gap-3">
-                            <button type="button" onClick={() => setShowLogoutConfirm(false)} class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 rounded-xl transition text-sm">
+                            <button type="button" onClick={() => setShowLogoutConfirm(false)} class="w-full bg-gray-100 active:bg-gray-200 text-gray-700 font-bold py-2.5 rounded-xl transition text-sm">
                                 Batal
                             </button>
-                            <button type="button" onClick={handleLogout} class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-xl shadow-md transition text-sm">
+                            <button type="button" onClick={handleLogout} class="w-full bg-red-600 active:bg-red-700 text-white font-bold py-2.5 rounded-xl shadow-md transition text-sm">
                                 Ya, Logout
                             </button>
                         </div>
                     </div>
                 </div>
             )}
-        </React.Fragment>
+        </div>
     );
 }
 

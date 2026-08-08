@@ -5292,12 +5292,6 @@ function DashboardAdmin({ session, onLogout }) {
                     <p style={{ color: "var(--ink-soft)" }}>Status</p>
                     <span className="inline-block mt-1 px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide" style={{ background: asetStatusTone(asetDetailTarget.status).bg, color: asetStatusTone(asetDetailTarget.status).fg }}>{asetDetailTarget.status || "-"}</span>
                   </div>
-                  <div><p style={{ color: "var(--ink-soft)" }}>Lokasi/Gudang</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.lokasi || "-"}</p></div>
-                  <div><p style={{ color: "var(--ink-soft)" }}>Tanggal Beli</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.tanggal_beli ? new Date(asetDetailTarget.tanggal_beli).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-"}</p></div>
-                  <div><p style={{ color: "var(--ink-soft)" }}>Harga Beli</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.harga_beli != null ? fmtRupiah(asetDetailTarget.harga_beli) : "-"}</p></div>
-                  <div><p style={{ color: "var(--ink-soft)" }}>Supplier</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.supplier || "-"}</p></div>
-                  <div className="col-span-2"><p style={{ color: "var(--ink-soft)" }}>Deskripsi</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.deskripsi || "-"}</p></div>
-                  <div className="col-span-2"><p style={{ color: "var(--ink-soft)" }}>Keterangan</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.keterangan || "-"}</p></div>
                 </div>
               </div>
               <div className="pt-4 border-t" style={{ borderColor: "var(--border)" }}>
