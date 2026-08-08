@@ -160,7 +160,7 @@ const isOwnerLike = (role) => role === "owner" || role === "hrd";
 // Menu mana yang boleh diakses tiap role
 const MENU_ACCESS = {
   dashboard: ["admin", "gudang", "korlap", "finance", "owner", "hrd", "leader"],
-  crud:      ["owner", "hrd"], // <--- BERHASIL DIKUNCI HANYA UNTUK OWNER
+  crud:      ["owner", "hrd", "admin"], // <--- Master Data Karyawan: Owner/HRD + Staf Admin (role "admin") boleh CRUD karyawan; Salary tetap terkunci di bawah
   log:       ["korlap", "owner", "hrd", "leader"], // <--- Log Absensi: Owner/HRD + Korlap + Leader (read-only)
   keuangan:  ["finance", "owner", "hrd"],
   invoice:   ["finance", "owner", "hrd"], // <--- Invoice/Penagihan: khusus Finance & Owner
@@ -168,7 +168,7 @@ const MENU_ACCESS = {
   kasbon:    ["owner", "hrd"], // <--- Menu Kasbon & Cuti/Izin/Sakit; approve KASBON tetap dikunci khusus owner (lihat tombol ACC di bawah)
   material:  ["admin", "gudang", "korlap", "owner", "hrd"], // <--- Pemakaian Material: admin, gudang & korlap boleh kelola, finance tidak lagi akses
   asset:     ["admin", "gudang", "korlap", "owner", "hrd"], // <--- Aset & Alat Teknisi: role sama persis dengan Pemakaian Material
-  salary:    ["owner", "hrd"], // <--- Submenu "Salary" di bawah Master Data Karyawan: gaji pokok, limit kasbon manual, tandai gaji dibayar
+  salary:    ["owner", "hrd"], // <--- Submenu "Salary" di bawah Master Data Karyawan: gaji pokok, limit kasbon manual, tandai gaji dibayar — Staf Admin (role "admin") SENGAJA TIDAK dimasukkan di sini
 };
 const canAccess = (role, menuKey) => (MENU_ACCESS[menuKey] || []).includes(role);
 
@@ -5940,7 +5940,8 @@ function DashboardAdmin({ session, onLogout }) {
                     </div>
                   </div>
 
-                  {/* ===== AKTIVITAS TERBARU ===== */}
+                  {/* ===== AKTIVITAS TERBARU — khusus Owner & HRD ===== */}
+                  {isOwnerLike(session.role) && (
                   <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
                     <div className="p-5 border-b" style={{ borderColor: "var(--border)" }}>
                       <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Aktivitas Terbaru</h3>
@@ -5968,6 +5969,7 @@ function DashboardAdmin({ session, onLogout }) {
                       </ul>
                     )}
                   </div>
+                  )}
 
                   {/* ===== RINGKASAN MATERIAL / TRACKING BAST / FINANCE (tetap ada, dipindah ke bawah
                        supaya area atas konsisten dengan layout referensi; data & akses role tidak berubah) ===== */}

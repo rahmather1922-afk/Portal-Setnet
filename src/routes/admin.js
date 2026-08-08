@@ -47,8 +47,8 @@ router.get('/admin/karyawan', requireRole('admin', 'gudang', 'korlap', 'finance'
 });
 
 // --- API ADMIN: REGISTRASI / MENAMBAH ANGGOTA KARYAWAN BARU ---
-// DIUBAH: requireRole hanya diisi 'owner'
-router.post('/admin/tambah-karyawan', requireRole('owner'), async (req, res) => {
+// DIUBAH: owner + Staf Admin (role 'admin') boleh tambah karyawan; role lain tidak.
+router.post('/admin/tambah-karyawan', requireRole('owner', 'admin'), async (req, res) => {
   try {
     const { karyawan_id, nama, password, role, alamat, nik, tanggal_lahir, no_telp, cabang } = req.body;
     if (!karyawan_id || !nama || !password) {
@@ -78,7 +78,7 @@ router.post('/admin/tambah-karyawan', requireRole('owner'), async (req, res) => 
 // Menerima file .xlsx sesuai "Template Import Karyawan", membaca isinya,
 // lalu memvalidasi setiap baris TANPA menyimpan apa pun ke database.
 // Frontend menampilkan hasil ini sebagai tabel konfirmasi ke admin/owner.
-router.post('/admin/import-karyawan/preview', requireRole('owner'), upload.single('file'), async (req, res) => {
+router.post('/admin/import-karyawan/preview', requireRole('owner', 'admin'), upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'File Excel wajib diupload (field "file")' });
@@ -156,7 +156,7 @@ router.post('/admin/import-karyawan/preview', requireRole('owner'), upload.singl
 // Dipanggil SETELAH admin/owner menekan tombol "Konfirmasi & Simpan" pada
 // tabel preview. Body: { rows: [ { karyawan_id, nama, password, role, ... }, ... ] }
 // Hanya baris yang sudah dinyatakan valid di tahap preview yang boleh dikirim ke sini.
-router.post('/admin/import-karyawan/confirm', requireRole('owner'), async (req, res) => {
+router.post('/admin/import-karyawan/confirm', requireRole('owner', 'admin'), async (req, res) => {
   try {
     const { rows } = req.body;
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -217,8 +217,8 @@ router.post('/admin/import-karyawan/confirm', requireRole('owner'), async (req, 
 });
 
 // --- API ADMIN: MEMPERBARUI / EDIT DATA PROFIL KARYAWAN ---
-// DIUBAH: requireRole hanya diisi 'owner'
-router.put('/admin/update-karyawan/:id', requireRole('owner'), async (req, res) => {
+// DIUBAH: owner + Staf Admin (role 'admin') boleh edit karyawan.
+router.put('/admin/update-karyawan/:id', requireRole('owner', 'admin'), async (req, res) => {
   try {
     const { nama, role, alamat, password, nik, tanggal_lahir, no_telp, cabang } = req.body;
     const updateData = { nama, role, alamat, nik: nik || '', tanggal_lahir: tanggal_lahir || null, no_telp: no_telp || '', cabang: cabang || '' };
@@ -270,8 +270,8 @@ router.put('/admin/karyawan/:id/status', requireRole('hrd', 'owner'), async (req
 });
 
 // --- API ADMIN: MENGHAPUS DATA KARYAWAN ---
-// DIUBAH: requireRole hanya diisi 'owner'
-router.delete('/admin/hapus-karyawan/:id', requireRole('owner'), async (req, res) => {
+// DIUBAH: owner + Staf Admin (role 'admin') boleh hapus karyawan.
+router.delete('/admin/hapus-karyawan/:id', requireRole('owner', 'admin'), async (req, res) => {
   try {
     const dihapus = await Karyawan.findByIdAndDelete(req.params.id);
     if (!dihapus) {
@@ -284,8 +284,8 @@ router.delete('/admin/hapus-karyawan/:id', requireRole('owner'), async (req, res
 });
 
 // --- API ADMIN: MENGHAPUS BANYAK KARYAWAN SEKALIGUS (checkbox di tabel Master Data) ---
-// Body: { ids: ["<_id1>", "<_id2>", ...] }. Sama seperti hapus satuan, khusus role 'owner'.
-router.post('/admin/karyawan/hapus-batch', requireRole('owner'), async (req, res) => {
+// Body: { ids: ["<_id1>", "<_id2>", ...] }. Sama seperti hapus satuan: owner + Staf Admin (role 'admin').
+router.post('/admin/karyawan/hapus-batch', requireRole('owner', 'admin'), async (req, res) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
