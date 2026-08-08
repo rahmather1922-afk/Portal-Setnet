@@ -29,7 +29,7 @@ router.get('/asset', VIEW_ROLES, async (req, res) => {
 // --- TAMBAH ASET BARU (1 unit fisik) ---
 router.post('/asset', MANAGE_ROLES, async (req, res) => {
   try {
-    const { kategori, nama, kode_aset, merek, kondisi, keterangan } = req.body;
+    const { kategori, nama, kode_aset, merek, kondisi, keterangan, tipe, no_seri, tahun, lokasi, tanggal_beli, harga_beli, supplier, deskripsi } = req.body;
     if (!nama) {
       return res.status(400).json({ message: 'Nama/jenis aset wajib diisi!' });
     }
@@ -39,6 +39,14 @@ router.post('/asset', MANAGE_ROLES, async (req, res) => {
       nama: String(nama).trim(),
       kode_aset: kode_aset || '',
       merek: merek || '',
+      tipe: tipe || '',
+      no_seri: no_seri || '',
+      tahun: tahun ? Number(tahun) : null,
+      lokasi: lokasi || '',
+      tanggal_beli: tanggal_beli ? new Date(tanggal_beli) : null,
+      harga_beli: harga_beli !== undefined && harga_beli !== '' ? Number(harga_beli) : null,
+      supplier: supplier || '',
+      deskripsi: deskripsi || '',
       kondisi: kondisi || 'Baik',
       status: 'Tersedia',
       keterangan: keterangan || '',
@@ -51,14 +59,64 @@ router.post('/asset', MANAGE_ROLES, async (req, res) => {
   }
 });
 
+// ==================== RIWAYAT (LOG) ====================
+// PENTING: route riwayat HARUS didaftarkan SEBELUM "GET /asset/:id" di bawah,
+// supaya path "/asset/log" atau "/asset/:id/history" tidak ke-"tangkap" duluan
+// oleh :id (Express mencocokkan route sesuai urutan pendaftaran).
+
+// --- RIWAYAT SERAH TERIMA/PENGEMBALIAN, SEMUA ASET (filter opsional ?aset_id=) ---
+router.get('/asset/log', VIEW_ROLES, async (req, res) => {
+  try {
+    const { aset_id } = req.query;
+    const filter = {};
+    if (aset_id) filter.aset_id = aset_id;
+    const data = await AsetLog.find(filter).sort({ tanggal: -1 });
+    res.status(200).json(data);
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal mengambil riwayat aset', error: error.message });
+  }
+});
+
+// --- RIWAYAT 1 ASET SAJA (dipakai modal "Riwayat Asset") — sama datanya dengan
+//     GET /asset/log?aset_id=..., disediakan juga dalam bentuk path ini biar konsisten
+//     dgn pola "/asset/:id/history" yang lazim dipakai frontend. ---
+router.get('/asset/:id/history', VIEW_ROLES, async (req, res) => {
+  try {
+    const data = await AsetLog.find({ aset_id: req.params.id }).sort({ tanggal: -1 });
+    res.status(200).json(data);
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal mengambil riwayat aset', error: error.message });
+  }
+});
+
+// --- DETAIL 1 ASET (dipakai modal "Detail Aset" di frontend — data holder saat ini
+//     sudah menempel langsung di dokumen Aset, jadi tidak perlu populate/join tambahan) ---
+router.get('/asset/:id', VIEW_ROLES, async (req, res) => {
+  try {
+    const aset = await Aset.findById(req.params.id);
+    if (!aset) return res.status(404).json({ message: 'Aset tidak ditemukan' });
+    res.status(200).json(aset);
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal mengambil detail aset', error: error.message });
+  }
+});
+
 // --- EDIT ASET (data master saja: nama/kategori/kode/merek/kondisi/keterangan) ---
 // Untuk pindah tangan (siapa yang pegang) & status Dipakai/Tersedia, WAJIB lewat endpoint
 // /asset/:id/serah-terima & /asset/:id/pengembalian di bawah supaya riwayatnya tercatat.
 router.put('/asset/:id', MANAGE_ROLES, async (req, res) => {
   try {
-    const { kategori, nama, kode_aset, merek, kondisi, status, keterangan } = req.body;
+    const { kategori, nama, kode_aset, merek, kondisi, status, keterangan, tipe, no_seri, tahun, lokasi, tanggal_beli, harga_beli, supplier, deskripsi } = req.body;
     const updateData = { kategori, nama, kode_aset, merek, keterangan };
     if (kondisi) updateData.kondisi = kondisi;
+    if (tipe !== undefined) updateData.tipe = tipe;
+    if (no_seri !== undefined) updateData.no_seri = no_seri;
+    if (tahun !== undefined) updateData.tahun = tahun ? Number(tahun) : null;
+    if (lokasi !== undefined) updateData.lokasi = lokasi;
+    if (tanggal_beli !== undefined) updateData.tanggal_beli = tanggal_beli ? new Date(tanggal_beli) : null;
+    if (harga_beli !== undefined) updateData.harga_beli = harga_beli !== '' ? Number(harga_beli) : null;
+    if (supplier !== undefined) updateData.supplier = supplier;
+    if (deskripsi !== undefined) updateData.deskripsi = deskripsi;
     // Status boleh diubah manual lewat form Edit HANYA untuk transisi ke/dari "Maintenance"
     // atau "Hilang" (mis. aset lagi diservis atau dilaporkan hilang) — bukan "Dipakai".
     if (status && ['Tersedia', 'Maintenance', 'Hilang'].includes(status)) {
@@ -166,21 +224,6 @@ router.post('/asset/:id/pengembalian', MANAGE_ROLES, async (req, res) => {
     res.status(200).json({ message: `Aset "${aset.nama}" berhasil dikembalikan ke gudang`, data: aset });
   } catch (error) {
     res.status(500).json({ message: 'Gagal mencatat pengembalian aset', error: error.message });
-  }
-});
-
-// ==================== RIWAYAT (LOG) ====================
-
-// --- RIWAYAT SERAH TERIMA/PENGEMBALIAN (filter opsional ?aset_id=) ---
-router.get('/asset/log', VIEW_ROLES, async (req, res) => {
-  try {
-    const { aset_id } = req.query;
-    const filter = {};
-    if (aset_id) filter.aset_id = aset_id;
-    const data = await AsetLog.find(filter).sort({ tanggal: -1 });
-    res.status(200).json(data);
-  } catch (error) {
-    res.status(500).json({ message: 'Gagal mengambil riwayat aset', error: error.message });
   }
 });
 

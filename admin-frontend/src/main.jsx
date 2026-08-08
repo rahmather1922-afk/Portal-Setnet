@@ -2502,7 +2502,6 @@ function DashboardAdmin({ session, onLogout }) {
   const [asetKodeAset, setAsetKodeAset] = useState("");
   const [asetMerek, setAsetMerek] = useState("");
   const [asetKondisi, setAsetKondisi] = useState("Baik");
-  const [asetKeterangan, setAsetKeterangan] = useState("");
   const [asetFormErrors, setAsetFormErrors] = useState({});
   const [asetSubmitting, setAsetSubmitting] = useState(false);
   // modal Serah Terima
@@ -2519,6 +2518,12 @@ function DashboardAdmin({ session, onLogout }) {
   const [asetDeleteTarget, setAsetDeleteTarget] = useState(null);
   // modal Riwayat per aset
   const [riwayatAsetTarget, setRiwayatAsetTarget] = useState(null);
+  // modal Detail Aset (read-only)
+  const [asetDetailTarget, setAsetDetailTarget] = useState(null);
+  // dropdown teknisi di modal Serah Terima — sumbernya karyawanList yang sudah ada (bukan input teks bebas)
+  const [stTeknisiId, setStTeknisiId] = useState("");
+  const [stTeknisiSearch, setStTeknisiSearch] = useState(""); // teks yang diketik user buat cari cepat (nama/ID/role)
+  const [stTeknisiDropdownOpen, setStTeknisiDropdownOpen] = useState(false);
 
   // form: master material
   const [materialModalOpen, setMaterialModalOpen] = useState(false); // modal Tambah/Edit Material + Tambah Stok, biar tabel Master Data Material bisa full width
@@ -4227,12 +4232,12 @@ function DashboardAdmin({ session, onLogout }) {
   // ==================== HANDLER MODUL ASET & ALAT TEKNISI ====================
   const resetFormAsset = () => {
     setAsetEditId(null); setAsetKategori("Alat Fiber Optic"); setAsetNama(""); setAsetKodeAset("");
-    setAsetMerek(""); setAsetKondisi("Baik"); setAsetKeterangan(""); setAsetFormErrors({});
+    setAsetMerek(""); setAsetKondisi("Baik"); setAsetFormErrors({});
     setAsetModalOpen(false);
   };
   const pemicuEditAsset = (a) => {
     setAsetEditId(a._id); setAsetKategori(a.kategori); setAsetNama(a.nama); setAsetKodeAset(a.kode_aset || "");
-    setAsetMerek(a.merek || ""); setAsetKondisi(a.kondisi || "Baik"); setAsetKeterangan(a.keterangan || "");
+    setAsetMerek(a.merek || ""); setAsetKondisi(a.kondisi || "Baik");
     setAsetFormErrors({}); setAsetModalOpen(true);
   };
   const validateAsset = () => {
@@ -4246,7 +4251,7 @@ function DashboardAdmin({ session, onLogout }) {
     if (!validateAsset()) return;
     setAsetSubmitting(true);
     try {
-      const bodyData = { kategori: asetKategori, nama: asetNama.trim(), kode_aset: asetKodeAset.trim(), merek: asetMerek.trim(), kondisi: asetKondisi, keterangan: asetKeterangan };
+      const bodyData = { kategori: asetKategori, nama: asetNama.trim(), kode_aset: asetKodeAset.trim(), merek: asetMerek.trim(), kondisi: asetKondisi };
       const url = asetEditId ? `${MATERIAL_API}/asset/${asetEditId}` : `${MATERIAL_API}/asset`;
       const res = await fetch(url, { method: asetEditId ? "PUT" : "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
       const resData = await res.json().catch(() => ({}));
@@ -4268,16 +4273,17 @@ function DashboardAdmin({ session, onLogout }) {
     finally { setAsetDeleteTarget(null); }
   };
   const bukaSerahTerima = (a) => {
-    setSerahTerimaTarget(a); setStTeknisiNama(""); setStTanggal(new Date().toISOString().slice(0, 10)); setStKeterangan("");
+    setSerahTerimaTarget(a); setStTeknisiId(""); setStTeknisiNama(""); setStTeknisiSearch(""); setStTeknisiDropdownOpen(false);
+    setStTanggal(new Date().toISOString().slice(0, 10)); setStKeterangan("");
   };
   const submitSerahTerima = async () => {
     if (!serahTerimaTarget) return;
-    if (!stTeknisiNama.trim()) { notify("Nama teknisi wajib diisi", "error"); return; }
+    if (!stTeknisiId) { notify("Pilih teknisi penerima terlebih dahulu", "error"); return; }
     setStSubmitting(true);
     try {
       const res = await fetch(`${MATERIAL_API}/asset/${serahTerimaTarget._id}/serah-terima`, {
         method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ teknisi_nama: stTeknisiNama.trim(), tanggal: stTanggal, keterangan: stKeterangan }),
+        body: JSON.stringify({ teknisi_id: stTeknisiId, teknisi_nama: stTeknisiNama.trim(), tanggal: stTanggal, keterangan: stKeterangan }),
       });
       const resData = await res.json().catch(() => ({}));
       if (res.ok) { notify(resData.message || "Serah terima aset berhasil dicatat"); setSerahTerimaTarget(null); muatSemuaData(true); }
@@ -4325,6 +4331,24 @@ function DashboardAdmin({ session, onLogout }) {
     if (!riwayatAsetTarget) return [];
     return assetLogList.filter(l => String(l.aset_id) === String(riwayatAsetTarget._id));
   }, [assetLogList, riwayatAsetTarget]);
+  // Dropdown pilihan teknisi di modal Serah Terima — sumbernya karyawanList yang sudah
+  // dimuat via /admin/karyawan (bukan input teks bebas), cuma karyawan Aktif yang ditampilkan.
+  const teknisiOptionsAsset = useMemo(() => {
+    return karyawanList
+      .filter(k => (k.status || "Aktif") !== "Non Aktif")
+      .slice()
+      .sort((a, b) => (a.nama || "").localeCompare(b.nama || ""));
+  }, [karyawanList]);
+  // Hasil filter combobox teknisi Serah Terima berdasarkan ketikan user (nama/ID karyawan/role)
+  const teknisiFilteredAsset = useMemo(() => {
+    const q = stTeknisiSearch.trim().toLowerCase();
+    if (!q) return teknisiOptionsAsset;
+    return teknisiOptionsAsset.filter(k =>
+      (k.nama || "").toLowerCase().includes(q) ||
+      (k.karyawan_id || "").toLowerCase().includes(q) ||
+      (k.role || "").toLowerCase().includes(q)
+    );
+  }, [teknisiOptionsAsset, stTeknisiSearch]);
 
   // ---- Tambah Stok (restock) untuk material yang SUDAH ADA — dipakai di panel Edit tab
   // Master Material, menggantikan tab "Stok Masuk/Kembali" yang lama. Selalu tipe "Penambahan";
@@ -5109,11 +5133,6 @@ function DashboardAdmin({ session, onLogout }) {
                   <option value="Rusak Berat">Rusak Berat</option>
                 </select>
               </div>
-              <div>
-                <label className="text-xs font-semibold block mb-1.5" style={{ color: "var(--ink)" }}>Keterangan</label>
-                <textarea rows={2} placeholder="Opsional" value={asetKeterangan} onChange={e => setAsetKeterangan(e.target.value)}
-                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium resize-none" style={{ borderColor: "var(--border)" }} />
-              </div>
             </div>
             <div className="p-5 border-t flex gap-2" style={{ borderColor: "var(--border)" }}>
               <button type="button" onClick={resetFormAsset} className="flex-1 py-2.5 rounded-xl border font-semibold text-xs hover:bg-gray-50" style={{ borderColor: "var(--border)" }}>Batal</button>
@@ -5132,10 +5151,41 @@ function DashboardAdmin({ session, onLogout }) {
               <p className="text-[11px] mt-0.5" style={{ color: "var(--ink-soft)" }}>"{serahTerimaTarget.nama}" akan diserahkan ke teknisi di bawah ini</p>
             </div>
             <div className="p-5 space-y-3.5">
-              <div>
-                <label className="text-xs font-semibold block mb-1.5" style={{ color: "var(--ink)" }}>Nama Teknisi</label>
-                <input type="text" placeholder="Nama teknisi/team penerima" value={stTeknisiNama} onChange={e => setStTeknisiNama(e.target.value)}
-                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+              <div className="relative">
+                <label className="text-xs font-semibold block mb-1.5" style={{ color: "var(--ink)" }}>Pilih Teknisi</label>
+                <input
+                  type="text"
+                  placeholder="Ketik nama, ID, atau role teknisi..."
+                  value={stTeknisiId ? stTeknisiNama : stTeknisiSearch}
+                  onChange={e => {
+                    setStTeknisiId(""); setStTeknisiNama(""); setStTeknisiSearch(e.target.value); setStTeknisiDropdownOpen(true);
+                  }}
+                  onFocus={() => setStTeknisiDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setStTeknisiDropdownOpen(false), 150)}
+                  className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }}
+                />
+                {stTeknisiDropdownOpen && (
+                  <div className="absolute z-10 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg max-h-52 overflow-y-auto" style={{ borderColor: "var(--border)" }}>
+                    {teknisiFilteredAsset.length === 0 && (
+                      <div className="px-3 py-2.5 text-xs" style={{ color: "var(--ink-soft)" }}>Tidak ada teknisi yang cocok</div>
+                    )}
+                    {teknisiFilteredAsset.map(k => (
+                      <button
+                        key={k.karyawan_id}
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => {
+                          setStTeknisiId(k.karyawan_id); setStTeknisiNama(k.nama); setStTeknisiSearch(""); setStTeknisiDropdownOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2.5 text-xs hover:bg-gray-50 border-b last:border-0"
+                        style={{ borderColor: "var(--border)" }}
+                      >
+                        <span className="font-semibold" style={{ color: "var(--ink)" }}>{k.nama}</span>
+                        <span style={{ color: "var(--ink-soft)" }}> — {k.karyawan_id}{k.role ? ` — ${k.role}` : ""}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="text-xs font-semibold block mb-1.5" style={{ color: "var(--ink)" }}>Tanggal</label>
@@ -5209,6 +5259,67 @@ function DashboardAdmin({ session, onLogout }) {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {asetDetailTarget && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.45)" }} onClick={() => setAsetDetailTarget(null)}>
+          <div className="modal-in bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
+              <div>
+                <h3 className="font-bold font-display text-sm" style={{ color: "var(--ink)" }}>Detail Aset</h3>
+                <p className="text-[11px] mt-0.5" style={{ color: "var(--ink-soft)" }}>{asetDetailTarget.nama}</p>
+              </div>
+              <button onClick={() => setAsetDetailTarget(null)} className="p-1.5 rounded-lg hover:bg-gray-100"><IconX className="w-4 h-4" style={{ color: "var(--ink-soft)" }} /></button>
+            </div>
+            <div className="p-5 max-h-[70vh] overflow-y-auto space-y-5">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider mb-2.5" style={{ color: "var(--ink-soft)" }}>Informasi Aset</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                  <div><p style={{ color: "var(--ink-soft)" }}>Nama Aset</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.nama || "-"}</p></div>
+                  <div><p style={{ color: "var(--ink-soft)" }}>Kode Aset / Plat</p><p className="font-semibold mt-0.5 font-mono" style={{ color: "var(--ink)" }}>{asetDetailTarget.kode_aset || "-"}</p></div>
+                  <div><p style={{ color: "var(--ink-soft)" }}>Kategori</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.kategori || "-"}</p></div>
+                  <div><p style={{ color: "var(--ink-soft)" }}>Merek</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.merek || "-"}</p></div>
+                  <div><p style={{ color: "var(--ink-soft)" }}>Tipe</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.tipe || "-"}</p></div>
+                  <div><p style={{ color: "var(--ink-soft)" }}>No. Seri</p><p className="font-semibold mt-0.5 font-mono" style={{ color: "var(--ink)" }}>{asetDetailTarget.no_seri || "-"}</p></div>
+                  <div><p style={{ color: "var(--ink-soft)" }}>Tahun</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.tahun || "-"}</p></div>
+                  <div>
+                    <p style={{ color: "var(--ink-soft)" }}>Kondisi</p>
+                    <span className="inline-block mt-1 px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide" style={{ background: asetKondisiTone(asetDetailTarget.kondisi).bg, color: asetKondisiTone(asetDetailTarget.kondisi).fg }}>{asetDetailTarget.kondisi || "-"}</span>
+                  </div>
+                  <div>
+                    <p style={{ color: "var(--ink-soft)" }}>Status</p>
+                    <span className="inline-block mt-1 px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide" style={{ background: asetStatusTone(asetDetailTarget.status).bg, color: asetStatusTone(asetDetailTarget.status).fg }}>{asetDetailTarget.status || "-"}</span>
+                  </div>
+                  <div><p style={{ color: "var(--ink-soft)" }}>Lokasi/Gudang</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.lokasi || "-"}</p></div>
+                  <div><p style={{ color: "var(--ink-soft)" }}>Tanggal Beli</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.tanggal_beli ? new Date(asetDetailTarget.tanggal_beli).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-"}</p></div>
+                  <div><p style={{ color: "var(--ink-soft)" }}>Harga Beli</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.harga_beli != null ? fmtRupiah(asetDetailTarget.harga_beli) : "-"}</p></div>
+                  <div><p style={{ color: "var(--ink-soft)" }}>Supplier</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.supplier || "-"}</p></div>
+                  <div className="col-span-2"><p style={{ color: "var(--ink-soft)" }}>Deskripsi</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.deskripsi || "-"}</p></div>
+                  <div className="col-span-2"><p style={{ color: "var(--ink-soft)" }}>Keterangan</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.keterangan || "-"}</p></div>
+                </div>
+              </div>
+              <div className="pt-4 border-t" style={{ borderColor: "var(--border)" }}>
+                <p className="text-[10px] font-black uppercase tracking-wider mb-2.5" style={{ color: "var(--ink-soft)" }}>Pemegang Saat Ini</p>
+                {asetDetailTarget.status === "Dipakai" && asetDetailTarget.dipegang_oleh_nama ? (
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                    <div><p style={{ color: "var(--ink-soft)" }}>Nama Teknisi</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.dipegang_oleh_nama}</p></div>
+                    <div><p style={{ color: "var(--ink-soft)" }}>ID Karyawan</p><p className="font-semibold mt-0.5 font-mono" style={{ color: "var(--ink)" }}>{asetDetailTarget.dipegang_oleh_id || "-"}</p></div>
+                    <div><p style={{ color: "var(--ink-soft)" }}>Tanggal Serah Terima</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.tanggal_serah_terima ? new Date(asetDetailTarget.tanggal_serah_terima).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-"}</p></div>
+                    <div><p style={{ color: "var(--ink-soft)" }}>Status</p><p className="font-semibold mt-0.5" style={{ color: "var(--ink)" }}>{asetDetailTarget.status}</p></div>
+                  </div>
+                ) : (
+                  <EmptyState title="Sedang di gudang" subtitle="Aset ini tidak sedang dipegang oleh teknisi manapun." icon={<IconBox className="w-5 h-5" />} />
+                )}
+              </div>
+            </div>
+            <div className="p-5 border-t flex gap-2" style={{ borderColor: "var(--border)" }}>
+              <button type="button" onClick={() => { setRiwayatAsetTarget(asetDetailTarget); setAsetDetailTarget(null); }}
+                className="flex-1 py-2.5 rounded-xl border font-semibold text-xs hover:bg-gray-50 flex items-center justify-center gap-1.5" style={{ borderColor: "var(--border)", color: "var(--ink)" }}>
+                <IconClock className="w-3.5 h-3.5" /> Lihat Riwayat
+              </button>
+              <button type="button" onClick={() => setAsetDetailTarget(null)} className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white" style={{ background: "var(--brand)" }}>Tutup</button>
             </div>
           </div>
         </div>
@@ -8506,6 +8617,7 @@ function DashboardAdmin({ session, onLogout }) {
                                     {a.status === "Dipakai" && (
                                       <button onClick={() => bukaPengembalian(a)} className="px-2.5 py-1.5 rounded-lg border font-semibold text-[10px]" style={{ borderColor: "var(--border)", color: "var(--ink)" }}>Kembalikan</button>
                                     )}
+                                    <button onClick={() => setAsetDetailTarget(a)} className="p-1.5 rounded-lg border hover:bg-gray-50" style={{ borderColor: "var(--border)" }} title="Detail"><IconEye className="w-3.5 h-3.5" style={{ color: "var(--ink-soft)" }} /></button>
                                     <button onClick={() => setRiwayatAsetTarget(a)} className="p-1.5 rounded-lg border hover:bg-gray-50" style={{ borderColor: "var(--border)" }} title="Riwayat"><IconClock className="w-3.5 h-3.5" style={{ color: "var(--ink-soft)" }} /></button>
                                     <button onClick={() => pemicuEditAsset(a)} className="p-1.5 rounded-lg border hover:bg-gray-50" style={{ borderColor: "var(--border)" }} title="Edit"><IconEdit className="w-3.5 h-3.5" style={{ color: "var(--ink-soft)" }} /></button>
                                     <button onClick={() => setAsetDeleteTarget(a)} className="p-1.5 rounded-lg border hover:bg-gray-50" style={{ borderColor: "var(--border)" }} title="Hapus"><IconTrash className="w-3.5 h-3.5" style={{ color: "var(--red)" }} /></button>

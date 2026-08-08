@@ -20,6 +20,16 @@ const asetSchema = new mongoose.Schema({
   // Plat Nomor, utk alat lain bisa diisi No. Seri/kode gudang sendiri.
   kode_aset: { type: String, default: '', trim: true },
   merek: { type: String, default: '', trim: true },
+  // Field detail tambahan (semua opsional) — ditampilkan di modal "Detail Aset" di frontend.
+  // Boleh kosong utk aset lama yang sudah ada sebelum field ini ditambahkan (backward-compatible).
+  tipe: { type: String, default: '', trim: true },       // ex: "Fusion Splicer FTTH", "Matic", dll
+  no_seri: { type: String, default: '', trim: true },     // Serial Number pabrik
+  tahun: { type: Number, default: null },                 // Tahun pembuatan/pembelian unit
+  lokasi: { type: String, default: '', trim: true },      // Lokasi/gudang penyimpanan saat "Tersedia"
+  tanggal_beli: { type: Date, default: null },
+  harga_beli: { type: Number, default: null },
+  supplier: { type: String, default: '', trim: true },
+  deskripsi: { type: String, default: '' },
   kondisi: {
     type: String,
     enum: ['Baik', 'Rusak Ringan', 'Rusak Berat'],
