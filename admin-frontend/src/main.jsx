@@ -7118,6 +7118,7 @@ function DashboardAdmin({ session, onLogout }) {
                           { label: "Tanggal Pengajuan", get: r => r.tanggal_pengajuan ? new Date(r.tanggal_pengajuan).toLocaleDateString("id-ID") : "" },
                           { label: "Status", get: r => r.status },
                           { label: "Status Lunas", get: r => r.status === "Disetujui" ? (r.lunas ? "Lunas" : "Belum Lunas") : "-" },
+                          { label: "Tanggal Lunas", get: r => r.tanggal_lunas ? new Date(r.tanggal_lunas).toLocaleDateString("id-ID") : "" },
                           { label: "Catatan Admin", get: r => r.catatan_admin || "" },
                         ]))} className="flex items-center gap-1.5 px-3 py-2 border rounded-xl hover:bg-gray-50 text-xs font-semibold shrink-0" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }}>
                           <IconDownload className="w-3.5 h-3.5" /> Ekspor Excel
@@ -7165,6 +7166,7 @@ function DashboardAdmin({ session, onLogout }) {
                                   <td className="p-3.5 text-center">
                                     <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide" style={{ background: tone.bg, color: tone.fg }}>{k.status}</span>
                                     {k.status === "Disetujui" && <p className="text-[10px] mt-1 font-bold" style={{ color: k.lunas ? "var(--green)" : "var(--amber)" }}>{k.lunas ? "✔ Lunas" : "Belum lunas"}</p>}
+                                    {k.status === "Disetujui" && k.lunas && k.tanggal_lunas && <p className="text-[10px] mt-0.5" style={{ color: "var(--ink-soft)" }}>Lunas: {new Date(k.tanggal_lunas).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>}
                                     {k.status === "Disetujui" && !k.lunas && <p className="text-[10px] mt-0.5 max-w-[160px] mx-auto" style={{ color: "var(--ink-soft)" }}>Otomatis potong gaji bulan ini</p>}
                                     {k.status === "Ditolak" && k.catatan_admin && <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>{k.catatan_admin}</p>}
                                   </td>
