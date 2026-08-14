@@ -47,6 +47,8 @@ const IconHeartPulse = (p) => <Icon {...p} path={<><path d="M12 20.5s-7.5-4.6-9.
 const IconCopy = (p) => <Icon {...p} path={<><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></>} />;
 const IconShield = (p) => <Icon {...p} path={<><path d="M12 2.5 4.5 5.5v5.7c0 5 3.2 8.7 7.5 10.3 4.3-1.6 7.5-5.3 7.5-10.3V5.5Z"/><path d="m9 12 2 2 4-4.3"/></>} />;
 const IconWrench = (p) => <Icon {...p} path={<><path d="M14.7 6.3a4 4 0 0 0-5.4 4.9L3 17.5l1.5 1.5 6.3-6.3a4 4 0 0 0 4.9-5.4l-2.6 2.6-1.7-.4-.4-1.7Z"/></>} />;
+const IconCar = (p) => <Icon {...p} path={<><path d="M5 11l1.4-4.2A2 2 0 0 1 8.3 5.4h7.4a2 2 0 0 1 1.9 1.4L19 11"/><path d="M3.5 11h17a1 1 0 0 1 1 1v4.5a1 1 0 0 1-1 1h-1v1a1 1 0 0 1-1 1h-.8a1 1 0 0 1-1-1v-1H6.3v1a1 1 0 0 1-1 1h-.8a1 1 0 0 1-1-1v-1h-1a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1Z"/><circle cx="7.5" cy="14.7" r="1.3"/><circle cx="16.5" cy="14.7" r="1.3"/></>} />;
+const IconLayers = (p) => <Icon {...p} path={<><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></>} />;
 
 /* ---------------------------------- HELPERS ---------------------------------- */
 const AVATAR_BG_PALETTE = ["#E3F3F0","#FEF3E2","#EAF0FE","#FDECEC","#EDE9FE","#E0F6FA"];
@@ -169,6 +171,7 @@ const MENU_ACCESS = {
   material:  ["admin", "gudang", "korlap", "owner", "hrd"], // <--- Pemakaian Material: admin, gudang & korlap boleh kelola, finance tidak lagi akses
   asset:     ["admin", "gudang", "korlap", "owner", "hrd"], // <--- Aset & Alat Teknisi: role sama persis dengan Pemakaian Material
   salary:    ["owner", "hrd"], // <--- Submenu "Salary" di bawah Master Data Karyawan: gaji pokok, limit kasbon manual, tandai gaji dibayar — Staf Admin (role "admin") SENGAJA TIDAK dimasukkan di sini
+  rekap_absensi: ["owner", "hrd", "admin"], // <--- Submenu "List Absensi" di bawah Master Data Karyawan (paling bawah, setelah Salary): rekap jumlah hadir per karyawan per bulan, akses sama seperti "crud" (Data Karyawan)
 };
 const canAccess = (role, menuKey) => (MENU_ACCESS[menuKey] || []).includes(role);
 
@@ -332,6 +335,77 @@ const StatCard = ({ label, value, unit, tone, icon }) => {
       >
         {icon}
       </div>
+    </div>
+  );
+};
+
+// Kartu ringkasan per kategori aset — untuk owner/gudang, menjawab pertanyaan
+// "per kategori, jenis alatnya apa saja dan masing-masing ada berapa unit?"
+// tanpa perlu scroll/filter tabel satu-satu.
+const ASET_KATEGORI_ICON = { "Kendaraan": IconCar, "Alat Fiber Optic": IconCable, "Lainnya": IconLayers };
+const ASET_KATEGORI_ITEMS_LIMIT = 6;
+const AsetKategoriCard = ({ data, onLihatSemua }) => {
+  const KatIcon = ASET_KATEGORI_ICON[data.kategori] || IconWrench;
+  const shownItems = data.items.slice(0, ASET_KATEGORI_ITEMS_LIMIT);
+  const sisaItems = data.items.length - shownItems.length;
+  const pct = (n) => (data.total ? Math.round((n / data.total) * 100) : 0);
+  return (
+    <div className="elev-card bg-white rounded-2xl border flex flex-col transition-shadow hover:shadow-md" style={{ borderColor: "var(--border)" }}>
+      <div className="p-4 flex items-start justify-between gap-3 border-b" style={{ borderColor: "var(--border)" }}>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--brand-soft)", color: "var(--brand-dark)" }}>
+            <KatIcon className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-bold text-sm truncate" style={{ color: "var(--ink)" }}>{data.kategori}</p>
+            <p className="text-[11px] font-medium" style={{ color: "var(--ink-soft)" }}>{data.items.length} jenis alat</p>
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-xl font-bold font-display leading-none" style={{ color: "var(--ink)" }}>{data.total}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide mt-1" style={{ color: "var(--ink-soft)" }}>unit</p>
+        </div>
+      </div>
+
+      {/* Bar proporsi status: tersedia / dipakai / bermasalah */}
+      <div className="px-4 pt-3.5">
+        <div className="w-full h-1.5 rounded-full overflow-hidden flex" style={{ background: "var(--canvas)" }}>
+          {data.tersedia > 0 && <div style={{ width: `${pct(data.tersedia)}%`, background: "var(--green)" }} />}
+          {data.dipakai > 0 && <div style={{ width: `${pct(data.dipakai)}%`, background: "var(--brand)" }} />}
+          {data.maintenance > 0 && <div style={{ width: `${pct(data.maintenance)}%`, background: "var(--red)" }} />}
+        </div>
+        <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-2 text-[10px] font-semibold">
+          <span className="flex items-center gap-1" style={{ color: "var(--ink-soft)" }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--green)" }} />Tersedia {data.tersedia}</span>
+          <span className="flex items-center gap-1" style={{ color: "var(--ink-soft)" }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--brand)" }} />Dipakai {data.dipakai}</span>
+          {data.maintenance > 0 && <span className="flex items-center gap-1" style={{ color: "var(--ink-soft)" }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--red)" }} />Bermasalah {data.maintenance}</span>}
+        </div>
+      </div>
+
+      {/* Rincian jumlah per nama/jenis alat */}
+      <div className="p-4 pt-3.5 flex-1">
+        {data.items.length === 0 ? (
+          <p className="text-[11px] italic" style={{ color: "var(--ink-soft)" }}>Belum ada alat pada kategori ini.</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {shownItems.map(it => (
+              <li key={it.nama} className="flex items-center justify-between gap-2 text-xs">
+                <span className="truncate" style={{ color: "var(--ink)" }}>{it.nama}</span>
+                <span className="shrink-0 px-2 py-0.5 rounded-full font-bold text-[10px]" style={{ background: "var(--canvas)", color: "var(--ink-soft)" }}>{it.count} unit</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {(sisaItems > 0 || onLihatSemua) && (
+        <button
+          onClick={onLihatSemua}
+          className="px-4 py-2.5 border-t text-[11px] font-bold text-left hover:bg-gray-50 rounded-b-2xl"
+          style={{ borderColor: "var(--border)", color: "var(--brand-dark)" }}
+        >
+          {sisaItems > 0 ? `+${sisaItems} jenis alat lainnya` : "Lihat detail kategori"} →
+        </button>
+      )}
     </div>
   );
 };
@@ -2461,6 +2535,19 @@ function DashboardAdmin({ session, onLogout }) {
   const [salarySubmitting, setSalarySubmitting] = useState(false);
   const [bayarSubmittingId, setBayarSubmittingId] = useState(null); // karyawan_id yang sedang diproses tombol "Tandai Sudah Dibayar"
 
+  // ==================== MODUL LIST ABSENSI (submenu Master Data Karyawan, di bawah Salary): state ====================
+  // Rekap jumlah kehadiran per karyawan per bulan, dihitung dari rekapAbsen (data yang sama
+  // dipakai Log Absensi), supaya owner/hrd/admin bisa lihat sekilas siapa yang rajin & siapa
+  // yang jarang/tidak pernah absen dalam 1 bulan — tanpa perlu buka Log Absensi & hitung manual.
+  const [rekapAbsensiBulan, setRekapAbsensiBulan] = useState(() => new Date().toISOString().slice(0, 7)); // "YYYY-MM"
+  const [searchRekapAbsensi, setSearchRekapAbsensi] = useState("");
+  const [cabangFilterRekapAbsensi, setCabangFilterRekapAbsensi] = useState("semua");
+  const [roleFilterRekapAbsensi, setRoleFilterRekapAbsensi] = useState("semua");
+  const [statusFilterRekapAbsensi, setStatusFilterRekapAbsensi] = useState("Aktif"); // default: sembunyikan karyawan Non Aktif biar list tidak penuh mantan karyawan
+  const [sortRekapAbsensi, setSortRekapAbsensi] = useState("hadir_desc"); // hadir_desc | hadir_asc | nama_asc
+  const [pageRekapAbsensi, setPageRekapAbsensi] = useState(1);
+  const [pageSizeRekapAbsensi, setPageSizeRekapAbsensi] = useState(10);
+
   // ==================== MODUL MATERIAL: state ====================
   const [materialSubTab, setMaterialSubTab] = useState("Master"); // Master | Pemakaian | StokTeknisi | Laporan
   // ==== Tab "Stok di Tangan Teknisi": rekap unit yang masih Idle (sudah diambil, belum
@@ -2971,6 +3058,110 @@ function DashboardAdmin({ session, onLogout }) {
   const totalPagesLog = Math.max(1, Math.ceil(filteredLog.length / PAGE_SIZE_L));
   const pagedLog = filteredLog.slice((pageLog - 1) * PAGE_SIZE_L, pageLog * PAGE_SIZE_L);
   useEffect(() => { setPageLog(1); }, [searchLog, statusFilter, logTanggal, logKaryawanFilter, logCabangFilter, logRoleFilter]);
+
+  // ==================== MODUL LIST ABSENSI: rekap jumlah hadir per karyawan per bulan ====================
+  // "Hari acuan" = jumlah hari yang dijadikan pembagi untuk hitung % kehadiran. Kalau bulan yang
+  // dipilih adalah bulan berjalan, dipakai tanggal hari ini (bulan belum selesai, jadi tidak adil
+  // membagi dengan jumlah hari sebulan penuh). Kalau bulan sudah lewat, dipakai jumlah hari penuh
+  // bulan itu (28-31 hari tergantung bulan).
+  const hitungTotalHariAcuan = (bulanStr) => {
+    const [thn, bln] = (bulanStr || "").split("-").map(Number);
+    if (!thn || !bln) return 0;
+    const hariDalamBulan = new Date(thn, bln, 0).getDate();
+    const now = new Date();
+    const isBulanBerjalan = now.getFullYear() === thn && now.getMonth() + 1 === bln;
+    return isBulanBerjalan ? now.getDate() : hariDalamBulan;
+  };
+  const rekapAbsensiTotalHariAcuan = useMemo(() => hitungTotalHariAcuan(rekapAbsensiBulan), [rekapAbsensiBulan]);
+
+  // Absen Masuk = 1x hitungan "hadir" per hari (backend cuma izinkan 1x Absen Masuk/hari/karyawan,
+  // jadi aman dihitung langsung dari jumlah record status "Masuk" tanpa perlu de-dupe tanggal lagi).
+  const rekapAbsensiBulanan = useMemo(() => {
+    const [thn, bln] = (rekapAbsensiBulan || "").split("-").map(Number);
+    if (!thn || !bln) return [];
+    const perKaryawan = {};
+    rekapAbsen.forEach(a => {
+      if (a.status !== "Masuk") return;
+      const d = new Date(a.waktu_absen);
+      if (d.getFullYear() !== thn || d.getMonth() + 1 !== bln) return;
+      if (!perKaryawan[a.karyawan_id]) perKaryawan[a.karyawan_id] = { hadir: 0, telat: 0, terakhirHadir: null };
+      perKaryawan[a.karyawan_id].hadir += 1;
+      if (a.keterangan && a.keterangan !== "Normal") perKaryawan[a.karyawan_id].telat += 1;
+      if (!perKaryawan[a.karyawan_id].terakhirHadir || d > perKaryawan[a.karyawan_id].terakhirHadir) {
+        perKaryawan[a.karyawan_id].terakhirHadir = d;
+      }
+    });
+    return karyawanList.map(k => {
+      const rec = perKaryawan[k.karyawan_id] || { hadir: 0, telat: 0, terakhirHadir: null };
+      const pct = rekapAbsensiTotalHariAcuan > 0 ? Math.min(100, Math.round((rec.hadir / rekapAbsensiTotalHariAcuan) * 100)) : 0;
+      return {
+        karyawan_id: k.karyawan_id, nama: k.nama, role: k.role, cabang: k.cabang, status: k.status || "Aktif",
+        hadir: rec.hadir, telat: rec.telat, terakhirHadir: rec.terakhirHadir, pct,
+      };
+    });
+  }, [karyawanList, rekapAbsen, rekapAbsensiBulan, rekapAbsensiTotalHariAcuan]);
+
+  const daftarCabangFilterRekapAbsensi = useMemo(() => {
+    const set = new Set(karyawanList.map(k => k.cabang).filter(Boolean));
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [karyawanList]);
+  const daftarRoleFilterRekapAbsensi = useMemo(() => {
+    const set = new Set(karyawanList.map(k => k.role).filter(Boolean));
+    return [...set].sort((a, b) => roleInfo(a).label.localeCompare(roleInfo(b).label));
+  }, [karyawanList]);
+
+  const filteredRekapAbsensi = useMemo(() => {
+    const q = searchRekapAbsensi.trim().toLowerCase();
+    let list = rekapAbsensiBulanan.filter(r => {
+      const matchQ = !q || r.nama?.toLowerCase().includes(q) || r.karyawan_id?.toLowerCase().includes(q);
+      const matchCabang = cabangFilterRekapAbsensi === "semua" || r.cabang === cabangFilterRekapAbsensi;
+      const matchRole = roleFilterRekapAbsensi === "semua" || r.role === roleFilterRekapAbsensi;
+      const matchStatus = statusFilterRekapAbsensi === "semua" || r.status === statusFilterRekapAbsensi;
+      return matchQ && matchCabang && matchRole && matchStatus;
+    });
+    list = [...list].sort((a, b) => {
+      if (sortRekapAbsensi === "hadir_asc") return a.hadir - b.hadir || a.nama.localeCompare(b.nama);
+      if (sortRekapAbsensi === "nama_asc") return a.nama.localeCompare(b.nama);
+      return b.hadir - a.hadir || a.nama.localeCompare(b.nama); // default: hadir_desc
+    });
+    return list;
+  }, [rekapAbsensiBulanan, searchRekapAbsensi, cabangFilterRekapAbsensi, roleFilterRekapAbsensi, statusFilterRekapAbsensi, sortRekapAbsensi]);
+  useEffect(() => { setPageRekapAbsensi(1); }, [searchRekapAbsensi, cabangFilterRekapAbsensi, roleFilterRekapAbsensi, statusFilterRekapAbsensi, sortRekapAbsensi, rekapAbsensiBulan]);
+  const totalPagesRekapAbsensi = Math.max(1, Math.ceil(filteredRekapAbsensi.length / pageSizeRekapAbsensi));
+  const pagedRekapAbsensi = useMemo(() => {
+    const start = (pageRekapAbsensi - 1) * pageSizeRekapAbsensi;
+    return filteredRekapAbsensi.slice(start, start + pageSizeRekapAbsensi);
+  }, [filteredRekapAbsensi, pageRekapAbsensi, pageSizeRekapAbsensi]);
+
+  // Salin rekap kehadiran (sesuai hasil filter yang sedang aktif, bukan cuma 1 halaman tabel) ke
+  // clipboard dalam format rapi siap tempel ke grup WA, supaya owner tidak perlu screenshot tabel.
+  const handleCopyRekapAbsensi = useCallback(async () => {
+    if (filteredRekapAbsensi.length === 0) {
+      notify("Tidak ada data untuk disalin.", "error");
+      return;
+    }
+    const labelBulan = new Date(rekapAbsensiBulan + "-01T00:00:00").toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+    const daftar = filteredRekapAbsensi
+      .map((r, i) => `${i + 1}. ${r.nama} (${r.karyawan_id}) - ${r.hadir} hari hadir${r.telat > 0 ? `, ${r.telat}x telat` : ""}, ${r.pct}%`)
+      .join("\n");
+    const rataRata = Math.round(filteredRekapAbsensi.reduce((a, r) => a + r.pct, 0) / filteredRekapAbsensi.length);
+    const teks = `*Rekap Absensi - ${labelBulan}*\n\n${daftar}\n\nTotal karyawan: ${filteredRekapAbsensi.length}\nRata-rata kehadiran: ${rataRata}%`;
+    try {
+      await navigator.clipboard.writeText(teks);
+      notify(`Berhasil menyalin rekap ${filteredRekapAbsensi.length} karyawan.`, "success");
+    } catch (err) {
+      notify("Gagal menyalin ke clipboard.", "error");
+    }
+  }, [filteredRekapAbsensi, rekapAbsensiBulan, notify]);
+
+  // Label tingkat kerajinan (dipakai untuk warna progress bar % Kehadiran di tabel List Absensi;
+  // tidak lagi ditampilkan sebagai badge/kolom terpisah, cukup lewat warna bar-nya saja)
+  const kerajinanTone = (r) => {
+    if (r.hadir === 0) return { label: "Tidak Pernah Absen", bg: "var(--red-soft)", fg: "var(--red)" };
+    if (r.pct >= 80) return { label: "Rajin", bg: "var(--green-soft)", fg: "var(--green)" };
+    if (r.pct >= 40) return { label: "Cukup", bg: "var(--amber-soft)", fg: "var(--amber)" };
+    return { label: "Jarang Absen", bg: "var(--red-soft)", fg: "var(--red)" };
+  };
 
   // Preview foto absen (dipakai kolom foto in/out di tabel Log Absensi)
   const [fotoPreview, setFotoPreview] = useState(null);
@@ -3816,7 +4007,7 @@ function DashboardAdmin({ session, onLogout }) {
 
   const NAV = [
     { key: "dashboard", label: "Dashboard Utama", icon: IconHome },
-    { key: "crud", label: "Master Data Karyawan", icon: IconUsers, children: [{ key: "crud", label: "Data Karyawan" }, { key: "salary", label: "Salary" }] },
+    { key: "crud", label: "Master Data Karyawan", icon: IconUsers, children: [{ key: "crud", label: "Data Karyawan" }, { key: "salary", label: "Salary" }, { key: "rekap_absensi", label: "List Absensi" }] },
     { key: "log", label: "Log Absensi", icon: IconClock },
     { key: "keuangan", label: "Keuangan", icon: IconWallet },
     { key: "invoice", label: "Invoice", icon: IconInvoice },
@@ -4327,6 +4518,30 @@ function DashboardAdmin({ session, onLogout }) {
     dipakai: assetList.filter(a => a.status === "Dipakai").length,
     maintenance: assetList.filter(a => a.status === "Maintenance" || a.status === "Hilang").length,
   }), [assetList]);
+  // Ringkasan per kategori: dipakai kartu "Aset & Alat Teknisi" supaya owner langsung
+  // tahu tiap kategori isinya jenis alat apa saja & masing-masing berapa unit.
+  const asetKategoriBreakdown = useMemo(() => {
+    const map = {};
+    assetList.forEach(a => {
+      const kat = a.kategori || "Lainnya";
+      if (!map[kat]) map[kat] = { total: 0, tersedia: 0, dipakai: 0, maintenance: 0, namaMap: {} };
+      map[kat].total += 1;
+      if (a.status === "Tersedia") map[kat].tersedia += 1;
+      else if (a.status === "Dipakai") map[kat].dipakai += 1;
+      else if (a.status === "Maintenance" || a.status === "Hilang") map[kat].maintenance += 1;
+      const nm = a.nama || "Lainnya";
+      map[kat].namaMap[nm] = (map[kat].namaMap[nm] || 0) + 1;
+    });
+    const urutanKategori = [...ASET_KATEGORI_PRESETS, ...Object.keys(map).filter(k => !ASET_KATEGORI_PRESETS.includes(k))];
+    return urutanKategori.filter(k => map[k]).map(k => ({
+      kategori: k,
+      total: map[k].total,
+      tersedia: map[k].tersedia,
+      dipakai: map[k].dipakai,
+      maintenance: map[k].maintenance,
+      items: Object.entries(map[k].namaMap).sort((a, b) => b[1] - a[1]).map(([nama, count]) => ({ nama, count })),
+    }));
+  }, [assetList]);
   const riwayatAsetRows = useMemo(() => {
     if (!riwayatAsetTarget) return [];
     return assetLogList.filter(l => String(l.aset_id) === String(riwayatAsetTarget._id));
@@ -6437,6 +6652,133 @@ function DashboardAdmin({ session, onLogout }) {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {currentMenu === "rekap_absensi" && canAccess(session.role, "rekap_absensi") && (
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h1 className="text-2xl font-bold font-display" style={{ color: "var(--ink)" }}>List Absensi</h1>
+                      <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>Rekap jumlah kehadiran tiap karyawan dalam 1 bulan, untuk memantau siapa yang rajin & siapa yang jarang/tidak pernah absen</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={handleCopyRekapAbsensi}
+                        disabled={filteredRekapAbsensi.length === 0}
+                        className="flex items-center gap-1.5 text-[11px] font-bold px-3.5 py-2.5 rounded-xl text-white shrink-0 disabled:opacity-50 hover:opacity-95 transition"
+                        style={{ background: "var(--brand)" }}
+                        title="Salin rekap untuk dikirim ke grup WA"
+                      >
+                        <IconCopy className="w-3.5 h-3.5" /> Salin
+                      </button>
+                      <button onClick={() => downloadCsv(`list-absensi-${rekapAbsensiBulan}.csv`, toCsv(filteredRekapAbsensi, [
+                        { label: "ID", get: r => r.karyawan_id }, { label: "Nama", get: r => r.nama },
+                        { label: "Jabatan", get: r => roleInfo(r.role).label }, { label: "Cabang", get: r => r.cabang || "" },
+                        { label: "Status Karyawan", get: r => r.status },
+                        { label: "Jumlah Hadir", get: r => r.hadir }, { label: "Jumlah Terlambat", get: r => r.telat },
+                        { label: "% Kehadiran", get: r => `${r.pct}%` },
+                        { label: "Absen Terakhir", get: r => r.terakhirHadir ? new Date(r.terakhirHadir).toLocaleDateString("id-ID") : "-" },
+                      ]))} className="p-2.5 border rounded-xl hover:bg-gray-50 shrink-0" style={{ borderColor: "var(--border)" }} title="Ekspor CSV">
+                        <IconDownload className="w-3.5 h-3.5" style={{ color: "var(--ink-soft)" }} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                    <div className="p-4 border-b flex flex-col gap-3" style={{ borderColor: "var(--border)" }}>
+                      <div>
+                        <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Rekap Kehadiran — {new Date(rekapAbsensiBulan + "-01T00:00:00").toLocaleDateString("id-ID", { month: "long", year: "numeric" })}</h3>
+                        <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{filteredRekapAbsensi.length} karyawan · dihitung dari {rekapAbsensiTotalHariAcuan} hari berjalan di bulan ini</p>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-wrap">
+                        <div className="relative flex-1">
+                          <IconSearch className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <input value={searchRekapAbsensi} onChange={e => setSearchRekapAbsensi(e.target.value)} placeholder="Cari nama / ID"
+                            className="pl-8 pr-3 py-2 border rounded-xl text-xs font-medium outline-none w-full sm:w-56" style={{ borderColor: "var(--border)" }} />
+                        </div>
+                        <select value={cabangFilterRekapAbsensi} onChange={e => setCabangFilterRekapAbsensi(e.target.value)}
+                          className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
+                          <option value="semua">Semua Cabang</option>
+                          {daftarCabangFilterRekapAbsensi.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <select value={roleFilterRekapAbsensi} onChange={e => setRoleFilterRekapAbsensi(e.target.value)}
+                          className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
+                          <option value="semua">Semua Jabatan</option>
+                          {daftarRoleFilterRekapAbsensi.map(r => <option key={r} value={r}>{roleInfo(r).label}</option>)}
+                        </select>
+                        <select value={statusFilterRekapAbsensi} onChange={e => setStatusFilterRekapAbsensi(e.target.value)}
+                          className="border rounded-xl text-xs font-medium px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }}>
+                          <option value="Aktif">Karyawan Aktif</option>
+                          <option value="Non Aktif">Karyawan Non Aktif</option>
+                          <option value="semua">Semua Status</option>
+                        </select>
+                        <input type="month" value={rekapAbsensiBulan} onChange={e => setRekapAbsensiBulan(e.target.value)} max={new Date().toISOString().slice(0, 7)}
+                          className="border rounded-xl text-xs font-semibold px-3 py-2 outline-none bg-white" style={{ borderColor: "var(--border)" }} />
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs min-w-[900px]">
+                        <thead>
+                          <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                            <th className="p-4 w-10">No</th>
+                            <th className="p-4">Karyawan</th>
+                            <th className="p-4">Jabatan</th>
+                            <th className="p-4">Cabang</th>
+                            <th className="p-4 text-center">Jumlah Hadir</th>
+                            <th className="p-4 text-center">Terlambat</th>
+                            <th className="p-4">% Kehadiran</th>
+                            <th className="p-4">Absen Terakhir</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
+                          {pagedRekapAbsensi.length === 0 ? (
+                            <tr><td colSpan="8"><EmptyState title={searchRekapAbsensi || cabangFilterRekapAbsensi !== "semua" || roleFilterRekapAbsensi !== "semua" ? "Tidak ditemukan" : "Belum ada data karyawan"} subtitle={searchRekapAbsensi || cabangFilterRekapAbsensi !== "semua" || roleFilterRekapAbsensi !== "semua" ? "Coba ubah kata kunci atau filter." : "Rekap kehadiran akan tampil di sini setelah ada data karyawan & absensi."} icon={<IconCalendarDays className="w-5 h-5" />} /></td></tr>
+                          ) : (
+                            pagedRekapAbsensi.map((r, idx) => {
+                              const tone = kerajinanTone(r);
+                              return (
+                                <tr key={r.karyawan_id} className="hover:bg-gray-50/60 transition">
+                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{(pageRekapAbsensi - 1) * pageSizeRekapAbsensi + idx + 1}</td>
+                                  <td className="p-3.5">
+                                    <div className="flex items-center gap-2.5">
+                                      <Avatar name={r.nama} size={32} />
+                                      <div>
+                                        <p className="font-bold text-sm whitespace-nowrap" style={{ color: "var(--ink)" }}>{r.nama}</p>
+                                        <p className="font-mono text-[10px]" style={{ color: "var(--ink-soft)" }}>{r.karyawan_id}{r.status === "Non Aktif" ? " · Non Aktif" : ""}</p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="p-3.5 text-center">
+                                    <span className="inline-flex items-center justify-center min-w-[76px] px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide whitespace-nowrap"
+                                      style={{ background: roleInfo(r.role).badgeBg, color: roleInfo(r.role).badgeFg }}>{roleInfo(r.role).label}</span>
+                                  </td>
+                                  <td className="p-3.5 whitespace-nowrap" style={{ color: "var(--ink-soft)" }}>{r.cabang || "—"}</td>
+                                  <td className="p-3.5 text-center">
+                                    <span className="font-bold text-sm" style={{ color: "var(--ink)" }}>{r.hadir}</span>
+                                    <span className="text-[10px]" style={{ color: "var(--ink-soft)" }}> hari</span>
+                                  </td>
+                                  <td className="p-3.5 text-center" style={{ color: r.telat > 0 ? "var(--amber)" : "var(--ink-soft)" }}>{r.telat > 0 ? r.telat : "—"}</td>
+                                  <td className="p-3.5 min-w-[130px]">
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--canvas)" }}>
+                                        <div className="h-full rounded-full" style={{ width: `${r.pct}%`, background: tone.fg }} />
+                                      </div>
+                                      <span className="text-[10px] font-bold w-8 text-right" style={{ color: "var(--ink-soft)" }}>{r.pct}%</span>
+                                    </div>
+                                  </td>
+                                  <td className="p-3.5 font-mono whitespace-nowrap" style={{ color: "var(--ink-soft)" }}>{r.terakhirHadir ? new Date(r.terakhirHadir).toLocaleDateString("id-ID") : "—"}</td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <Pagination page={pageRekapAbsensi} setPage={setPageRekapAbsensi} totalPages={totalPagesRekapAbsensi} totalItems={filteredRekapAbsensi.length}
+                      pageSize={pageSizeRekapAbsensi} pageSizeOptions={[10, 20, 50, 100]}
+                      onPageSizeChange={(n) => { setPageSizeRekapAbsensi(n); setPageRekapAbsensi(1); }} />
+                  </div>
                 </div>
               )}
 
@@ -8551,7 +8893,29 @@ function DashboardAdmin({ session, onLogout }) {
                     <StatCard label="Maintenance/Hilang" value={asetStats.maintenance} unit="unit" tone="red" icon={<IconAlert className="w-5 h-5" />} />
                   </div>
 
-                  <div className="bg-white rounded-2xl border" style={{ borderColor: "var(--border)" }}>
+                  {asetKategoriBreakdown.length > 0 && (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h2 className="text-sm font-bold font-display" style={{ color: "var(--ink)" }}>Ringkasan per Kategori</h2>
+                        <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>Jumlah tiap jenis alat dalam satu kategori</p>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {asetKategoriBreakdown.map(kat => (
+                          <AsetKategoriCard
+                            key={kat.kategori}
+                            data={kat}
+                            onLihatSemua={() => {
+                              setAsetKategoriFilter(kat.kategori);
+                              setAsetStatusFilter("semua");
+                              document.getElementById("aset-tabel-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div id="aset-tabel-section" className="bg-white rounded-2xl border scroll-mt-6" style={{ borderColor: "var(--border)" }}>
                     <div className="p-4 flex flex-col sm:flex-row gap-2.5 border-b" style={{ borderColor: "var(--border)" }}>
                       <div className="relative flex-1">
                         <IconSearch className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--ink-soft)" }} />
