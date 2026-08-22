@@ -4239,6 +4239,57 @@ function DashboardAdmin({ session, onLogout }) {
   const pagedSalaryPayment = filteredSalaryPayment.slice((pageSalaryPaymentAman - 1) * pageSizeSalaryPayment, pageSalaryPaymentAman * pageSizeSalaryPayment);
   useEffect(() => { setPageSalaryPayment(1); }, [searchSalaryPayment, salaryPaymentStatusFilter, cabangFilterSalaryPayment, roleFilterSalaryPayment, pageSizeSalaryPayment, salaryPeriode]);
 
+  // Ekspor Excel menu Salary: Sheet "Master Gaji" (gaji pokok, limit kasbon, kasbon belum lunas - sesuai filter aktif)
+  // + Sheet "Pembayaran Gaji" (ringkasan transfer periode terpilih - sesuai filter aktif) + Sheet "Ringkasan" (total keseluruhan)
+  const eksporExcelSalary = () => {
+    if (typeof XLSX === "undefined") { notify("Modul export Excel gagal dimuat, cek koneksi internet.", "error"); return; }
+    if (filteredSalary.length === 0 && filteredSalaryPayment.length === 0) { notify("Tidak ada data gaji untuk diekspor.", "error"); return; }
+
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Master Gaji Pokok & Limit Kasbon (seluruh karyawan sesuai filter aktif tabel master)
+    const wsMaster = XLSX.utils.json_to_sheet(filteredSalary.map(s => {
+      const kw = karyawanMap[s.karyawan_id];
+      return {
+        "ID Karyawan": s.karyawan_id, Nama: s.nama || "-", Cabang: kw?.cabang || "-", Role: kw ? roleInfo(kw.role).label : "-",
+        "Gaji Pokok": s.gaji_pokok || 0, "Limit Kasbon": s.limit_kasbon || 0,
+        "Kasbon Belum Lunas": s.kasbon_belum_lunas || 0, "Total Harus Dibayar": s.total_harus_dibayar || 0,
+      };
+    }));
+    wsMaster["!cols"] = [{ wch: 14 }, { wch: 24 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, wsMaster, "Master Gaji");
+
+    // Sheet 2: Pembayaran Gaji Bulanan periode terpilih (sesuai filter aktif tabel pembayaran)
+    const wsPayment = XLSX.utils.json_to_sheet(filteredSalaryPayment.map(p => ({
+      "ID Karyawan": p.karyawan_id, Nama: p.nama || "-", Periode: salaryPeriode,
+      "Gaji Pokok": p.gaji_pokok || 0, "Potongan Kasbon": p.total_kasbon_dipotong || 0,
+      "Total Ditransfer": p.total_dibayar || 0, Status: p.status || "Belum Dibayar",
+      "Tanggal Dibayar": p.status === "Sudah Dibayar" && p.tanggal_dibayar ? new Date(p.tanggal_dibayar).toLocaleDateString("id-ID") : "-",
+    })));
+    wsPayment["!cols"] = [{ wch: 14 }, { wch: 24 }, { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(wb, wsPayment, "Pembayaran Gaji");
+
+    // Sheet 3: Ringkasan total keseluruhan (master + periode terpilih)
+    const wsRingkasan = XLSX.utils.json_to_sheet([
+      { Uraian: "Total Karyawan (Master)", Nilai: salarySummary.totalKaryawan },
+      { Uraian: "Total Gaji Pokok (Master)", Nilai: salarySummary.totalGajiPokok },
+      { Uraian: "Total Limit Kasbon (Master)", Nilai: salarySummary.totalLimitKasbon },
+      { Uraian: "Total Kasbon Belum Lunas (Master)", Nilai: salarySummary.totalKasbonBelumLunas },
+      { Uraian: "Periode Pembayaran", Nilai: salaryPeriode },
+      { Uraian: "Total Transfer Periode Ini", Nilai: totalTransferBulanIni },
+      { Uraian: "Total Gaji Pokok (Periode)", Nilai: salaryPaymentSummary.totalGajiPokok },
+      { Uraian: "Total Potongan Kasbon (Periode)", Nilai: salaryPaymentSummary.totalPotonganKasbon },
+      { Uraian: "Sudah Dibayar (orang)", Nilai: salaryPaymentSummary.sudahDibayar },
+      { Uraian: "Belum Dibayar (orang)", Nilai: salaryPaymentSummary.belumDibayar },
+    ]);
+    wsRingkasan["!cols"] = [{ wch: 30 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, wsRingkasan, "Ringkasan");
+
+    const namaFile = `Salary-SATNET-${salaryPeriode}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, namaFile);
+    notify("Laporan Salary Excel berhasil diunduh (Master Gaji, Pembayaran Gaji, Ringkasan)");
+  };
+
   // Dipanggil tombol ACC/Tolak di tabel Cuti/Izin/Sakit -> cuma membuka modal konfirmasi (PengajuanKeputusanModal), belum eksekusi apa-apa ke server.
   const handleKeputusanPengajuan = (item, status) => setPengajuanKeputusanTarget({ item, status });
 
@@ -6447,9 +6498,14 @@ function DashboardAdmin({ session, onLogout }) {
                   {/* MASTER GAJI POKOK & LIMIT KASBON */}
                   <div className="elev-card bg-white rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
                     <div className="p-4 border-b flex flex-col gap-3" style={{ borderColor: "var(--border)" }}>
-                      <div>
-                        <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Gaji Pokok & Limit Kasbon</h3>
-                        <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{filteredSalary.length} dari {salaryList.length} karyawan</p>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+                        <div>
+                          <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Gaji Pokok & Limit Kasbon</h3>
+                          <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{filteredSalary.length} dari {salaryList.length} karyawan</p>
+                        </div>
+                        <button onClick={eksporExcelSalary} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white shadow-sm shrink-0" style={{ background: "var(--green)" }}>
+                          <IconFileExcel className="w-3.5 h-3.5" /> Ekspor ke Excel
+                        </button>
                       </div>
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
                         <div className="relative flex-1">
@@ -6528,8 +6584,13 @@ function DashboardAdmin({ session, onLogout }) {
                             {filteredSalaryPayment.length} dari {salaryPaymentList.length} karyawan · Total transfer periode ini: <b style={{ color: "var(--ink)" }}>{fmtRupiah(totalTransferBulanIni)}</b>
                           </p>
                         </div>
-                        <input type="month" value={salaryPeriode} onChange={e => setSalaryPeriode(e.target.value)}
-                          className="px-3 py-2 border rounded-xl text-xs font-semibold outline-none bg-white" style={{ borderColor: "var(--border)" }} />
+                        <div className="flex items-center gap-2">
+                          <input type="month" value={salaryPeriode} onChange={e => setSalaryPeriode(e.target.value)}
+                            className="px-3 py-2 border rounded-xl text-xs font-semibold outline-none bg-white" style={{ borderColor: "var(--border)" }} />
+                          <button onClick={eksporExcelSalary} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white shadow-sm shrink-0" style={{ background: "var(--green)" }}>
+                            <IconFileExcel className="w-3.5 h-3.5" /> Ekspor ke Excel
+                          </button>
+                        </div>
                       </div>
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
                         <div className="relative flex-1">
