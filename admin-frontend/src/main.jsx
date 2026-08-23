@@ -2848,6 +2848,7 @@ function DashboardAdmin({ session, onLogout }) {
       ];
       if (canAccess(session.role, "keuangan")) calls.push(fetch(`${FIN_API}/transaksi`, { headers: authHeaders() }));
       if (canAccess(session.role, "invoice")) calls.push(fetch(`${FIN_API}/invoice`, { headers: authHeaders() }));
+      if (canAccess(session.role, "invoice")) calls.push(fetch(`${FIN_API}/bast`, { headers: authHeaders() }));
       if (canAccess(session.role, "tracking")) calls.push(fetch(`${TRACK_API}/tracking`, { headers: authHeaders() }));
       const perluNotifFinance = canAccess(session.role, "invoice") && !canAccess(session.role, "tracking");
       if (perluNotifFinance) calls.push(fetch(`${TRACK_API}/tracking/notif-finance`, { headers: authHeaders() }));
@@ -2875,6 +2876,8 @@ function DashboardAdmin({ session, onLogout }) {
       if (canAccess(session.role, "invoice")) {
         const dataInvoice = await results[idx++].json();
         setInvoiceList(Array.isArray(dataInvoice) ? dataInvoice : []);
+        const dataBast = await results[idx++].json();
+        setBastList(Array.isArray(dataBast) ? dataBast : []);
       }
       if (canAccess(session.role, "tracking")) {
         const dataTracking = await results[idx++].json();
@@ -3968,19 +3971,9 @@ function DashboardAdmin({ session, onLogout }) {
   const buatNomorBastItem = () => `bi_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const bastItemKosong = () => ({ id: buatNomorBastItem(), deskripsi: "Instalasi Baru", qtyTeam: "", totalWo: "", hargaWo: "", keterangan: "" });
 
-  const BAST_LIST_KEY = "satnet_bast_balap_list_v1";
-  const muatBastListTersimpan = () => {
-    try {
-      const raw = localStorage.getItem(BAST_LIST_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch { return []; }
-  };
-  const simpanBastListTersimpan = (list) => {
-    try { localStorage.setItem(BAST_LIST_KEY, JSON.stringify(list)); } catch {}
-  };
-
-  const [bastList, setBastList] = useState(() => muatBastListTersimpan());
+  const [bastList, setBastList] = useState([]);
   const [bastEditId, setBastEditId] = useState(null);
+  const [bastSubmitting, setBastSubmitting] = useState(false);
   const [bastNomorSurat, setBastNomorSurat] = useState("");
   const [bastTanggal, setBastTanggal] = useState(() => new Date().toISOString().slice(0, 10));
   const [bastNamaPekerjaan, setBastNamaPekerjaan] = useState("");
@@ -4026,25 +4019,34 @@ function DashboardAdmin({ session, onLogout }) {
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmitBast = (e) => {
+  const handleSubmitBast = async (e) => {
     e.preventDefault();
     if (!validateBast()) return;
-    const data = {
-      _id: bastEditId || `bast_${Date.now()}`,
+    setBastSubmitting(true);
+    const url = bastEditId ? `${FIN_API}/bast/${bastEditId}` : `${FIN_API}/bast`;
+    const method = bastEditId ? "PUT" : "POST";
+    const bodyData = {
       nomorSurat: bastNomorSurat, tanggal: bastTanggal, namaPekerjaan: bastNamaPekerjaan,
       nomorKontrak: bastNomorKontrak, rekananPelaksana: bastRekananPelaksana, pihakKedua: bastPihakKedua,
       jenisPekerjaan: bastJenisPekerjaan, periodeAwal: bastPeriodeAwal, periodeAkhir: bastPeriodeAkhir,
       items: bastItems.filter(it => it.deskripsi.trim()),
       ttdClientNama: bastTtdClientNama, ttdClientJabatan: bastTtdClientJabatan, ttdRekananNama: bastTtdRekananNama, ttdRekananJabatan: bastTtdRekananJabatan, pakaiTtdBayhaky: bastPakaiTtdBayhaky,
-      dibuatPada: bastEditId ? (bastList.find(b => b._id === bastEditId)?.dibuatPada || new Date().toISOString()) : new Date().toISOString(),
     };
-    setBastList(list => {
-      const next = bastEditId ? list.map(b => b._id === bastEditId ? data : b) : [data, ...list];
-      simpanBastListTersimpan(next);
-      return next;
-    });
-    notify(bastEditId ? "BAST Balap berhasil diperbarui" : "BAST Balap berhasil dibuat");
-    resetFormBast();
+    try {
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
+      const resData = await res.json().catch(() => ({}));
+      if (res.status === 200 || res.status === 201) {
+        notify(bastEditId ? "BAST Balap berhasil diperbarui" : "BAST Balap berhasil dibuat");
+        resetFormBast();
+        muatSemuaData(true);
+      } else {
+        notify(resData.message || "Gagal memproses BAST Balap", "error");
+      }
+    } catch {
+      notify("Gagal memproses aksi ke server", "error");
+    } finally {
+      setBastSubmitting(false);
+    }
   };
 
   const pemicuEditBast = (b) => {
@@ -4061,16 +4063,22 @@ function DashboardAdmin({ session, onLogout }) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const hapusBast = () => {
+  const hapusBast = async () => {
     if (!bastDeleteTarget) return;
-    setBastList(list => {
-      const next = list.filter(b => b._id !== bastDeleteTarget._id);
-      simpanBastListTersimpan(next);
-      return next;
-    });
-    notify(`BAST "${bastDeleteTarget.nomorSurat}" berhasil dihapus`);
-    if (bastEditId === bastDeleteTarget._id) resetFormBast();
-    setBastDeleteTarget(null);
+    try {
+      const res = await fetch(`${FIN_API}/bast/${bastDeleteTarget._id}`, { method: "DELETE", headers: authHeaders() });
+      if (res.ok) {
+        notify(`BAST "${bastDeleteTarget.nomorSurat}" berhasil dihapus`);
+        if (bastEditId === bastDeleteTarget._id) resetFormBast();
+        muatSemuaData(true);
+      } else {
+        notify("Gagal menghapus BAST Balap", "error");
+      }
+    } catch {
+      notify("Gagal menghapus BAST Balap", "error");
+    } finally {
+      setBastDeleteTarget(null);
+    }
   };
 
   const filteredBast = useMemo(() => {
@@ -9364,11 +9372,11 @@ function DashboardAdmin({ session, onLogout }) {
 
                   <div className="flex gap-2 p-1 rounded-xl w-fit" style={{ background: "var(--canvas)" }}>
                     <button onClick={() => setInvoiceTab("invoice")} className="px-4 py-2 rounded-lg text-xs font-bold transition"
-                      style={invoiceTab === "invoice" ? { background: "white", color: "var(--brand-dark)", boxShadow: "0 1px 3px rgba(0,0,0,.08)" } : { color: "var(--ink-soft)" }}>
+                      style={invoiceTab === "invoice" ? { background: "var(--brand)", color: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.08)" } : { color: "var(--ink-soft)" }}>
                       Invoice
                     </button>
                     <button onClick={() => setInvoiceTab("bast")} className="px-4 py-2 rounded-lg text-xs font-bold transition"
-                      style={invoiceTab === "bast" ? { background: "white", color: "var(--brand-dark)", boxShadow: "0 1px 3px rgba(0,0,0,.08)" } : { color: "var(--ink-soft)" }}>
+                      style={invoiceTab === "bast" ? { background: "var(--brand)", color: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.08)" } : { color: "var(--ink-soft)" }}>
                       BAST Balap
                     </button>
                   </div>
@@ -9778,8 +9786,8 @@ function DashboardAdmin({ session, onLogout }) {
                         </div>
 
                         <div className="pt-1 flex gap-2">
-                          <button type="submit" className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm" style={{ background: "var(--brand)" }}>
-                            {bastEditId ? "Update BAST Balap" : "Simpan BAST Balap"}
+                          <button type="submit" disabled={bastSubmitting} className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60" style={{ background: "var(--brand)" }}>
+                            {bastSubmitting ? "Menyimpan..." : (bastEditId ? "Update BAST Balap" : "Simpan BAST Balap")}
                           </button>
                           {bastEditId && (
                             <button type="button" onClick={resetFormBast} className="bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-2.5 px-4 rounded-xl text-sm">Batal</button>
@@ -9794,7 +9802,7 @@ function DashboardAdmin({ session, onLogout }) {
                         <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
                           <div>
                             <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Daftar BAST Balap</h3>
-                            <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{filteredBast.length} dari {bastList.length} BAST — tersimpan di browser ini</p>
+                            <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{filteredBast.length} dari {bastList.length} BAST</p>
                           </div>
                           <div className="relative">
                             <IconSearch className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
