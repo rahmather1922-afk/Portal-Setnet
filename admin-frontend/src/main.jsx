@@ -4280,7 +4280,7 @@ function DashboardAdmin({ session, onLogout }) {
     { key: "crud", label: "Master Data Karyawan", icon: IconUsers, children: [{ key: "crud", label: "Data Karyawan" }, { key: "salary", label: "Salary" }, { key: "rekap_absensi", label: "List Absensi" }] },
     { key: "log", label: "Log Absensi", icon: IconClock },
     { key: "keuangan", label: "Keuangan", icon: IconWallet },
-    { key: "invoice", label: "Invoice", icon: IconInvoice },
+    { key: "invoice", label: "Invoice / BAST Balap", icon: IconInvoice },
     { key: "tracking", label: "Tracking BAST", icon: IconTracking },
     { key: "kasbon", label: "Kasbon & Cuti", icon: IconWallet },
     { key: "material", label: "Pemakaian Material", icon: IconBox },
