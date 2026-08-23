@@ -237,6 +237,7 @@ const TELP_PERUSAHAAN_INVOICE = "+62 857 6184 3118";
 // Logo perusahaan (base64) yang tampil di kop cetak invoice, di samping nama perusahaan.
 const LOGO_PERUSAHAAN_INVOICE = "data:image/jpeg;base64,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";
 
+const TTD_BAYHAKY = "data:image/png;base64,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";
 const hitungTotalInvoice = (items, pinalty, lessDeposit, dendaSetelahPpn, pungutanPpn) => {
   const hargaJual = (items || []).reduce((a, it) => a + (Number(it.qty) || 0) * (Number(it.hargaSatuan) || 0), 0);
   const subtotalSetelahPinalty = hargaJual - (Number(pinalty) || 0);
@@ -2264,12 +2265,142 @@ const InvoicePrintView = ({ invoice }) => {
           {invoice.ttd_nama && (
             <div style={{ flex: 1, textAlign: "center" }}>
               <p>Hormat kami,</p>
-              <p style={{ fontWeight: 700, marginBottom: "100px" }}>{invoice.ttd_jabatan || "Direktur"}</p>
+              <p style={{ fontWeight: 700, marginBottom: invoice.pakai_ttd_bayhaky ? "4px" : "100px" }}>{invoice.ttd_jabatan || "Direktur"}</p>
+              {invoice.pakai_ttd_bayhaky && (
+                <img src={TTD_BAYHAKY} alt="Tanda tangan" style={{ height: "60px", margin: "0 auto 4px", display: "block" }} />
+              )}
               <p style={{ fontWeight: 700, textDecoration: "underline" }}>{invoice.ttd_nama}</p>
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+};
+
+/* ---------------------------------- BAST BALAP PRINT VIEW ---------------------------------- */
+// Berita Acara Lapangan Pekerjaan (BALAP) — mengikuti format dokumen Word yang dipakai tim Finance/Owner.
+const HARI_INDONESIA = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+const BULAN_INDONESIA = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+const formatHariTanggalIndo = (isoDate) => {
+  if (!isoDate) return "-";
+  const d = new Date(isoDate);
+  if (isNaN(d.getTime())) return "-";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${HARI_INDONESIA[d.getDay()]}, ${dd} - ${mm} - ${d.getFullYear()}`;
+};
+const formatTanggalIndoSingkat = (isoDate) => {
+  if (!isoDate) return "";
+  const d = new Date(isoDate);
+  if (isNaN(d.getTime())) return "";
+  return `${d.getDate()} ${BULAN_INDONESIA[d.getMonth()]} ${d.getFullYear()}`;
+};
+const formatPeriodeIndo = (awal, akhir) => {
+  if (!awal && !akhir) return "-";
+  if (!akhir) return formatTanggalIndoSingkat(awal);
+  if (!awal) return formatTanggalIndoSingkat(akhir);
+  return `${formatTanggalIndoSingkat(awal)} - ${formatTanggalIndoSingkat(akhir)}`;
+};
+
+const BastBalapPrintView = ({ bast }) => {
+  if (!bast) return null;
+  return (
+    <div id="invoice-print-area" style={{ fontFamily: "Arial, sans-serif", color: "#111", padding: "28px", fontSize: "12px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "16px" }}>
+        <img src={LOGO_PERUSAHAAN_INVOICE} alt={NAMA_PERUSAHAAN_INVOICE} style={{ width: "56px", height: "56px", objectFit: "contain", flexShrink: 0 }} />
+        <div>
+          <p style={{ fontWeight: 700, fontSize: "16px", letterSpacing: "1px", marginBottom: "1px" }}>{NAMA_PERUSAHAAN_INVOICE}</p>
+          <p style={{ fontSize: "11px", marginBottom: "1px" }}>{ALAMAT_PERUSAHAAN_INVOICE}</p>
+          <p style={{ fontSize: "11px" }}>{TELP_PERUSAHAAN_INVOICE}</p>
+        </div>
+      </div>
+      <h1 style={{ textAlign: "center", fontSize: "15px", fontWeight: 700, marginBottom: "2px" }}>Berita Acara Lapangan Pekerjaan (BALAP)</h1>
+      <p style={{ textAlign: "center", fontWeight: 700, marginBottom: "14px" }}>No. {bast.nomorSurat || "-"}</p>
+
+      <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #000", marginBottom: "14px" }}>
+        <tbody>
+          {[
+            ["Hari/Tanggal", formatHariTanggalIndo(bast.tanggal)],
+            ["Nama Pekerjaan", bast.namaPekerjaan || "-"],
+            ["Nomor Kontrak/PO", bast.nomorKontrak || "-"],
+            ["Rekanan Pelaksana", bast.rekananPelaksana || "-"],
+            ["Periode Pengerjaan", formatPeriodeIndo(bast.periodeAwal, bast.periodeAkhir)],
+          ].map(([k, v]) => (
+            <tr key={k}>
+              <td style={{ border: "1px solid #000", padding: "5px 8px", width: "170px", fontWeight: 700 }}>{k}</td>
+              <td style={{ border: "1px solid #000", padding: "5px 8px", width: "12px" }}>:</td>
+              <td style={{ border: "1px solid #000", padding: "5px 8px" }}>{v}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <p style={{ marginBottom: "8px" }}>Kami yang bertanda tangan dibawah ini bersama sama Menyatakan bahwa:</p>
+      {[
+        <>Pekerjaan penyediaan tenaga kerja ({bast.pihakKedua || "-"}) untuk proyek [{bast.jenisPekerjaan || "-"}] yang dilaksanakan oleh [{bast.rekananPelaksana || "-"}] telah SELESAI dilaksanakan sesuai dengan ruang lingkup kerja, waktu pelaksanaan, serta ketentuan.</>,
+        <>Pekerjaan telah diperiksa dan dinyatakan <b>SESUAI dan DITERIMA</b> oleh <b>[{bast.pihakKedua || "-"}]</b>, tanpa catatan maupun temuan yang memerlukan perbaikan.</>,
+        <>Dengan Summary Pengerjaan sebagai berikut :</>,
+      ].map((teks, i) => (
+        <div key={i} style={{ display: "flex", gap: "6px", marginBottom: i < 2 ? "8px" : "4px" }}>
+          <span style={{ minWidth: "16px", flexShrink: 0 }}>{i + 1}.</span>
+          <span style={{ textAlign: "justify" }}>{teks}</span>
+        </div>
+      ))}
+
+      <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #000", marginBottom: "10px", marginTop: "8px" }}>
+        <thead>
+          <tr>
+            <th style={{ border: "1px solid #000", padding: "6px" }}>Deskripsi Pekerjaan</th>
+            <th style={{ border: "1px solid #000", padding: "6px", width: "70px" }}>Qty Team</th>
+            <th style={{ border: "1px solid #000", padding: "6px", width: "85px" }}>Total WO</th>
+            <th style={{ border: "1px solid #000", padding: "6px", width: "100px" }}>Harga WO</th>
+            <th style={{ border: "1px solid #000", padding: "6px", width: "140px" }}>Keterangan</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(bast.items || []).map((it, i) => (
+            <tr key={i}>
+              <td style={{ border: "1px solid #000", padding: "6px", fontWeight: 700 }}>{it.deskripsi}</td>
+              <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center" }}>{it.qtyTeam}</td>
+              <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center" }}>{it.totalWo}</td>
+              <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center" }}>{it.hargaWo}</td>
+              <td style={{ border: "1px solid #000", padding: "6px" }}>{it.keterangan}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <p style={{ fontStyle: "italic", marginBottom: "10px" }}>*The complete data is in the attached summary &amp; reconciliation data</p>
+
+      <p style={{ textAlign: "justify", marginBottom: "8px" }}>
+        Dengan ditandatanganinya berita acara ini, maka seluruh hak dan kewajiban masing-masing pihak yang berkaitan dengan pelaksanaan pekerjaan tersebut telah <b>diselesaikan sepenuhnya</b>, kecuali hal-hal yang telah diatur dalam ketentuan pasca-kontrak (jika ada).
+      </p>
+      <p style={{ textAlign: "justify", marginBottom: "30px" }}>
+        Demikian berita acara ini dibuat dalam 2 (dua) rangkap asli yang masing masing mempunyai kekuatan hukum yang sama dan dapat dipergunakan sebagaimana mestinya
+      </p>
+
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "24px" }}>
+        <div style={{ flex: 1, textAlign: "center" }}>
+          <p style={{ fontWeight: 700, marginBottom: "70px" }}>{bast.pihakKedua || "-"}</p>
+          {bast.ttdClientNama ? (
+            <>
+              <p style={{ textDecoration: "underline" }}>( {bast.ttdClientNama} )</p>
+              {bast.ttdClientJabatan && <p>{bast.ttdClientJabatan}</p>}
+            </>
+          ) : (
+            <p>( &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; )</p>
+          )}
+        </div>
+        <div style={{ flex: 1, textAlign: "center" }}>
+          <p style={{ fontWeight: 700, marginBottom: bast.pakaiTtdBayhaky ? "4px" : "70px" }}>{bast.rekananPelaksana || "-"}</p>
+          {bast.pakaiTtdBayhaky && (
+            <img src={TTD_BAYHAKY} alt="Tanda tangan" style={{ height: "60px", margin: "0 auto", display: "block" }} />
+          )}
+          <p style={{ textDecoration: "underline" }}>( {bast.ttdRekananNama || "-"} )</p>
+          <p>{bast.ttdRekananJabatan || "-"}</p>
+        </div>
+      </div>
     </div>
   );
 };
@@ -3540,6 +3671,7 @@ function DashboardAdmin({ session, onLogout }) {
   const [invRekKota, setInvRekKota] = useState("");
   const [invTtdNama, setInvTtdNama] = useState("");
   const [invTtdJabatan, setInvTtdJabatan] = useState("Direktur");
+  const [invPakaiTtdBayhaky, setInvPakaiTtdBayhaky] = useState(true);
   const [invErrors, setInvErrors] = useState({});
   const [invSubmitting, setInvSubmitting] = useState(false);
   const [invDeleteTarget, setInvDeleteTarget] = useState(null);
@@ -3576,6 +3708,7 @@ function DashboardAdmin({ session, onLogout }) {
     setInvStatus("Belum Dibayar");
     setInvRekBank(profil.rek_bank || ""); setInvRekNomor(profil.rek_nomor || ""); setInvRekKota(profil.rek_kota || "");
     setInvTtdNama(profil.ttd_nama || ""); setInvTtdJabatan(profil.ttd_jabatan || "Direktur");
+    setInvPakaiTtdBayhaky(profil.pakai_ttd_bayhaky !== undefined ? profil.pakai_ttd_bayhaky : true);
     setInvErrors({});
   };
 
@@ -3587,6 +3720,7 @@ function DashboardAdmin({ session, onLogout }) {
     if (profil.rek_kota) setInvRekKota(profil.rek_kota);
     if (profil.ttd_nama) setInvTtdNama(profil.ttd_nama);
     if (profil.ttd_jabatan) setInvTtdJabatan(profil.ttd_jabatan);
+    if (profil.pakai_ttd_bayhaky !== undefined) setInvPakaiTtdBayhaky(profil.pakai_ttd_bayhaky);
   }, []); // eslint-disable-line
 
   useEffect(() => { if (!invNomor) setInvNomor(buatNomorInvoiceOtomatis()); }, []); // eslint-disable-line
@@ -3625,7 +3759,7 @@ function DashboardAdmin({ session, onLogout }) {
       denda_setelah_ppn: Number(invDendaSetelahPpn) || 0, pungutan_ppn: Number(invPungutanPpn) || 0,
       status: invStatus,
       rek_bank: invRekBank, rek_nomor: invRekNomor, rek_kota: invRekKota,
-      ttd_nama: invTtdNama, ttd_jabatan: invTtdJabatan || "Direktur",
+      ttd_nama: invTtdNama, ttd_jabatan: invTtdJabatan || "Direktur", pakai_ttd_bayhaky: invPakaiTtdBayhaky,
     };
     try {
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(bodyData) });
@@ -3633,7 +3767,7 @@ function DashboardAdmin({ session, onLogout }) {
       if (res.status === 200 || res.status === 201) {
         simpanProfilInvoice({
           rek_bank: invRekBank, rek_nomor: invRekNomor, rek_kota: invRekKota,
-          ttd_nama: invTtdNama, ttd_jabatan: invTtdJabatan || "Direktur"
+          ttd_nama: invTtdNama, ttd_jabatan: invTtdJabatan || "Direktur", pakai_ttd_bayhaky: invPakaiTtdBayhaky
         });
         // Kalau invoice ini dibuat lewat tombol "+" dari Tracking BAST, tandai baris
         // tracking asalnya jadi "Proses Finance" & simpan link ke invoice yang baru dibuat.
@@ -3673,6 +3807,7 @@ function DashboardAdmin({ session, onLogout }) {
     setInvStatus(inv.status || "Belum Dibayar");
     setInvRekBank(inv.rek_bank || ""); setInvRekNomor(inv.rek_nomor || ""); setInvRekKota(inv.rek_kota || "");
     setInvTtdNama(inv.ttd_nama || ""); setInvTtdJabatan(inv.ttd_jabatan || "Direktur");
+    setInvPakaiTtdBayhaky(inv.pakai_ttd_bayhaky !== undefined ? inv.pakai_ttd_bayhaky : true);
     setInvErrors({});
     setCurrentMenu("invoice");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -3767,6 +3902,7 @@ function DashboardAdmin({ session, onLogout }) {
   };
 
   const handleCetakInvoice = (inv) => {
+    setBastPrintTarget(null);
     setInvPrintTarget(inv);
     setTimeout(() => window.print(), 200);
   };
@@ -3825,6 +3961,132 @@ function DashboardAdmin({ session, onLogout }) {
       setTrkCatatSubmitting(null);
       setTrkCatatTarget(null);
     }
+  };
+
+  /* ---------------- MODUL BAST BALAP (Berita Acara Lapangan Pekerjaan) — sub-tab di halaman Invoice ---------------- */
+  const [invoiceTab, setInvoiceTab] = useState("invoice"); // "invoice" | "bast"
+  const buatNomorBastItem = () => `bi_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const bastItemKosong = () => ({ id: buatNomorBastItem(), deskripsi: "Instalasi Baru", qtyTeam: "", totalWo: "", hargaWo: "", keterangan: "" });
+
+  const BAST_LIST_KEY = "satnet_bast_balap_list_v1";
+  const muatBastListTersimpan = () => {
+    try {
+      const raw = localStorage.getItem(BAST_LIST_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  };
+  const simpanBastListTersimpan = (list) => {
+    try { localStorage.setItem(BAST_LIST_KEY, JSON.stringify(list)); } catch {}
+  };
+
+  const [bastList, setBastList] = useState(() => muatBastListTersimpan());
+  const [bastEditId, setBastEditId] = useState(null);
+  const [bastNomorSurat, setBastNomorSurat] = useState("");
+  const [bastTanggal, setBastTanggal] = useState(() => new Date().toISOString().slice(0, 10));
+  const [bastNamaPekerjaan, setBastNamaPekerjaan] = useState("");
+  const [bastNomorKontrak, setBastNomorKontrak] = useState("-");
+  const [bastRekananPelaksana, setBastRekananPelaksana] = useState("Serata Network's (Setnet's)");
+  const [bastPihakKedua, setBastPihakKedua] = useState("PT. Satu Visi Media");
+  const [bastJenisPekerjaan, setBastJenisPekerjaan] = useState("Instalasi Baru");
+  const [bastPeriodeAwal, setBastPeriodeAwal] = useState("");
+  const [bastPeriodeAkhir, setBastPeriodeAkhir] = useState("");
+  const [bastItems, setBastItems] = useState([bastItemKosong()]);
+  const [bastTtdClientNama, setBastTtdClientNama] = useState("");
+  const [bastTtdClientJabatan, setBastTtdClientJabatan] = useState("");
+  const [bastTtdRekananNama, setBastTtdRekananNama] = useState("Bayhaky");
+  const [bastTtdRekananJabatan, setBastTtdRekananJabatan] = useState("Manager Operational");
+  const [bastPakaiTtdBayhaky, setBastPakaiTtdBayhaky] = useState(true);
+  const [bastErrors, setBastErrors] = useState({});
+  const [bastDeleteTarget, setBastDeleteTarget] = useState(null);
+  const [bastPrintTarget, setBastPrintTarget] = useState(null);
+  const [bastSearch, setBastSearch] = useState("");
+  const [pageBast, setPageBast] = useState(1);
+  const [pageSizeBast, setPageSizeBast] = useState(10);
+
+  const resetFormBast = () => {
+    setBastEditId(null); setBastNomorSurat(""); setBastTanggal(new Date().toISOString().slice(0, 10));
+    setBastNamaPekerjaan(""); setBastNomorKontrak("-"); setBastRekananPelaksana("Serata Network's (Setnet's)");
+    setBastPihakKedua("PT. Satu Visi Media"); setBastJenisPekerjaan("Instalasi Baru");
+    setBastPeriodeAwal(""); setBastPeriodeAkhir("");
+    setBastItems([bastItemKosong()]); setBastTtdClientNama(""); setBastTtdClientJabatan(""); setBastTtdRekananNama("Bayhaky"); setBastTtdRekananJabatan("Manager Operational"); setBastPakaiTtdBayhaky(true);
+    setBastErrors({});
+  };
+
+  const tambahItemBast = () => setBastItems(list => [...list, bastItemKosong()]);
+  const hapusItemBast = (id) => setBastItems(list => list.length > 1 ? list.filter(it => it.id !== id) : list);
+  const updateItemBast = (id, field, value) => setBastItems(list => list.map(it => it.id === id ? { ...it, [field]: value } : it));
+
+  const validateBast = () => {
+    const errs = {};
+    if (!bastNomorSurat.trim()) errs.nomorSurat = "No. Surat wajib diisi";
+    if (!bastTanggal) errs.tanggal = "Tanggal wajib diisi";
+    if (!bastNamaPekerjaan.trim()) errs.namaPekerjaan = "Nama pekerjaan wajib diisi";
+    if (bastItems.every(it => !it.deskripsi.trim())) errs.items = "Minimal 1 baris summary dengan deskripsi wajib diisi";
+    setBastErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleSubmitBast = (e) => {
+    e.preventDefault();
+    if (!validateBast()) return;
+    const data = {
+      _id: bastEditId || `bast_${Date.now()}`,
+      nomorSurat: bastNomorSurat, tanggal: bastTanggal, namaPekerjaan: bastNamaPekerjaan,
+      nomorKontrak: bastNomorKontrak, rekananPelaksana: bastRekananPelaksana, pihakKedua: bastPihakKedua,
+      jenisPekerjaan: bastJenisPekerjaan, periodeAwal: bastPeriodeAwal, periodeAkhir: bastPeriodeAkhir,
+      items: bastItems.filter(it => it.deskripsi.trim()),
+      ttdClientNama: bastTtdClientNama, ttdClientJabatan: bastTtdClientJabatan, ttdRekananNama: bastTtdRekananNama, ttdRekananJabatan: bastTtdRekananJabatan, pakaiTtdBayhaky: bastPakaiTtdBayhaky,
+      dibuatPada: bastEditId ? (bastList.find(b => b._id === bastEditId)?.dibuatPada || new Date().toISOString()) : new Date().toISOString(),
+    };
+    setBastList(list => {
+      const next = bastEditId ? list.map(b => b._id === bastEditId ? data : b) : [data, ...list];
+      simpanBastListTersimpan(next);
+      return next;
+    });
+    notify(bastEditId ? "BAST Balap berhasil diperbarui" : "BAST Balap berhasil dibuat");
+    resetFormBast();
+  };
+
+  const pemicuEditBast = (b) => {
+    setBastEditId(b._id); setBastNomorSurat(b.nomorSurat || ""); setBastTanggal(b.tanggal || new Date().toISOString().slice(0, 10));
+    setBastNamaPekerjaan(b.namaPekerjaan || ""); setBastNomorKontrak(b.nomorKontrak || "-");
+    setBastRekananPelaksana(b.rekananPelaksana || "Serata Network's (Setnet's)"); setBastPihakKedua(b.pihakKedua || "PT. Satu Visi Media");
+    setBastJenisPekerjaan(b.jenisPekerjaan || "Instalasi Baru"); setBastPeriodeAwal(b.periodeAwal || ""); setBastPeriodeAkhir(b.periodeAkhir || "");
+    setBastItems(b.items && b.items.length ? b.items.map(it => ({ ...it, id: buatNomorBastItem() })) : [bastItemKosong()]);
+    setBastTtdClientNama(b.ttdClientNama || ""); setBastTtdClientJabatan(b.ttdClientJabatan || "");
+    setBastTtdRekananNama(b.ttdRekananNama || "Bayhaky"); setBastTtdRekananJabatan(b.ttdRekananJabatan || "Manager Operational");
+    setBastPakaiTtdBayhaky(b.pakaiTtdBayhaky !== undefined ? b.pakaiTtdBayhaky : true);
+    setBastErrors({});
+    setInvoiceTab("bast");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const hapusBast = () => {
+    if (!bastDeleteTarget) return;
+    setBastList(list => {
+      const next = list.filter(b => b._id !== bastDeleteTarget._id);
+      simpanBastListTersimpan(next);
+      return next;
+    });
+    notify(`BAST "${bastDeleteTarget.nomorSurat}" berhasil dihapus`);
+    if (bastEditId === bastDeleteTarget._id) resetFormBast();
+    setBastDeleteTarget(null);
+  };
+
+  const filteredBast = useMemo(() => {
+    const q = bastSearch.trim().toLowerCase();
+    return [...bastList].filter(b => {
+      return !q || b.nomorSurat?.toLowerCase().includes(q) || b.namaPekerjaan?.toLowerCase().includes(q) || b.pihakKedua?.toLowerCase().includes(q);
+    }).sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+  }, [bastList, bastSearch]);
+  const totalPagesBast = Math.max(1, Math.ceil(filteredBast.length / pageSizeBast));
+  const pagedBast = filteredBast.slice((pageBast - 1) * pageSizeBast, pageBast * pageSizeBast);
+  useEffect(() => { setPageBast(1); }, [bastSearch]);
+
+  const handleCetakBast = (b) => {
+    setInvPrintTarget(null);
+    setBastPrintTarget(b);
+    setTimeout(() => window.print(), 200);
   };
 
   /* ---------------- MODUL TRACKING BAST (Khusus Owner) ---------------- */
@@ -4041,6 +4303,57 @@ function DashboardAdmin({ session, onLogout }) {
 
   // Dipanggil tombol "Tandai Lunas (Cash)" -> cuma membuka modal konfirmasi.
   const handleTandaiLunasKasbon = (item) => setKasbonLunasTarget(item);
+
+  // Ekspor Excel: Sheet "Kasbon" — kolom rapi per judul (pakai json_to_sheet, BUKAN CSV) sesuai filter aktif
+  const eksporExcelKasbon = () => {
+    if (typeof XLSX === "undefined") { notify("Modul export Excel gagal dimuat, cek koneksi internet.", "error"); return; }
+    if (filteredKasbonList.length === 0) { notify("Tidak ada data kasbon untuk diekspor.", "error"); return; }
+
+    const wb = XLSX.utils.book_new();
+    const wsData = XLSX.utils.json_to_sheet(filteredKasbonList.map(r => ({
+      "ID Karyawan": r.karyawan_id, Nama: r.nama, Jumlah: r.jumlah,
+      Region: r.region || "-", Vendor: r.vendor || "-", Alasan: r.alasan || "-",
+      "Metode Pembayaran": r.metode_pembayaran || "-", "Penyedia Pembayaran": r.penyedia_pembayaran || "-",
+      "No Rekening": r.no_rekening || "-",
+      "Tanggal Pengajuan": r.tanggal_pengajuan ? new Date(r.tanggal_pengajuan).toLocaleDateString("id-ID") : "-",
+      Status: r.status,
+      "Status Lunas": r.status === "Disetujui" ? (r.lunas ? "Lunas" : "Belum Lunas") : "-",
+      "Tanggal Lunas": r.tanggal_lunas ? new Date(r.tanggal_lunas).toLocaleDateString("id-ID") : "-",
+      "Catatan Admin": r.catatan_admin || "-",
+    })));
+    wsData["!cols"] = [
+      { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 26 },
+      { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 26 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsData, "Kasbon");
+
+    const namaFile = `Kasbon-SATNET-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, namaFile);
+    notify("Laporan Kasbon Excel berhasil diunduh");
+  };
+
+  // Ekspor Excel: Sheet "Cuti-Izin-Sakit" — kolom rapi per judul (pakai json_to_sheet, BUKAN CSV) sesuai filter aktif
+  const eksporExcelPengajuanCIS = () => {
+    if (typeof XLSX === "undefined") { notify("Modul export Excel gagal dimuat, cek koneksi internet.", "error"); return; }
+    if (filteredPengajuanCISList.length === 0) { notify("Tidak ada data pengajuan untuk diekspor.", "error"); return; }
+
+    const wb = XLSX.utils.book_new();
+    const wsData = XLSX.utils.json_to_sheet(filteredPengajuanCISList.map(r => ({
+      "ID Karyawan": r.karyawan_id, Nama: r.nama, Jenis: r.jenis,
+      "Tanggal Mulai": r.tanggal_mulai ? new Date(r.tanggal_mulai).toLocaleDateString("id-ID") : "-",
+      "Tanggal Selesai": r.tanggal_selesai ? new Date(r.tanggal_selesai).toLocaleDateString("id-ID") : "-",
+      Alasan: r.alasan || "-", Status: r.status, "Catatan Admin": r.catatan_admin || "-",
+      "Tanggal Pengajuan": r.tanggal_pengajuan ? new Date(r.tanggal_pengajuan).toLocaleDateString("id-ID") : "-",
+    })));
+    wsData["!cols"] = [
+      { wch: 14 }, { wch: 22 }, { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 26 }, { wch: 12 }, { wch: 26 }, { wch: 16 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsData, "Cuti-Izin-Sakit");
+
+    const namaFile = `Cuti-Izin-Sakit-SATNET-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, namaFile);
+    notify("Laporan Cuti/Izin/Sakit Excel berhasil diunduh");
+  };
 
   // Dipanggil dari dalam TandaiLunasKasbonModal setelah owner menekan tombol konfirmasi final.
   const submitTandaiLunasKasbon = async () => {
@@ -5335,6 +5648,13 @@ function DashboardAdmin({ session, onLogout }) {
         onCancel={() => setInvDeleteTarget(null)}
       />
       <ConfirmModal
+        open={!!bastDeleteTarget}
+        title="Hapus BAST Balap?"
+        description={bastDeleteTarget ? `BAST "${bastDeleteTarget.nomorSurat}" untuk "${bastDeleteTarget.namaPekerjaan}" akan dihapus permanen.` : ""}
+        onConfirm={hapusBast}
+        onCancel={() => setBastDeleteTarget(null)}
+      />
+      <ConfirmModal
         open={!!matDeleteTarget}
         title="Hapus jenis material?"
         description={matDeleteTarget ? `Material "${matDeleteTarget.nama}" akan dihapus permanen dari master data.` : ""}
@@ -5880,6 +6200,7 @@ function DashboardAdmin({ session, onLogout }) {
         notify={notify}
       />
       <InvoicePrintView invoice={invPrintTarget} />
+      <BastBalapPrintView bast={bastPrintTarget} />
 
       {/* TOP BAR */}
       <header ref={headerRef} className="app-header text-white px-4 sm:px-6 py-3.5 flex justify-between items-center shrink-0 sticky top-0 z-50">
@@ -7508,22 +7829,7 @@ function DashboardAdmin({ session, onLogout }) {
                               </button>
                             )}
                           </div>
-                        <button onClick={() => downloadCsv("kasbon.csv", toCsv(filteredKasbonList, [
-                          { label: "ID Karyawan", get: r => r.karyawan_id },
-                          { label: "Nama", get: r => r.nama },
-                          { label: "Jumlah", get: r => r.jumlah },
-                          { label: "Region", get: r => r.region || "" },
-                          { label: "Vendor", get: r => r.vendor || "" },
-                          { label: "Alasan", get: r => r.alasan || "" },
-                          { label: "Metode Pembayaran", get: r => r.metode_pembayaran || "" },
-                          { label: "Penyedia Pembayaran", get: r => r.penyedia_pembayaran || "" },
-                          { label: "No Rekening", get: r => r.no_rekening || "" },
-                          { label: "Tanggal Pengajuan", get: r => r.tanggal_pengajuan ? new Date(r.tanggal_pengajuan).toLocaleDateString("id-ID") : "" },
-                          { label: "Status", get: r => r.status },
-                          { label: "Status Lunas", get: r => r.status === "Disetujui" ? (r.lunas ? "Lunas" : "Belum Lunas") : "-" },
-                          { label: "Tanggal Lunas", get: r => r.tanggal_lunas ? new Date(r.tanggal_lunas).toLocaleDateString("id-ID") : "" },
-                          { label: "Catatan Admin", get: r => r.catatan_admin || "" },
-                        ]))} className="flex items-center gap-1.5 px-3 py-2 border rounded-xl hover:bg-gray-50 text-xs font-semibold shrink-0" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                        <button onClick={eksporExcelKasbon} className="flex items-center gap-1.5 px-3 py-2 border rounded-xl hover:bg-gray-50 text-xs font-semibold shrink-0" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }}>
                           <IconDownload className="w-3.5 h-3.5" /> Ekspor Excel
                         </button>
                         </div>
@@ -7618,17 +7924,7 @@ function DashboardAdmin({ session, onLogout }) {
                             <option value="Disetujui">Disetujui</option>
                             <option value="Ditolak">Ditolak</option>
                           </select>
-                        <button onClick={() => downloadCsv("cuti-izin-sakit.csv", toCsv(filteredPengajuanCISList, [
-                          { label: "ID Karyawan", get: r => r.karyawan_id },
-                          { label: "Nama", get: r => r.nama },
-                          { label: "Jenis", get: r => r.jenis },
-                          { label: "Tanggal Mulai", get: r => r.tanggal_mulai ? new Date(r.tanggal_mulai).toLocaleDateString("id-ID") : "" },
-                          { label: "Tanggal Selesai", get: r => r.tanggal_selesai ? new Date(r.tanggal_selesai).toLocaleDateString("id-ID") : "" },
-                          { label: "Alasan", get: r => r.alasan || "" },
-                          { label: "Status", get: r => r.status },
-                          { label: "Catatan Admin", get: r => r.catatan_admin || "" },
-                          { label: "Tanggal Pengajuan", get: r => r.tanggal_pengajuan ? new Date(r.tanggal_pengajuan).toLocaleDateString("id-ID") : "" },
-                        ]))} className="flex items-center gap-1.5 px-3 py-2 border rounded-xl hover:bg-gray-50 text-xs font-semibold shrink-0" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                        <button onClick={eksporExcelPengajuanCIS} className="flex items-center gap-1.5 px-3 py-2 border rounded-xl hover:bg-gray-50 text-xs font-semibold shrink-0" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }}>
                           <IconDownload className="w-3.5 h-3.5" /> Ekspor Excel
                         </button>
                         </div>
@@ -9063,9 +9359,22 @@ function DashboardAdmin({ session, onLogout }) {
                 <div className="space-y-6 no-print">
                   <div>
                     <h1 className="text-2xl font-bold font-display" style={{ color: "var(--ink)" }}>Invoice / Penagihan</h1>
-                    <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>Buat, kelola, dan cetak invoice penagihan untuk pelanggan</p>
+                    <p className="text-xs mt-0.5" style={{ color: "var(--ink-soft)" }}>Buat, kelola, dan cetak invoice penagihan serta BAST Balap untuk pelanggan</p>
                   </div>
 
+                  <div className="flex gap-2 p-1 rounded-xl w-fit" style={{ background: "var(--canvas)" }}>
+                    <button onClick={() => setInvoiceTab("invoice")} className="px-4 py-2 rounded-lg text-xs font-bold transition"
+                      style={invoiceTab === "invoice" ? { background: "white", color: "var(--brand-dark)", boxShadow: "0 1px 3px rgba(0,0,0,.08)" } : { color: "var(--ink-soft)" }}>
+                      Invoice
+                    </button>
+                    <button onClick={() => setInvoiceTab("bast")} className="px-4 py-2 rounded-lg text-xs font-bold transition"
+                      style={invoiceTab === "bast" ? { background: "white", color: "var(--brand-dark)", boxShadow: "0 1px 3px rgba(0,0,0,.08)" } : { color: "var(--ink-soft)" }}>
+                      BAST Balap
+                    </button>
+                  </div>
+
+                  {invoiceTab === "invoice" && (
+                  <>
                   {(() => {
                     const jumlahMenunggu = canAccess(session.role, "tracking")
                       ? trackingList.filter(t => t.status === "BAST Final").length
@@ -9240,6 +9549,12 @@ function DashboardAdmin({ session, onLogout }) {
                             <input type="text" placeholder="Jabatan (ex: Direktur)" value={invTtdJabatan} onChange={e => setInvTtdJabatan(e.target.value)}
                               className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
                           </div>
+                          <label className="flex items-center gap-2 mt-2.5 cursor-pointer select-none">
+                            <input type="checkbox" checked={invPakaiTtdBayhaky} onChange={e => setInvPakaiTtdBayhaky(e.target.checked)}
+                              className="w-3.5 h-3.5 rounded" style={{ accentColor: "var(--brand)" }} />
+                            <span className="text-[11px] font-semibold" style={{ color: "var(--ink)" }}>Sertakan tanda tangan Bos Bayhaki di hasil cetak</span>
+                          </label>
+                          <p className="text-[10px] mt-0.5" style={{ color: "var(--ink-soft)" }}>Kalau dimatikan, hasil cetak cuma tampil nama dalam kurung tanpa gambar tanda tangan (kosong, tinggal ditandatangani manual).</p>
                         </div>
 
                         <div className="pt-1 flex gap-2">
@@ -9341,6 +9656,195 @@ function DashboardAdmin({ session, onLogout }) {
                         onPageSizeChange={(n) => { setPageSizeInv(n); setPageInv(1); }} />
                     </div>
                   </div>
+                  </>
+                  )}
+
+                  {invoiceTab === "bast" && (
+                  <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+                    {/* ===== FORM BAST BALAP ===== */}
+                    <div className="xl:col-span-2 bg-white p-5 rounded-2xl border h-fit xl:sticky xl:top-6" style={{ borderColor: "var(--border)" }}>
+                      <h2 className="text-base font-bold font-display" style={{ color: "var(--ink)" }}>{bastEditId ? "Edit BAST Balap" : "Buat BAST Balap Baru"}</h2>
+                      <p className="text-xs mt-0.5 mb-4" style={{ color: "var(--ink-soft)" }}>{bastEditId ? "Perbarui data Berita Acara Lapangan Pekerjaan" : "Isi data Berita Acara Lapangan Pekerjaan (BALAP)"}</p>
+
+                      <form onSubmit={handleSubmitBast} className="space-y-3.5 text-xs">
+                        <div>
+                          <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>No. Surat</label>
+                          <input type="text" placeholder="ex: 001/SNS/IKR-IB/05/2026" value={bastNomorSurat} onChange={e => setBastNomorSurat(e.target.value)}
+                            className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium font-mono" style={{ borderColor: bastErrors.nomorSurat ? "var(--red)" : "var(--border)" }} />
+                          {bastErrors.nomorSurat && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{bastErrors.nomorSurat}</p>}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Hari/Tanggal</label>
+                            <input type="date" value={bastTanggal} onChange={e => setBastTanggal(e.target.value)}
+                              className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: bastErrors.tanggal ? "var(--red)" : "var(--border)" }} />
+                            {bastErrors.tanggal && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{bastErrors.tanggal}</p>}
+                          </div>
+                          <div>
+                            <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Nomor Kontrak/PO</label>
+                            <input type="text" value={bastNomorKontrak} onChange={e => setBastNomorKontrak(e.target.value)}
+                              className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Nama Pekerjaan</label>
+                          <input type="text" placeholder="ex: Instalasi Baru area Depok" value={bastNamaPekerjaan} onChange={e => setBastNamaPekerjaan(e.target.value)}
+                            className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: bastErrors.namaPekerjaan ? "var(--red)" : "var(--border)" }} />
+                          {bastErrors.namaPekerjaan && <p className="text-[10px] font-semibold mt-1" style={{ color: "var(--red)" }}>{bastErrors.namaPekerjaan}</p>}
+                        </div>
+                        <div>
+                          <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Jenis Pekerjaan (untuk paragraf butir 1)</label>
+                          <input type="text" placeholder="ex: Instalasi Baru" value={bastJenisPekerjaan} onChange={e => setBastJenisPekerjaan(e.target.value)}
+                            className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Periode Awal</label>
+                            <input type="date" value={bastPeriodeAwal} onChange={e => setBastPeriodeAwal(e.target.value)}
+                              className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                          </div>
+                          <div>
+                            <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Periode Akhir</label>
+                            <input type="date" value={bastPeriodeAkhir} onChange={e => setBastPeriodeAkhir(e.target.value)}
+                              className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                          </div>
+                        </div>
+
+                        <div className="pt-1 border-t" style={{ borderColor: "var(--border)" }}>
+                          <p className="font-bold uppercase text-[10px] tracking-wide mt-3 mb-1" style={{ color: "var(--brand-dark)" }}>Pihak Kedua (Client / Penerima Pekerjaan)</p>
+                          <input type="text" placeholder="ex: PT. Satu Visi Media" value={bastPihakKedua} onChange={e => setBastPihakKedua(e.target.value)}
+                            className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium mb-2" style={{ borderColor: "var(--border)" }} />
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <input type="text" placeholder="Nama penandatangan (opsional,)" value={bastTtdClientNama} onChange={e => setBastTtdClientNama(e.target.value)}
+                              className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                            <input type="text" placeholder="Jabatan (opsional)" value={bastTtdClientJabatan} onChange={e => setBastTtdClientJabatan(e.target.value)}
+                              className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                          </div>
+                          <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>Kalau nama dikosongkan, hasil cetak cuma tampil kurung kosong "(&nbsp;&nbsp;&nbsp;&nbsp;)" untuk ditandatangani manual.</p>
+                        </div>
+                        <div>
+                          <label className="block font-bold uppercase mb-1 text-[10px] tracking-wide" style={{ color: "var(--ink-soft)" }}>Rekanan Pelaksana</label>
+                          <input type="text" value={bastRekananPelaksana} onChange={e => setBastRekananPelaksana(e.target.value)}
+                            className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                        </div>
+
+                        <div className="pt-1 border-t" style={{ borderColor: "var(--border)" }}>
+                          <div className="flex items-center justify-between mt-3 mb-1.5">
+                            <p className="font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--brand-dark)" }}>Summary Pengerjaan</p>
+                            <button type="button" onClick={tambahItemBast} className="flex items-center gap-1 text-[10px] font-bold" style={{ color: "var(--brand-dark)" }}>
+                              <IconPlus className="w-3 h-3" /> Tambah Baris
+                            </button>
+                          </div>
+                          {bastErrors.items && <p className="text-[10px] font-semibold mb-1.5" style={{ color: "var(--red)" }}>{bastErrors.items}</p>}
+                          <div className="space-y-2">
+                            {bastItems.map((it) => (
+                              <div key={it.id} className="p-2.5 rounded-xl border space-y-1.5" style={{ borderColor: "var(--border)" }}>
+                                <div className="flex gap-1.5">
+                                  <input type="text" placeholder="Deskripsi Pekerjaan (ex: Instalasi Baru)" value={it.deskripsi} onChange={e => updateItemBast(it.id, "deskripsi", e.target.value)}
+                                    className="flex-1 p-2 border rounded-lg outline-none text-xs font-medium" style={{ borderColor: "var(--border)" }} />
+                                  {bastItems.length > 1 && (
+                                    <button type="button" onClick={() => hapusItemBast(it.id)} className="p-2 rounded-lg border" style={{ borderColor: "var(--border)", color: "var(--red)" }}><IconTrash className="w-3.5 h-3.5" /></button>
+                                  )}
+                                </div>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  <input type="text" placeholder="Qty Team" value={it.qtyTeam} onChange={e => updateItemBast(it.id, "qtyTeam", e.target.value)}
+                                    className="p-2 border rounded-lg outline-none text-xs font-medium" style={{ borderColor: "var(--border)" }} />
+                                  <input type="text" placeholder="Total WO" value={it.totalWo} onChange={e => updateItemBast(it.id, "totalWo", e.target.value)}
+                                    className="p-2 border rounded-lg outline-none text-xs font-medium" style={{ borderColor: "var(--border)" }} />
+                                  <input type="text" placeholder="Harga WO" value={it.hargaWo} onChange={e => updateItemBast(it.id, "hargaWo", e.target.value)}
+                                    className="p-2 border rounded-lg outline-none text-xs font-medium" style={{ borderColor: "var(--border)" }} />
+                                </div>
+                                <input type="text" placeholder="Keterangan" value={it.keterangan} onChange={e => updateItemBast(it.id, "keterangan", e.target.value)}
+                                  className="w-full p-2 border rounded-lg outline-none text-xs font-medium" style={{ borderColor: "var(--border)" }} />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="pt-1 border-t" style={{ borderColor: "var(--border)" }}>
+                          <p className="font-bold uppercase text-[10px] tracking-wide mt-3 mb-1.5" style={{ color: "var(--brand-dark)" }}>Penandatangan Rekanan (di cetak BAST)</p>
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <input type="text" placeholder="Nama penandatangan" value={bastTtdRekananNama} onChange={e => setBastTtdRekananNama(e.target.value)}
+                              className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                            <input type="text" placeholder="Jabatan" value={bastTtdRekananJabatan} onChange={e => setBastTtdRekananJabatan(e.target.value)}
+                              className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                          </div>
+                          <label className="flex items-center gap-2 mt-2.5 cursor-pointer select-none">
+                            <input type="checkbox" checked={bastPakaiTtdBayhaky} onChange={e => setBastPakaiTtdBayhaky(e.target.checked)}
+                              className="w-3.5 h-3.5 rounded" style={{ accentColor: "var(--brand)" }} />
+                            <span className="text-[11px] font-semibold" style={{ color: "var(--ink)" }}>Sertakan tanda tangan asli Bos Bayhaki di hasil cetak</span>
+                          </label>
+                          <p className="text-[10px] mt-0.5" style={{ color: "var(--ink-soft)" }}>Kalau dimatikan, hasil cetak cuma tampil nama dalam kurung tanpa gambar tanda tangan (kosong, tinggal ditandatangani manual).</p>
+                        </div>
+
+                        <div className="pt-1 flex gap-2">
+                          <button type="submit" className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm" style={{ background: "var(--brand)" }}>
+                            {bastEditId ? "Update BAST Balap" : "Simpan BAST Balap"}
+                          </button>
+                          {bastEditId && (
+                            <button type="button" onClick={resetFormBast} className="bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-2.5 px-4 rounded-xl text-sm">Batal</button>
+                          )}
+                        </div>
+                      </form>
+                    </div>
+
+                    {/* ===== DAFTAR BAST BALAP ===== */}
+                    <div className="xl:col-span-3 bg-white rounded-2xl border overflow-hidden h-fit" style={{ borderColor: "var(--border)" }}>
+                      <div className="p-4 border-b flex flex-col gap-3" style={{ borderColor: "var(--border)" }}>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+                          <div>
+                            <h3 className="text-sm font-bold" style={{ color: "var(--ink)" }}>Daftar BAST Balap</h3>
+                            <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>{filteredBast.length} dari {bastList.length} BAST — tersimpan di browser ini</p>
+                          </div>
+                          <div className="relative">
+                            <IconSearch className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input value={bastSearch} onChange={e => setBastSearch(e.target.value)} placeholder="Cari No. Surat / nama pekerjaan / client"
+                              className="pl-8 pr-3 py-2 border rounded-xl text-xs font-medium outline-none w-full sm:w-56" style={{ borderColor: "var(--border)" }} />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                          <thead>
+                            <tr className="border-b font-bold uppercase tracking-wider" style={{ background: "var(--canvas)", borderColor: "var(--border)", color: "var(--ink-soft)" }}>
+                              <th className="p-4">No. Surat</th>
+                              <th className="p-4">Nama Pekerjaan</th>
+                              <th className="p-4">Tanggal</th>
+                              <th className="p-4">Client</th>
+                              <th className="p-4 text-center w-28">Aksi</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
+                            {pagedBast.length === 0 ? (
+                              <tr><td colSpan="5"><EmptyState title={bastSearch ? "Tidak ditemukan" : "Belum ada BAST Balap"} subtitle={bastSearch ? "Coba ubah kata kunci pencarian." : "Buat BAST Balap pertama lewat formulir di samping."} icon={<IconFileText className="w-5 h-5" />} /></td></tr>
+                            ) : (
+                              pagedBast.map(b => (
+                                <tr key={b._id} className="hover:bg-gray-50/60 transition">
+                                  <td className="p-3.5 font-mono font-bold" style={{ color: "var(--ink)" }}>{b.nomorSurat}</td>
+                                  <td className="p-3.5">
+                                    <p className="font-bold text-sm" style={{ color: "var(--ink)" }}>{b.namaPekerjaan}</p>
+                                  </td>
+                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{b.tanggal ? new Date(b.tanggal).toLocaleDateString("id-ID") : "-"}</td>
+                                  <td className="p-3.5" style={{ color: "var(--ink-soft)" }}>{b.pihakKedua || "-"}</td>
+                                  <td className="p-3.5">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <button onClick={() => handleCetakBast(b)} className="p-1.5 rounded-lg border hover:bg-blue-50" style={{ borderColor: "var(--border)", color: "var(--brand-dark)" }} title="Cetak BAST"><IconPrinter className="w-3.5 h-3.5" /></button>
+                                      <button onClick={() => pemicuEditBast(b)} className="p-1.5 rounded-lg border hover:bg-blue-50" style={{ borderColor: "var(--border)", color: "var(--brand-dark)" }} title="Edit"><IconEdit className="w-3.5 h-3.5" /></button>
+                                      <button onClick={() => setBastDeleteTarget(b)} className="p-1.5 rounded-lg border hover:bg-red-50" style={{ borderColor: "var(--border)", color: "var(--red)" }} title="Hapus"><IconTrash className="w-3.5 h-3.5" /></button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                      <Pagination page={pageBast} setPage={setPageBast} totalPages={totalPagesBast} totalItems={filteredBast.length}
+                        pageSize={pageSizeBast} pageSizeOptions={[10, 20, 50, 100]}
+                        onPageSizeChange={(n) => { setPageSizeBast(n); setPageBast(1); }} />
+                    </div>
+                  </div>
+                  )}
                 </div>
               )}
             </>
