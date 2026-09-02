@@ -2162,6 +2162,11 @@ const ImportMaterialModal = ({ open, onClose, materialList, apiUrl, authHeaders,
 /* ---------------------------------- INVOICE PRINT VIEW ---------------------------------- */
 const InvoicePrintView = ({ invoice }) => {
   if (!invoice) return null;
+  // Field ini kadang balik dari server sebagai undefined (belum pernah disimpan eksplisit)
+  // atau sebagai string "false"/"true" tergantung implementasi backend. Supaya perilaku
+  // checkbox "Sertakan tanda tangan" konsisten (centang = tampil, tidak centang = sembunyi),
+  // kita normalisasi dulu di sini alih-alih pakai invoice.pakai_ttd_bayhaky mentah-mentah.
+  const pakaiTtdBayhaky = !(invoice.pakai_ttd_bayhaky === false || invoice.pakai_ttd_bayhaky === "false" || invoice.pakai_ttd_bayhaky === 0);
   const totals = hitungTotalInvoice(invoice.items, invoice.pinalty, invoice.less_deposit, invoice.denda_setelah_ppn, invoice.pungutan_ppn);
   const rows = [
     ["Harga Jual", totals.hargaJual],
@@ -2267,8 +2272,8 @@ const InvoicePrintView = ({ invoice }) => {
           {invoice.ttd_nama && (
             <div style={{ flex: 1, textAlign: "center" }}>
               <p>Hormat kami,</p>
-              <p style={{ fontWeight: 700, marginBottom: invoice.pakai_ttd_bayhaky ? "4px" : "100px" }}>{invoice.ttd_jabatan || "Direktur"}</p>
-              {invoice.pakai_ttd_bayhaky && (
+              <p style={{ fontWeight: 700, marginBottom: pakaiTtdBayhaky ? "4px" : "100px" }}>{invoice.ttd_jabatan || "Direktur"}</p>
+              {pakaiTtdBayhaky && (
                 <img src={TTD_BAYHAKY} alt="Tanda tangan" style={{ height: "60px", margin: "0 auto 4px", display: "block" }} />
               )}
               <p style={{ fontWeight: 700, textDecoration: "underline" }}>{invoice.ttd_nama}</p>
