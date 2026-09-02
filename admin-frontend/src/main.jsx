@@ -2206,11 +2206,13 @@ const InvoicePrintView = ({ invoice }) => {
           </tbody>
         </table>
       </div>
-      <div style={{ marginBottom: "18px" }}>
-        <p style={{ fontWeight: 700, marginBottom: "2px" }}>Ship To:</p>
-        <p style={{ fontWeight: 700 }}>{invoice.ship_nama}</p>
-        <p style={{ maxWidth: "320px" }}>{invoice.ship_alamat}</p>
-      </div>
+      {invoice.tampilkan_ship_to !== false && (
+        <div style={{ marginBottom: "18px" }}>
+          <p style={{ fontWeight: 700, marginBottom: "2px" }}>Ship To:</p>
+          <p style={{ fontWeight: 700 }}>{invoice.ship_nama}</p>
+          <p style={{ maxWidth: "320px" }}>{invoice.ship_alamat}</p>
+        </div>
+      )}
 
       <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #000", marginBottom: "16px" }}>
         <thead>
@@ -2265,8 +2267,8 @@ const InvoicePrintView = ({ invoice }) => {
           {invoice.ttd_nama && (
             <div style={{ flex: 1, textAlign: "center" }}>
               <p>Hormat kami,</p>
-              <p style={{ fontWeight: 700, marginBottom: invoice.pakai_ttd_bayhaky ? "4px" : "100px" }}>{invoice.ttd_jabatan || "Direktur"}</p>
-              {invoice.pakai_ttd_bayhaky && (
+              <p style={{ fontWeight: 700, marginBottom: invoice.pakai_ttd_bayhaky !== false ? "4px" : "100px" }}>{invoice.ttd_jabatan || "Direktur"}</p>
+              {invoice.pakai_ttd_bayhaky !== false && (
                 <img src={TTD_BAYHAKY} alt="Tanda tangan" style={{ height: "60px", margin: "0 auto 4px", display: "block" }} />
               )}
               <p style={{ fontWeight: 700, textDecoration: "underline" }}>{invoice.ttd_nama}</p>
@@ -3663,6 +3665,7 @@ function DashboardAdmin({ session, onLogout }) {
   const [invShipSama, setInvShipSama] = useState(true);
   const [invShipNama, setInvShipNama] = useState("");
   const [invShipAlamat, setInvShipAlamat] = useState("");
+  const [invTampilkanShipTo, setInvTampilkanShipTo] = useState(true);
   const [invItems, setInvItems] = useState([itemKosong()]);
   const [invPinalty, setInvPinalty] = useState("0");
   const [invLessDeposit, setInvLessDeposit] = useState("0");
@@ -3706,7 +3709,7 @@ function DashboardAdmin({ session, onLogout }) {
     const profil = muatProfilInvoiceTersimpan();
     setInvEditId(null); setTrkAsalInvoiceId(null); setInvNomor(buatNomorInvoiceOtomatis()); setInvTanggal(new Date().toISOString().slice(0, 10));
     setInvPoNumber(""); setInvJatuhTempo(""); setInvBillNama(""); setInvBillAlamat("");
-    setInvShipSama(true); setInvShipNama(""); setInvShipAlamat("");
+    setInvShipSama(true); setInvShipNama(""); setInvShipAlamat(""); setInvTampilkanShipTo(true);
     setInvItems([itemKosong()]); setInvPinalty("0"); setInvLessDeposit("0"); setInvDendaSetelahPpn("0"); setInvPungutanPpn("0");
     setInvStatus("Belum Dibayar");
     setInvRekBank(profil.rek_bank || ""); setInvRekNomor(profil.rek_nomor || ""); setInvRekKota(profil.rek_kota || "");
@@ -3757,6 +3760,7 @@ function DashboardAdmin({ session, onLogout }) {
       nomor: invNomor, tanggal: invTanggal, po_number: invPoNumber, jatuh_tempo: invJatuhTempo,
       bill_nama: invBillNama, bill_alamat: invBillAlamat,
       ship_sama: invShipSama, ship_nama: invShipSama ? invBillNama : invShipNama, ship_alamat: invShipSama ? invBillAlamat : invShipAlamat,
+      tampilkan_ship_to: invTampilkanShipTo,
       items: invItems.filter(it => it.deskripsi.trim()).map(it => ({ deskripsi: it.deskripsi, qty: Number(it.qty) || 0, hargaSatuan: Number(it.hargaSatuan) || 0 })),
       pinalty: Number(invPinalty) || 0, less_deposit: Number(invLessDeposit) || 0,
       denda_setelah_ppn: Number(invDendaSetelahPpn) || 0, pungutan_ppn: Number(invPungutanPpn) || 0,
@@ -3804,6 +3808,7 @@ function DashboardAdmin({ session, onLogout }) {
     setInvPoNumber(inv.po_number || ""); setInvJatuhTempo(inv.jatuh_tempo ? new Date(inv.jatuh_tempo).toISOString().slice(0, 10) : "");
     setInvBillNama(inv.bill_nama || ""); setInvBillAlamat(inv.bill_alamat || "");
     setInvShipSama(!!inv.ship_sama); setInvShipNama(inv.ship_nama || ""); setInvShipAlamat(inv.ship_alamat || "");
+    setInvTampilkanShipTo(inv.tampilkan_ship_to !== undefined ? inv.tampilkan_ship_to : true);
     setInvItems(inv.items && inv.items.length ? inv.items.map(it => ({ id: buatNomorItem(), deskripsi: it.deskripsi, qty: String(it.qty), hargaSatuan: String(it.hargaSatuan) })) : [itemKosong()]);
     setInvPinalty(String(inv.pinalty || 0)); setInvLessDeposit(String(inv.less_deposit || 0));
     setInvDendaSetelahPpn(String(inv.denda_setelah_ppn || 0)); setInvPungutanPpn(String(inv.pungutan_ppn || 0));
@@ -9450,16 +9455,25 @@ function DashboardAdmin({ session, onLogout }) {
 
                         <div>
                           <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <input type="checkbox" checked={invShipSama} onChange={e => setInvShipSama(e.target.checked)} className="w-3.5 h-3.5" />
-                            <span className="font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--brand-dark)" }}>Ship To sama dengan Bill To</span>
+                            <input type="checkbox" checked={invTampilkanShipTo} onChange={e => setInvTampilkanShipTo(e.target.checked)} className="w-3.5 h-3.5" style={{ accentColor: "var(--brand)" }} />
+                            <span className="font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--brand-dark)" }}>Tampilkan Ship To di hasil cetak</span>
                           </label>
-                          {!invShipSama && (
-                            <div className="mt-2 space-y-2">
-                              <input type="text" placeholder="Nama penerima barang/jasa" value={invShipNama} onChange={e => setInvShipNama(e.target.value)}
-                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
-                              <textarea placeholder="Alamat pengiriman..." rows="2" value={invShipAlamat} onChange={e => setInvShipAlamat(e.target.value)}
-                                className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium resize-none" style={{ borderColor: "var(--border)" }}></textarea>
-                            </div>
+                          <p className="text-[10px] mt-0.5 mb-2" style={{ color: "var(--ink-soft)" }}>Kalau dimatikan, bagian "Ship To" tidak akan tampil sama sekali di invoice yang dicetak.</p>
+                          {invTampilkanShipTo && (
+                            <>
+                              <label className="flex items-center gap-2 cursor-pointer select-none">
+                                <input type="checkbox" checked={invShipSama} onChange={e => setInvShipSama(e.target.checked)} className="w-3.5 h-3.5" />
+                                <span className="font-bold uppercase text-[10px] tracking-wide" style={{ color: "var(--brand-dark)" }}>Ship To sama dengan Bill To</span>
+                              </label>
+                              {!invShipSama && (
+                                <div className="mt-2 space-y-2">
+                                  <input type="text" placeholder="Nama penerima barang/jasa" value={invShipNama} onChange={e => setInvShipNama(e.target.value)}
+                                    className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium" style={{ borderColor: "var(--border)" }} />
+                                  <textarea placeholder="Alamat pengiriman..." rows="2" value={invShipAlamat} onChange={e => setInvShipAlamat(e.target.value)}
+                                    className="w-full p-2.5 border rounded-xl outline-none text-sm font-medium resize-none" style={{ borderColor: "var(--border)" }}></textarea>
+                                </div>
+                              )}
+                            </>
                           )}
                         </div>
 
