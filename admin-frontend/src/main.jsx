@@ -2267,8 +2267,8 @@ const InvoicePrintView = ({ invoice }) => {
           {invoice.ttd_nama && (
             <div style={{ flex: 1, textAlign: "center" }}>
               <p>Hormat kami,</p>
-              <p style={{ fontWeight: 700, marginBottom: invoice.pakai_ttd_bayhaky !== false ? "4px" : "100px" }}>{invoice.ttd_jabatan || "Direktur"}</p>
-              {invoice.pakai_ttd_bayhaky !== false && (
+              <p style={{ fontWeight: 700, marginBottom: invoice.pakai_ttd_bayhaky ? "4px" : "100px" }}>{invoice.ttd_jabatan || "Direktur"}</p>
+              {invoice.pakai_ttd_bayhaky && (
                 <img src={TTD_BAYHAKY} alt="Tanda tangan" style={{ height: "60px", margin: "0 auto 4px", display: "block" }} />
               )}
               <p style={{ fontWeight: 700, textDecoration: "underline" }}>{invoice.ttd_nama}</p>
