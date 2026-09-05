@@ -42,6 +42,12 @@ const invoiceSchema = new mongoose.Schema({
   rek_kota: { type: String, default: '' },
   ttd_nama: { type: String, default: '' },
   ttd_jabatan: { type: String, default: 'Direktur' },
+  // Checkbox tanda tangan & stempel di hasil cetak — dulu field ini tidak ada di schema
+  // sama sekali sehingga selalu didrop Mongoose saat disimpan (makanya checkbox seolah
+  // tidak berpengaruh). Sekarang ditambahkan terpisah, default true supaya invoice lama
+  // yang belum punya field ini tetap tampil ttd & stempel seperti sebelumnya.
+  pakai_ttd_bayhaky: { type: Boolean, default: true },
+  pakai_stempel: { type: Boolean, default: true },
 
   // Ditandai true setelah pembayaran invoice ini dimasukkan ke modul Keuangan (Transaksi),
   // supaya tombol "+" di Invoice tidak bisa dobel-catat saldo yang sama.

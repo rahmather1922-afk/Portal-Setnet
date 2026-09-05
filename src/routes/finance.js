@@ -119,7 +119,7 @@ router.post('/finance/invoice', INVOICE_ROLES, async (req, res) => {
       nomor, tanggal, po_number, jatuh_tempo,
       bill_nama, bill_alamat, ship_sama, ship_nama, ship_alamat,
       items, pinalty, less_deposit, denda_setelah_ppn, pungutan_ppn, status,
-      rek_bank, rek_nomor, rek_kota, ttd_nama, ttd_jabatan
+      rek_bank, rek_nomor, rek_kota, ttd_nama, ttd_jabatan, pakai_ttd_bayhaky, pakai_stempel
     } = req.body;
 
     if (!nomor || !tanggal || !bill_nama) {
@@ -146,6 +146,8 @@ router.post('/finance/invoice', INVOICE_ROLES, async (req, res) => {
       status: status || 'Belum Dibayar',
       rek_bank: rek_bank || '', rek_nomor: rek_nomor || '', rek_kota: rek_kota || '',
       ttd_nama: ttd_nama || '', ttd_jabatan: ttd_jabatan || 'Direktur',
+      pakai_ttd_bayhaky: pakai_ttd_bayhaky !== undefined ? !!pakai_ttd_bayhaky : true,
+      pakai_stempel: pakai_stempel !== undefined ? !!pakai_stempel : true,
       dibuat_oleh
     });
     await invoiceBaru.save();
@@ -165,7 +167,7 @@ router.put('/finance/invoice/:id', INVOICE_ROLES, async (req, res) => {
       nomor, tanggal, po_number, jatuh_tempo,
       bill_nama, bill_alamat, ship_sama, ship_nama, ship_alamat,
       items, pinalty, less_deposit, denda_setelah_ppn, pungutan_ppn, status,
-      rek_bank, rek_nomor, rek_kota, ttd_nama, ttd_jabatan
+      rek_bank, rek_nomor, rek_kota, ttd_nama, ttd_jabatan, pakai_ttd_bayhaky, pakai_stempel
     } = req.body;
 
     const updateData = {
@@ -174,7 +176,9 @@ router.put('/finance/invoice/:id', INVOICE_ROLES, async (req, res) => {
       pinalty: Number(pinalty) || 0, less_deposit: Number(less_deposit) || 0,
       denda_setelah_ppn: Number(denda_setelah_ppn) || 0, pungutan_ppn: Number(pungutan_ppn) || 0,
       rek_bank: rek_bank || '', rek_nomor: rek_nomor || '', rek_kota: rek_kota || '',
-      ttd_nama: ttd_nama || '', ttd_jabatan: ttd_jabatan || 'Direktur'
+      ttd_nama: ttd_nama || '', ttd_jabatan: ttd_jabatan || 'Direktur',
+      pakai_ttd_bayhaky: pakai_ttd_bayhaky !== undefined ? !!pakai_ttd_bayhaky : true,
+      pakai_stempel: pakai_stempel !== undefined ? !!pakai_stempel : true
     };
     if (tanggal) updateData.tanggal = new Date(tanggal);
     updateData.jatuh_tempo = jatuh_tempo ? new Date(jatuh_tempo) : null;

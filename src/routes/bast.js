@@ -30,7 +30,7 @@ router.post('/finance/bast', cekAkses, async (req, res) => {
     const {
       nomorSurat, tanggal, namaPekerjaan, nomorKontrak, rekananPelaksana, pihakKedua,
       jenisPekerjaan, periodeAwal, periodeAkhir, items,
-      ttdClientNama, ttdClientJabatan, ttdRekananNama, ttdRekananJabatan, pakaiTtdBayhaky,
+      ttdClientNama, ttdClientJabatan, ttdRekananNama, ttdRekananJabatan, pakaiTtdBayhaky, pakaiStempel,
     } = req.body;
 
     if (!nomorSurat || !nomorSurat.trim()) return res.status(400).json({ message: 'No. Surat wajib diisi' });
@@ -44,7 +44,7 @@ router.post('/finance/bast', cekAkses, async (req, res) => {
       nomorSurat, tanggal, namaPekerjaan, nomorKontrak, rekananPelaksana, pihakKedua,
       jenisPekerjaan, periodeAwal, periodeAkhir,
       items: items.filter((it) => (it.deskripsi || '').trim()),
-      ttdClientNama, ttdClientJabatan, ttdRekananNama, ttdRekananJabatan, pakaiTtdBayhaky,
+      ttdClientNama, ttdClientJabatan, ttdRekananNama, ttdRekananJabatan, pakaiTtdBayhaky, pakaiStempel,
     });
 
     res.status(201).json({ message: 'BAST Balap berhasil dibuat', data: baru });
@@ -60,7 +60,7 @@ router.put('/finance/bast/:id', cekAkses, async (req, res) => {
     const {
       nomorSurat, tanggal, namaPekerjaan, nomorKontrak, rekananPelaksana, pihakKedua,
       jenisPekerjaan, periodeAwal, periodeAkhir, items,
-      ttdClientNama, ttdClientJabatan, ttdRekananNama, ttdRekananJabatan, pakaiTtdBayhaky,
+      ttdClientNama, ttdClientJabatan, ttdRekananNama, ttdRekananJabatan, pakaiTtdBayhaky, pakaiStempel,
     } = req.body;
 
     if (!nomorSurat || !nomorSurat.trim()) return res.status(400).json({ message: 'No. Surat wajib diisi' });
@@ -76,7 +76,7 @@ router.put('/finance/bast/:id', cekAkses, async (req, res) => {
         nomorSurat, tanggal, namaPekerjaan, nomorKontrak, rekananPelaksana, pihakKedua,
         jenisPekerjaan, periodeAwal, periodeAkhir,
         items: items.filter((it) => (it.deskripsi || '').trim()),
-        ttdClientNama, ttdClientJabatan, ttdRekananNama, ttdRekananJabatan, pakaiTtdBayhaky,
+        ttdClientNama, ttdClientJabatan, ttdRekananNama, ttdRekananJabatan, pakaiTtdBayhaky, pakaiStempel,
       },
       { new: true, runValidators: true }
     );

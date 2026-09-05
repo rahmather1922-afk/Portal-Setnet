@@ -36,6 +36,9 @@ const BastSchema = new mongoose.Schema(
     ttdRekananNama: { type: String, default: 'Bayhaky' },
     ttdRekananJabatan: { type: String, default: 'Manager Operational' },
     pakaiTtdBayhaky: { type: Boolean, default: true },
+    // Checkbox stempel terpisah dari checkbox tanda tangan — sebelumnya belum ada di schema
+    // sehingga selalu didrop Mongoose saat disimpan.
+    pakaiStempel: { type: Boolean, default: true },
     // Dicatat sekali saat dibuat, tidak berubah lagi walau dokumennya diedit belakangan.
     dibuatPada: { type: Date, default: Date.now },
   },
