@@ -2875,28 +2875,49 @@ function DashboardAdmin({ session, onLogout }) {
   const [pageSnOnt, setPageSnOnt] = useState(1);
   const [pageSizeSnOnt, setPageSizeSnOnt] = useState(10);
 
+  // ============================================================
+  // GUARD ANTI-NUMPUK (penyebab utama semua request jadi "Pending")
+  // Satu putaran sinkronisasi = 13 fetch sekaligus. Kalau putaran itu
+  // butuh lebih dari interval polling, putaran berikutnya sudah jalan
+  // sebelum yang lama selesai -> request bertumpuk -> browser cuma punya
+  // 6 koneksi per domain -> semuanya antre dan seolah-olah server lemot.
+  // Ref di bawah memastikan hanya ada SATU putaran aktif pada satu waktu.
+  // ============================================================
+  const syncInFlightRef = useRef(false);
+  const lastSyncAtRef = useRef(0);
+
   const muatSemuaData = useCallback(async (silent = false) => {
+    // Putaran sebelumnya belum selesai -> lewati putaran ini, jangan ditumpuk.
+    if (syncInFlightRef.current) return;
+    syncInFlightRef.current = true;
+
+    // Kalau server tidak menjawab dalam 20 detik, batalkan semuanya.
+    // Tanpa ini, request yang menggantung akan terus memegang slot koneksi.
+    const ac = new AbortController();
+    const killer = setTimeout(() => ac.abort(), 20000);
+    const opts = { headers: authHeaders(), signal: ac.signal };
+
     try {
       const calls = [
-        fetch(`${API}/karyawan`, { headers: authHeaders() }),
-        fetch(`${API}/rekap`, { headers: authHeaders() }),
+        fetch(`${API}/karyawan`, opts),
+        fetch(`${API}/rekap`, opts),
       ];
-      if (canAccess(session.role, "keuangan")) calls.push(fetch(`${FIN_API}/transaksi`, { headers: authHeaders() }));
-      if (canAccess(session.role, "invoice")) calls.push(fetch(`${FIN_API}/invoice`, { headers: authHeaders() }));
-      if (canAccess(session.role, "invoice")) calls.push(fetch(`${FIN_API}/bast`, { headers: authHeaders() }));
-      if (canAccess(session.role, "tracking")) calls.push(fetch(`${TRACK_API}/tracking`, { headers: authHeaders() }));
+      if (canAccess(session.role, "keuangan")) calls.push(fetch(`${FIN_API}/transaksi`, opts));
+      if (canAccess(session.role, "invoice")) calls.push(fetch(`${FIN_API}/invoice`, opts));
+      if (canAccess(session.role, "invoice")) calls.push(fetch(`${FIN_API}/bast`, opts));
+      if (canAccess(session.role, "tracking")) calls.push(fetch(`${TRACK_API}/tracking`, opts));
       const perluNotifFinance = canAccess(session.role, "invoice") && !canAccess(session.role, "tracking");
-      if (perluNotifFinance) calls.push(fetch(`${TRACK_API}/tracking/notif-finance`, { headers: authHeaders() }));
-      if (canAccess(session.role, "kasbon")) calls.push(fetch(`${TRACK_API}/kasbon`, { headers: authHeaders() }));
-      if (canAccess(session.role, "kasbon")) calls.push(fetch(`${TRACK_API}/pengajuan`, { headers: authHeaders() }));
+      if (perluNotifFinance) calls.push(fetch(`${TRACK_API}/tracking/notif-finance`, opts));
+      if (canAccess(session.role, "kasbon")) calls.push(fetch(`${TRACK_API}/kasbon`, opts));
+      if (canAccess(session.role, "kasbon")) calls.push(fetch(`${TRACK_API}/pengajuan`, opts));
       if (canAccess(session.role, "material")) {
-        calls.push(fetch(`${MATERIAL_API}/material`, { headers: authHeaders() }));
-        calls.push(fetch(`${MATERIAL_API}/pemakaian-material`, { headers: authHeaders() }));
-        calls.push(fetch(`${MATERIAL_API}/material/stok`, { headers: authHeaders() }));
+        calls.push(fetch(`${MATERIAL_API}/material`, opts));
+        calls.push(fetch(`${MATERIAL_API}/pemakaian-material`, opts));
+        calls.push(fetch(`${MATERIAL_API}/material/stok`, opts));
       }
       if (canAccess(session.role, "asset")) {
-        calls.push(fetch(`${MATERIAL_API}/asset`, { headers: authHeaders() }));
-        calls.push(fetch(`${MATERIAL_API}/asset/log`, { headers: authHeaders() }));
+        calls.push(fetch(`${MATERIAL_API}/asset`, opts));
+        calls.push(fetch(`${MATERIAL_API}/asset/log`, opts));
       }
       const results = await Promise.all(calls);
       const dataKaryawan = await results[0].json();
@@ -2945,21 +2966,47 @@ function DashboardAdmin({ session, onLogout }) {
       setOnline(true);
       setLastSync(new Date());
     } catch (err) {
-      console.error("Gagal sinkronisasi data dari backend server", err);
-      setOnline(false);
-      if (!silent) notify("Gagal terhubung ke server backend", "error");
+      // Abort karena timeout bukan "server mati" — jangan bikin badge merah berkedip.
+      if (err?.name === "AbortError") {
+        console.warn("Sinkronisasi dibatalkan (timeout 20 detik)");
+      } else {
+        console.error("Gagal sinkronisasi data dari backend server", err);
+        setOnline(false);
+        if (!silent) notify("Gagal terhubung ke server backend", "error");
+      }
     } finally {
+      clearTimeout(killer);
+      syncInFlightRef.current = false;   // lepas kunci, putaran berikutnya boleh jalan
+      lastSyncAtRef.current = Date.now();
       setLoading(false);
     }
   }, [notify, session.role, authHeaders]);
 
+  // ============================================================
+  // POLLING
+  // Sebelumnya: 4000 ms. Dengan 13 endpoint per putaran itu berarti
+  // ~195 request/menit hanya untuk satu tab admin yang dibiarkan terbuka.
+  // 30 detik sudah lebih dari cukup untuk data absensi/material dan
+  // memangkas beban server sekitar 87%.
+  // ============================================================
+  const POLL_MS = 30000;
+
   useEffect(() => {
     muatSemuaData();
+
     const interval = setInterval(() => {
       if (document.visibilityState === "visible") muatSemuaData(true);
-    }, 4000);
-    const onVisible = () => { if (document.visibilityState === "visible") muatSemuaData(true); };
+    }, POLL_MS);
+
+    // Saat tab dibuka kembali, refresh — tapi jangan kalau baru saja sync.
+    // Tanpa throttle ini, klik-klik antar tab browser memicu badai request.
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastSyncAtRef.current < 10000) return;
+      muatSemuaData(true);
+    };
     document.addEventListener("visibilitychange", onVisible);
+
     return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
   }, [muatSemuaData]);
 
