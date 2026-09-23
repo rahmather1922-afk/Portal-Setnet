@@ -14,7 +14,13 @@ async function hitungKasbonAktif(karyawan_id) {
     karyawan_id,
     $or: [{ status: 'Pending' }, { status: 'Disetujui', lunas: false }]
   });
-  return aktif.reduce((total, k) => total + k.jumlah, 0);
+  // Kasbon Pending dihitung penuh (belum ada yang dibayar).
+  // Kasbon Disetujui-belum-lunas dihitung dari SISA-nya saja, supaya cicilan/pembayaran
+  // sebagian (jumlah_dibayar) langsung membebaskan sebagian limit karyawan.
+  return aktif.reduce((total, k) => {
+    const sisa = k.status === 'Disetujui' ? Math.max(k.jumlah - (k.jumlah_dibayar || 0), 0) : k.jumlah;
+    return total + sisa;
+  }, 0);
 }
 
 // --- KARYAWAN: CEK SISA LIMIT KASBON SENDIRI ---
@@ -169,7 +175,7 @@ router.put('/kasbon/:id/keputusan', requireRole('owner'), async (req, res) => {
   }
 });
 
-// --- OWNER / FINANCE: TANDAI KASBON SUDAH LUNAS (dipotong dari gaji) ---
+// --- OWNER / FINANCE: TANDAI KASBON SUDAH LUNAS PENUH (dipotong dari gaji / dibayar semua sekaligus) ---
 router.put('/kasbon/:id/lunas', requireRole('owner', 'finance'), async (req, res) => {
   try {
     const kasbon = await Kasbon.findById(req.params.id);
@@ -177,12 +183,60 @@ router.put('/kasbon/:id/lunas', requireRole('owner', 'finance'), async (req, res
     if (kasbon.status !== 'Disetujui') {
       return res.status(400).json({ message: 'Hanya kasbon yang sudah Disetujui yang bisa ditandai lunas' });
     }
+    kasbon.jumlah_dibayar = kasbon.jumlah; // lunas penuh = sisa jadi 0
     kasbon.lunas = true;
     kasbon.tanggal_lunas = new Date();
     await kasbon.save();
     res.status(200).json({ message: 'Kasbon ditandai lunas', data: kasbon });
   } catch (error) {
     res.status(500).json({ message: 'Gagal menandai kasbon lunas', error: error.message });
+  }
+});
+
+// --- OWNER / FINANCE: CATAT PEMBAYARAN KASBON (BISA SEBAGIAN / CICILAN) ---
+// Dipakai kalau karyawan bayar cash/transfer tidak sekaligus lunas, mis. hutang 300rb baru
+// bayar 200rb -> sisa 100rb tetap tercatat & tetap mengurangi limit kasbon yang terpakai.
+router.put('/kasbon/:id/bayar', requireRole('owner', 'finance'), async (req, res) => {
+  try {
+    const { jumlah_bayar } = req.body;
+    const bayar = Number(jumlah_bayar);
+    if (!bayar || bayar <= 0) {
+      return res.status(400).json({ message: 'Jumlah bayar harus lebih dari 0' });
+    }
+
+    const kasbon = await Kasbon.findById(req.params.id);
+    if (!kasbon) return res.status(404).json({ message: 'Pengajuan kasbon tidak ditemukan' });
+    if (kasbon.status !== 'Disetujui') {
+      return res.status(400).json({ message: 'Hanya kasbon yang sudah Disetujui yang bisa dicatat pembayarannya' });
+    }
+    if (kasbon.lunas) {
+      return res.status(400).json({ message: 'Kasbon ini sudah lunas' });
+    }
+
+    const sisaSaatIni = kasbon.jumlah - (kasbon.jumlah_dibayar || 0);
+    if (bayar > sisaSaatIni) {
+      return res.status(400).json({
+        message: `Jumlah bayar melebihi sisa hutang. Sisa hutang saat ini: Rp${sisaSaatIni.toLocaleString('id-ID')}.`
+      });
+    }
+
+    kasbon.jumlah_dibayar = (kasbon.jumlah_dibayar || 0) + bayar;
+    const lunasSekarang = kasbon.jumlah_dibayar >= kasbon.jumlah;
+    if (lunasSekarang) {
+      kasbon.lunas = true;
+      kasbon.tanggal_lunas = new Date();
+    }
+    await kasbon.save();
+
+    const sisaBaru = Math.max(kasbon.jumlah - kasbon.jumlah_dibayar, 0);
+    res.status(200).json({
+      message: lunasSekarang
+        ? 'Pembayaran tercatat, kasbon kini LUNAS'
+        : `Pembayaran sebagian tercatat. Sisa hutang: Rp${sisaBaru.toLocaleString('id-ID')}.`,
+      data: kasbon
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal mencatat pembayaran kasbon', error: error.message });
   }
 });
 

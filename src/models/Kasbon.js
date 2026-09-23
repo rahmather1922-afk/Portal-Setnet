@@ -22,7 +22,8 @@ const kasbonSchema = new mongoose.Schema({
     enum: ['Pending', 'Disetujui', 'Ditolak'],
     default: 'Pending'
   },
-  lunas: { type: Boolean, default: false },        // ditandai true setelah kasbon dipotong/dibayar
+  lunas: { type: Boolean, default: false },        // ditandai true setelah kasbon dipotong/dibayar LUNAS (sisa = 0)
+  jumlah_dibayar: { type: Number, default: 0 },     // akumulasi cicilan/pembayaran manual (cash/transfer) di luar potongan gaji
   notif_dibaca: { type: Boolean, default: false },  // false = notif ACC/Tolak belum dibaca karyawan di app
   catatan_admin: { type: String, default: '' },     // alasan tolak / catatan owner
   diputuskan_oleh: { type: String, default: '' },   // karyawan_id owner yang ACC/tolak
@@ -30,5 +31,12 @@ const kasbonSchema = new mongoose.Schema({
   tanggal_keputusan: { type: Date, default: null },
   tanggal_lunas: { type: Date, default: null }
 });
+
+// Virtual: sisa hutang yang masih harus dibayar/dipotong (tidak pernah negatif)
+kasbonSchema.virtual('sisa').get(function () {
+  return Math.max(this.jumlah - (this.jumlah_dibayar || 0), 0);
+});
+kasbonSchema.set('toJSON', { virtuals: true });
+kasbonSchema.set('toObject', { virtuals: true });
 
 module.exports = mongoose.model('Kasbon', kasbonSchema);

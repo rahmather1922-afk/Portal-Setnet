@@ -709,7 +709,16 @@ function PengajuanPanel({ userSession, onBack }) {
                                     <p class="text-[10px] text-gray-500 mb-1">{k.metode_pembayaran} - {k.penyedia_pembayaran} • {k.no_rekening}</p>
                                 )}
                                 <p class="text-[10px] font-mono text-gray-400">{new Date(k.tanggal_pengajuan).toLocaleDateString('id-ID')}</p>
-                                {k.status === 'Disetujui' && <p class="text-[10px] font-bold mt-1 text-green-700">{k.lunas ? '✔ Lunas' : '⏳ Belum lunas / akan dipotong gaji'}</p>}
+                                {k.status === 'Disetujui' && (
+                                    <p class={`text-[10px] font-bold mt-1 ${k.lunas ? 'text-green-700' : 'text-amber-700'}`}>
+                                        {k.lunas ? '✔ Lunas' : (k.jumlah_dibayar > 0 ? '⏳ Belum lunas sepenuhnya' : '⏳ Belum lunas / akan dipotong gaji')}
+                                    </p>
+                                )}
+                                {k.status === 'Disetujui' && !k.lunas && k.jumlah_dibayar > 0 && (
+                                    <p class="text-[10px] font-mono text-gray-500 mt-0.5">
+                                        Sudah dibayar {formatRupiah(k.jumlah_dibayar)} • Sisa {formatRupiah(Math.max(k.jumlah - k.jumlah_dibayar, 0))}
+                                    </p>
+                                )}
                                 {k.status === 'Ditolak' && k.catatan_admin && <p class="text-[10px] mt-1 text-red-600">Catatan: {k.catatan_admin}</p>}
                             </div>
                         ))}

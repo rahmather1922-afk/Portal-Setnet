@@ -757,8 +757,13 @@ const ConfirmModal = ({ open, title, description, confirmLabel = "Hapus", onConf
 // Modal konfirmasi "Tandai Lunas (Cash)" — dipakai khusus owner di menu "Kasbon & Cuti".
 // Penjelasan panjang soal efek ke Salary dipecah jadi poin-poin dengan ikon, bukan satu paragraf
 // panjang di window.confirm bawaan browser, supaya lebih gampang dibaca sebelum owner menekan OK.
-const TandaiLunasKasbonModal = ({ item, onClose, onConfirm, submitting }) => {
+const TandaiLunasKasbonModal = ({ item, onClose, onConfirm, submitting, jumlahBayar, setJumlahBayar }) => {
   if (!item) return null;
+  const sisaSaatIni = Math.max(item.jumlah - (item.jumlah_dibayar || 0), 0);
+  const bayarNum = Number(jumlahBayar) || 0;
+  const sisaSetelah = Math.max(sisaSaatIni - bayarNum, 0);
+  const akanLunas = bayarNum >= sisaSaatIni && bayarNum > 0;
+  const errorInput = bayarNum > sisaSaatIni;
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" style={{ background: "rgba(11,18,32,.5)" }} onClick={submitting ? undefined : onClose}>
       <div className="modal-in bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -770,8 +775,8 @@ const TandaiLunasKasbonModal = ({ item, onClose, onConfirm, submitting }) => {
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm" style={{ background: "var(--brand-dark)", color: "#fff" }}>
             <IconWallet className="w-7 h-7" />
           </div>
-          <h3 className="font-black font-display text-lg" style={{ color: "var(--ink)" }}>Tandai Lunas (Cash)?</h3>
-          <p className="text-xs mt-1" style={{ color: "var(--ink-soft)" }}>Konfirmasi sebelum menandai kasbon ini selesai secara manual.</p>
+          <h3 className="font-black font-display text-lg" style={{ color: "var(--ink)" }}>Catat Pembayaran Kasbon</h3>
+          <p className="text-xs mt-1" style={{ color: "var(--ink-soft)" }}>Bisa dibayar penuh atau sebagian (cicilan) secara manual.</p>
         </div>
 
         <div className="px-6 pb-6">
@@ -780,12 +785,35 @@ const TandaiLunasKasbonModal = ({ item, onClose, onConfirm, submitting }) => {
             <Avatar name={item.nama} size={38} />
             <div className="min-w-0 flex-1">
               <p className="font-bold text-sm truncate" style={{ color: "var(--ink)" }}>{item.nama}</p>
-              <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>Kasbon akan ditandai LUNAS</p>
+              <p className="text-[11px]" style={{ color: "var(--ink-soft)" }}>Total kasbon: {fmtRupiah(item.jumlah)}{item.jumlah_dibayar > 0 ? ` · Sudah dibayar: ${fmtRupiah(item.jumlah_dibayar)}` : ""}</p>
             </div>
             <div className="text-right shrink-0">
-              <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--ink-soft)" }}>Jumlah</p>
-              <p className="font-black text-sm font-mono" style={{ color: "var(--brand-dark)" }}>{fmtRupiah(item.jumlah)}</p>
+              <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--ink-soft)" }}>Sisa Hutang</p>
+              <p className="font-black text-sm font-mono" style={{ color: "var(--brand-dark)" }}>{fmtRupiah(sisaSaatIni)}</p>
             </div>
+          </div>
+
+          {/* Input jumlah yang dibayar sekarang */}
+          <div className="mt-4">
+            <label className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--ink-soft)" }}>Jumlah dibayar sekarang</label>
+            <input
+              type="number"
+              min="1"
+              max={sisaSaatIni}
+              value={jumlahBayar}
+              onChange={e => setJumlahBayar(e.target.value)}
+              disabled={submitting}
+              className="w-full mt-1 px-3 py-2.5 rounded-xl border text-sm font-mono outline-none"
+              style={{ borderColor: errorInput ? "var(--red)" : "var(--border)" }}
+              placeholder={`Maks. ${fmtRupiah(sisaSaatIni)}`}
+            />
+            {errorInput ? (
+              <p className="text-[11px] mt-1 font-semibold" style={{ color: "var(--red)" }}>Melebihi sisa hutang ({fmtRupiah(sisaSaatIni)}).</p>
+            ) : bayarNum > 0 ? (
+              <p className="text-[11px] mt-1" style={{ color: "var(--ink-soft)" }}>
+                {akanLunas ? "Kasbon akan langsung ditandai LUNAS." : `Sisa hutang setelah dibayar: ${fmtRupiah(sisaSetelah)} (masih otomatis potong gaji / bisa dibayar lagi nanti).`}
+              </p>
+            ) : null}
           </div>
 
           {/* Poin-poin penjelasan, gantikan paragraf panjang di window.confirm */}
@@ -793,19 +821,19 @@ const TandaiLunasKasbonModal = ({ item, onClose, onConfirm, submitting }) => {
             <div className="flex items-start gap-2.5 rounded-xl p-3" style={{ background: "var(--amber-soft)" }}>
               <IconAlert className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--amber)" }} />
               <p className="text-[11px] leading-relaxed" style={{ color: "var(--ink)" }}>
-                Gunakan tombol ini <b>HANYA</b> jika karyawan sudah membayar/mengembalikan kasbon secara <b>cash & Transfer</b>, di luar potongan gaji.
+                Gunakan form ini <b>HANYA</b> jika karyawan sudah membayar/mengembalikan kasbon secara <b>cash & Transfer</b>, di luar potongan gaji.
               </p>
             </div>
             <div className="flex items-start gap-2.5 rounded-xl p-3" style={{ background: "var(--red-soft)" }}>
               <IconX className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--red)" }} />
               <p className="text-[11px] leading-relaxed" style={{ color: "var(--ink)" }}>
-                Setelah ditandai lunas di sini, kasbon ini <b>tidak akan lagi</b> otomatis memotong gaji karyawan di menu Salary.
+                Kalau bayarnya <b>penuh</b> (sesuai sisa hutang), kasbon langsung LUNAS dan <b>berhenti</b> otomatis potong gaji. Kalau bayar <b>sebagian</b>, sisanya tetap otomatis potong gaji seperti biasa.
               </p>
             </div>
             <div className="flex items-start gap-2.5 rounded-xl p-3" style={{ background: "var(--green-soft)" }}>
               <IconCheck className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--green)" }} />
               <p className="text-[11px] leading-relaxed" style={{ color: "var(--ink)" }}>
-                Kalau justru ingin kasbon ini dipotong dari gaji bulan ini, <b>jangan lanjutkan</b> — biarkan saja, nanti otomatis lunas sendiri saat proses gaji di menu Salary.
+                Limit kasbon karyawan otomatis bertambah sesuai jumlah yang sudah dibayar — tidak perlu diubah manual.
               </p>
             </div>
           </div>
@@ -816,11 +844,11 @@ const TandaiLunasKasbonModal = ({ item, onClose, onConfirm, submitting }) => {
             </button>
             <button
               onClick={onConfirm}
-              disabled={submitting}
+              disabled={submitting || bayarNum <= 0 || errorInput}
               className="flex-1 py-2.5 rounded-xl font-semibold text-xs text-white disabled:opacity-60"
               style={{ background: "var(--brand-dark)" }}
             >
-              {submitting ? "Memproses..." : "Ya, Tandai Lunas"}
+              {submitting ? "Memproses..." : akanLunas ? "Ya, Tandai Lunas" : "Simpan Pembayaran"}
             </button>
           </div>
         </div>
@@ -2662,9 +2690,10 @@ function DashboardAdmin({ session, onLogout }) {
   // Target modal konfirmasi ACC/Tolak Kasbon: { item, status } atau null kalau modal tertutup
   const [kasbonKeputusanTarget, setKasbonKeputusanTarget] = useState(null);
   const [kasbonKeputusanSubmitting, setKasbonKeputusanSubmitting] = useState(false);
-  // Target modal konfirmasi "Tandai Lunas (Cash)" kasbon
+  // Target modal konfirmasi "Tandai Lunas (Cash)" kasbon — mendukung pembayaran sebagian (cicilan)
   const [kasbonLunasTarget, setKasbonLunasTarget] = useState(null);
   const [kasbonLunasSubmitting, setKasbonLunasSubmitting] = useState(false);
+  const [kasbonJumlahBayar, setKasbonJumlahBayar] = useState("");
   // Target modal konfirmasi ACC/Tolak Pengajuan Cuti/Izin/Sakit: { item, status } atau null kalau modal tertutup
   const [pengajuanKeputusanTarget, setPengajuanKeputusanTarget] = useState(null);
   const [pengajuanKeputusanSubmitting, setPengajuanKeputusanSubmitting] = useState(false);
@@ -4402,8 +4431,13 @@ function DashboardAdmin({ session, onLogout }) {
     finally { setKasbonKeputusanSubmitting(false); setKasbonKeputusanTarget(null); }
   };
 
-  // Dipanggil tombol "Tandai Lunas (Cash)" -> cuma membuka modal konfirmasi.
-  const handleTandaiLunasKasbon = (item) => setKasbonLunasTarget(item);
+  // Dipanggil tombol "Tandai Lunas (Cash)" -> buka modal, default terisi SISA hutang penuh
+  // (owner tinggal ubah angkanya kalau karyawan cuma bayar sebagian).
+  const handleTandaiLunasKasbon = (item) => {
+    const sisa = Math.max(item.jumlah - (item.jumlah_dibayar || 0), 0);
+    setKasbonJumlahBayar(String(sisa));
+    setKasbonLunasTarget(item);
+  };
 
   // Ekspor Excel: Sheet "Kasbon" — kolom rapi per judul (pakai json_to_sheet, BUKAN CSV) sesuai filter aktif
   const eksporExcelKasbon = () => {
@@ -4419,12 +4453,14 @@ function DashboardAdmin({ session, onLogout }) {
       "Tanggal Pengajuan": r.tanggal_pengajuan ? new Date(r.tanggal_pengajuan).toLocaleDateString("id-ID") : "-",
       Status: r.status,
       "Status Lunas": r.status === "Disetujui" ? (r.lunas ? "Lunas" : "Belum Lunas") : "-",
+      "Sudah Dibayar": r.status === "Disetujui" ? (r.jumlah_dibayar || 0) : "-",
+      "Sisa Hutang": r.status === "Disetujui" ? Math.max(r.jumlah - (r.jumlah_dibayar || 0), 0) : "-",
       "Tanggal Lunas": r.tanggal_lunas ? new Date(r.tanggal_lunas).toLocaleDateString("id-ID") : "-",
       "Catatan Admin": r.catatan_admin || "-",
     })));
     wsData["!cols"] = [
       { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 26 },
-      { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 26 },
+      { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 26 },
     ];
     XLSX.utils.book_append_sheet(wb, wsData, "Kasbon");
 
@@ -4457,16 +4493,24 @@ function DashboardAdmin({ session, onLogout }) {
   };
 
   // Dipanggil dari dalam TandaiLunasKasbonModal setelah owner menekan tombol konfirmasi final.
+  // Pakai endpoint /bayar supaya bisa penuh ATAU sebagian (cicilan) — backend yang menentukan
+  // apakah kasbon langsung jadi lunas atau masih menyisakan hutang.
   const submitTandaiLunasKasbon = async () => {
     if (!kasbonLunasTarget) return;
+    const bayar = Number(kasbonJumlahBayar);
+    if (!bayar || bayar <= 0) { notify("Jumlah bayar harus lebih dari 0", "error"); return; }
     setKasbonLunasSubmitting(true);
     try {
-      const res = await fetch(`${TRACK_API}/kasbon/${kasbonLunasTarget._id}/lunas`, { method: "PUT", headers: authHeaders() });
+      const res = await fetch(`${TRACK_API}/kasbon/${kasbonLunasTarget._id}/bayar`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ jumlah_bayar: bayar }),
+      });
       const resData = await res.json().catch(() => ({}));
-      if (res.ok) { notify("Kasbon ditandai lunas (cash, di luar potongan gaji)"); muatSemuaData(true); }
-      else notify(resData.message || "Gagal menandai lunas", "error");
+      if (res.ok) { notify(resData.message || "Pembayaran kasbon tersimpan"); muatSemuaData(true); }
+      else notify(resData.message || "Gagal mencatat pembayaran", "error");
     } catch { notify("Gagal terhubung ke server", "error"); }
-    finally { setKasbonLunasSubmitting(false); setKasbonLunasTarget(null); }
+    finally { setKasbonLunasSubmitting(false); setKasbonLunasTarget(null); setKasbonJumlahBayar(""); }
   };
 
   // ==================== HANDLER: MODUL SALARY ====================
@@ -6035,7 +6079,9 @@ function DashboardAdmin({ session, onLogout }) {
       <TandaiLunasKasbonModal
         item={kasbonLunasTarget}
         submitting={kasbonLunasSubmitting}
-        onClose={() => { if (!kasbonLunasSubmitting) setKasbonLunasTarget(null); }}
+        jumlahBayar={kasbonJumlahBayar}
+        setJumlahBayar={setKasbonJumlahBayar}
+        onClose={() => { if (!kasbonLunasSubmitting) { setKasbonLunasTarget(null); setKasbonJumlahBayar(""); } }}
         onConfirm={submitTandaiLunasKasbon}
       />
       <PengajuanKeputusanModal
@@ -7977,7 +8023,12 @@ function DashboardAdmin({ session, onLogout }) {
                                     <span className="px-2.5 py-1 rounded-full font-black text-[10px] uppercase tracking-wide" style={{ background: tone.bg, color: tone.fg }}>{k.status}</span>
                                     {k.status === "Disetujui" && <p className="text-[10px] mt-1 font-bold" style={{ color: k.lunas ? "var(--green)" : "var(--amber)" }}>{k.lunas ? "✔ Lunas" : "Belum lunas"}</p>}
                                     {k.status === "Disetujui" && k.lunas && k.tanggal_lunas && <p className="text-[10px] mt-0.5" style={{ color: "var(--ink-soft)" }}>Lunas: {new Date(k.tanggal_lunas).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>}
-                                    {k.status === "Disetujui" && !k.lunas && <p className="text-[10px] mt-0.5 max-w-[160px] mx-auto" style={{ color: "var(--ink-soft)" }}>Otomatis potong gaji bulan ini</p>}
+                                    {k.status === "Disetujui" && !k.lunas && k.jumlah_dibayar > 0 && (
+                                      <p className="text-[10px] mt-0.5 max-w-[160px] mx-auto font-mono" style={{ color: "var(--ink-soft)" }}>
+                                        Dibayar {fmtRupiah(k.jumlah_dibayar)} · Sisa {fmtRupiah(Math.max(k.jumlah - k.jumlah_dibayar, 0))}
+                                      </p>
+                                    )}
+                                    {k.status === "Disetujui" && !k.lunas && <p className="text-[10px] mt-0.5 max-w-[160px] mx-auto" style={{ color: "var(--ink-soft)" }}>Otomatis potong gaji sisa bulan ini</p>}
                                     {k.status === "Ditolak" && k.catatan_admin && <p className="text-[10px] mt-1" style={{ color: "var(--ink-soft)" }}>{k.catatan_admin}</p>}
                                   </td>
                                   <td className="p-3.5">
@@ -7992,7 +8043,7 @@ function DashboardAdmin({ session, onLogout }) {
                                         <span className="text-[10px] italic" style={{ color: "var(--ink-soft)" }}>Menunggu approval Owner</span>
                                       )}
                                       {k.status === "Disetujui" && !k.lunas && (
-                                        <button onClick={() => handleTandaiLunasKasbon(k)} title="Khusus jika karyawan bayar cash di luar potongan gaji" className="px-2.5 py-1.5 rounded-lg font-bold text-[10px] uppercase border" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }}>Tandai Lunas</button>
+                                        <button onClick={() => handleTandaiLunasKasbon(k)} title="Khusus jika karyawan bayar cash/transfer di luar potongan gaji — bisa penuh atau sebagian" className="px-2.5 py-1.5 rounded-lg font-bold text-[10px] uppercase border" style={{ borderColor: "var(--border)", color: "var(--ink-soft)" }}>{k.jumlah_dibayar > 0 ? "Bayar Lagi" : "Bayar / Lunas"}</button>
                                       )}
                                     </div>
                                   </td>
